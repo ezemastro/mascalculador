@@ -4,8 +4,8 @@ export default function MainLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="w-screen flex flex-col justify-center items-center">
-      {children}
+    <div className="min-h-screen w-full flex flex-col items-center py-8 px-4">
+      <div className="w-full max-w-4xl flex flex-col gap-8">{children}</div>
     </div>
   );
 }

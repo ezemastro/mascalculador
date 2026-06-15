@@ -1,0 +1,49 @@
+# mascalculador — SDD Configuration
+schema: spec-driven
+
+context: |
+  Tech stack: Vite + React 19 + TypeScript 5.9 + TailwindCSS 4 + React Router 7 + Mafs 0.21
+  Architecture: SPA, two-screen (FormPage → ResultsPage), no state management lib, Load type via ambient .d.ts
+  Testing: No test runner configured (no vitest/jest); Strict TDD disabled.
+  Style: ESLint 9 flat config + Prettier 3 + TypeScript strict mode
+
+strict_tdd: false
+strict_tdd_reason: No test runner detected (no vitest, jest, or test script in package.json; zero test files found).
+
+testing:
+  runner: none
+  framework: none
+  layers:
+    unit: false
+    integration: false
+    e2e: false
+  coverage:
+    available: false
+    command: ""
+  quality:
+    linter: "eslint ."
+    type_checker: "tsc -b"
+    formatter: "prettier (via eslint-plugin-prettier)"
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Include sequence diagrams for complex flows
+    - Document architecture decisions with rationale
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+  apply:
+    - Follow existing code patterns (React 19 + TypeScript strict mode)
+    tdd: false
+    test_command: ""
+  verify:
+    test_command: ""
+    build_command: "cd client && npm run build"
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas
