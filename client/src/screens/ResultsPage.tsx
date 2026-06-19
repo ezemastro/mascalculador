@@ -2,11 +2,20 @@ import { useLocation, useNavigate } from "react-router";
 import { Coordinates, Mafs, Plot, Text, Vector } from "mafs";
 import MainLayout from "../components/MainLayout";
 import { calculateBeam, formatForce, formatLength } from "../lib/beam-calculations";
+import { checkBeam } from "../lib/steel-design";
+import { IPN_PROFILES } from "../lib/profiles";
+import { ANGLE_PROFILES } from "../lib/angle-profiles";
+import { computeTrussForces, designTrussMembers } from "../lib/truss-calc";
 
 export default function ResultsPage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const state = location.state as { loads?: Load[]; beamConfig?: BeamConfig } | null;
+  const state = location.state as {
+    loads?: Load[];
+    beamConfig?: BeamConfig;
+    designParams?: SteelDesignParams;
+    trussParams?: TrussDesignParams;
+  } | null;
 
   if (!state?.loads || !state?.beamConfig) {
     return (
@@ -25,21 +34,128 @@ export default function ResultsPage() {
   }
 
   const { loads, beamConfig } = state;
+  const designParams = state.designParams;
+  const trussParams = state.trussParams;
+  const { spans, supportTypes } = beamConfig;
+  const L = spans.reduce((a, b) => a + b, 0);
+
+  const supportPositions: number[] = [0];
+  for (const s of spans) {
+    supportPositions.push(supportPositions[supportPositions.length - 1] + s);
+  }
+  const supports: Support[] = supportPositions.map((pos, i) => ({
+    position: pos,
+    type: supportTypes[i],
+  }));
+
   const results = calculateBeam(beamConfig, loads);
-  const { reactions, shearForce, bendingMoment, maxMoment, criticalPoints } =
+  const { reactions, supportMoments, shearForce, bendingMoment, maxMoment, criticalPoints, maxShear } =
     results;
-  const [Ra, Rb] = reactions;
-  const L = beamConfig.length;
 
   const maxLoad = Math.max(
     ...loads.map((l) => l.magnitude),
-    Math.abs(Ra),
-    Math.abs(Rb),
+    ...reactions.map((r) => Math.abs(r)),
     1,
   );
   const maxMomentAbs = Math.max(Math.abs(maxMoment.value), 1);
   const xMin = -L * 0.1;
   const xMax = L * 1.1;
+
+  // Steel design check
+  let designCheck: {
+    profile: string;
+    phiMn: number;
+    Mu: number;
+    ratioFlex: number;
+    phiVn: number;
+    Vu: number;
+    ratioShear: number;
+    limitingState: string;
+    maxDeflection: number;
+    allowableDeflection: number;
+    deflectionOK: boolean;
+    steps: string[];
+  } | null = null;
+
+  if (designParams) {
+    const profile = IPN_PROFILES.find(
+      (p) => p.name === designParams.profileName,
+    );
+    if (profile) {
+      const totalBeamMm = L * 1000;
+      const Mu = Math.abs(maxMoment.value) * 1e6;  // kN·m → N·mm
+      const Vu = maxShear * 1e3;                     // kN → N
+      const serviceM = Mu / 1.4;
+
+      const dr = checkBeam(
+        profile,
+        {
+          Fy: designParams.Fy,
+          Lb: designParams.Lb,
+          Cb: designParams.Cb,
+          deflectionLimit: designParams.deflectionLimit,
+          beamLength: totalBeamMm,
+        },
+        serviceM,
+      );
+
+      designCheck = {
+        profile: profile.name,
+        phiMn: dr.phiMn,
+        Mu,
+        ratioFlex: Mu / dr.phiMn,
+        phiVn: dr.phiVn,
+        Vu,
+        ratioShear: Vu / dr.phiVn,
+        limitingState: dr.limitingState,
+        maxDeflection: dr.maxDeflection,
+        allowableDeflection: dr.allowableDeflection,
+        deflectionOK: dr.deflectionOK,
+        steps: dr.steps,
+      };
+    }
+  }
+
+  // Truss design
+  let trussForces: ReturnType<typeof computeTrussForces> | null = null;
+  let trussChecks: ReturnType<typeof designTrussMembers> | null = null;
+  let trussError = "";
+  if (trussParams) {
+    trussForces = computeTrussForces(
+      maxMoment.value,
+      maxShear,
+      reactions,
+      { height: trussParams.height, panelSpacing: trussParams.panelSpacing },
+    );
+    const topA = ANGLE_PROFILES.find(
+      (a) => a.name === trussParams.topChordProfile,
+    );
+    const botA = ANGLE_PROFILES.find(
+      (a) => a.name === trussParams.botChordProfile,
+    );
+    const diagA = ANGLE_PROFILES.find(
+      (a) => a.name === trussParams.diagProfile,
+    );
+    const vertA = ANGLE_PROFILES.find(
+      (a) => a.name === trussParams.vertProfile,
+    );
+    if (topA && botA && diagA && vertA) {
+      trussChecks = designTrussMembers(
+        topA, botA, diagA, vertA,
+        trussForces!,
+        trussParams.Fy,
+        trussParams.Fu,
+      );
+    } else {
+      trussError = !topA
+        ? `Cordón superior "${trussParams.topChordProfile}" no encontrado`
+        : !botA
+          ? `Cordón inferior "${trussParams.botChordProfile}" no encontrado`
+          : !diagA
+            ? `Diagonal "${trussParams.diagProfile}" no encontrada`
+            : `Montante "${trussParams.vertProfile}" no encontrado`;
+    }
+  }
 
   return (
     <MainLayout>
@@ -68,7 +184,7 @@ export default function ResultsPage() {
           </div>
         </div>
         <button
-          onClick={() => navigate("/")}
+          onClick={() => navigate("/", { state: { loads, beamConfig, designParams, trussParams } })}
           className="text-sm bg-surface-alt border-border hover:bg-surface text-text-muted"
         >
           ← Volver
@@ -76,41 +192,190 @@ export default function ResultsPage() {
       </header>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {supports.map((s, i) => {
+          const absM = Math.abs(supportMoments[i]);
+          const momentLabel =
+            absM >= 1000
+              ? `${(supportMoments[i] / 1000).toFixed(2)} MN·m`
+              : `${supportMoments[i].toFixed(2)} kN·m`;
+          return (
+            <div
+              key={i}
+              className="bg-surface rounded-xl border border-border p-4"
+            >
+              <span className="text-xs text-text-muted uppercase tracking-wider font-semibold">
+                {supportTypes.length === 2
+                  ? `Reacción en Apoyo ${i === 0 ? "A" : "B"}`
+                  : `Reacción en Apoyo ${i + 1}`}
+              </span>
+              <p className="text-2xl font-bold text-primary mt-1">
+                {s.type === "free" ? "—" : formatForce(reactions[i])}
+              </p>
+              {s.type === "fixed" && (
+                <p className="text-sm text-warning mt-0.5">
+                  M = {momentLabel}
+                </p>
+              )}
+              <span className="text-xs text-text-muted">
+                Tipo:{" "}
+                {s.type === "simple"
+                  ? "Articulado"
+                  : s.type === "fixed"
+                    ? "Empotrado"
+                    : "Libre"}{" "}
+                &middot; Posición: x = {formatLength(s.position)}
+              </span>
+            </div>
+          );
+        })}
         <div className="bg-surface rounded-xl border border-border p-4">
           <span className="text-xs text-text-muted uppercase tracking-wider font-semibold">
-            Reacción A
-          </span>
-          <p className="text-2xl font-bold text-primary mt-1">
-            {formatForce(Ra)}
-          </p>
-          <span className="text-xs text-text-muted">
-            x = {formatLength(beamConfig.supports[0].position)}
-          </span>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-4">
-          <span className="text-xs text-text-muted uppercase tracking-wider font-semibold">
-            Reacción B
-          </span>
-          <p className="text-2xl font-bold text-primary mt-1">
-            {formatForce(Rb)}
-          </p>
-          <span className="text-xs text-text-muted">
-            x = {formatLength(beamConfig.supports[1].position)}
-          </span>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-4">
-          <span className="text-xs text-text-muted uppercase tracking-wider font-semibold">
-            M máx
+            Momento Flector Máximo
           </span>
           <p className="text-2xl font-bold text-warning mt-1">
             {(maxMoment.value / 1000).toFixed(2)} MN·m
           </p>
           <span className="text-xs text-text-muted">
-            x = {formatLength(maxMoment.position)}
+            Posición: x = {formatLength(maxMoment.position)}
           </span>
         </div>
       </div>
+
+      {/* Design Check */}
+      {designCheck && (
+        <section className="bg-surface rounded-xl border border-border p-5">
+          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
+            Verificación {designCheck.profile} &mdash; CIRSOC 301-05
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="flex flex-col gap-1 p-3 bg-surface-alt rounded-lg">
+              <span className="text-xs text-text-muted">Flexión</span>
+              <span className="text-sm font-semibold">
+                φM<sub>n</sub> = {(designCheck.phiMn / 1e6).toFixed(1)} kN·m
+              </span>
+              <span className="text-sm">
+                M<sub>u</sub> = {(designCheck.Mu / 1e6).toFixed(1)} kN·m
+              </span>
+              <span
+                className={`text-sm font-bold ${designCheck.ratioFlex <= 1 ? "text-success" : "text-danger"}`}
+              >
+                {designCheck.ratioFlex <= 1 ? "✓" : "✗"} Ratio: {designCheck.ratioFlex.toFixed(2)}
+              </span>
+              <span className="text-xs text-text-muted">
+                {designCheck.limitingState}
+              </span>
+            </div>
+            <div className="flex flex-col gap-1 p-3 bg-surface-alt rounded-lg">
+              <span className="text-xs text-text-muted">Corte</span>
+              <span className="text-sm font-semibold">
+                φV<sub>n</sub> = {(designCheck.phiVn / 1000).toFixed(1)} kN
+              </span>
+              <span className="text-sm">
+                V<sub>u</sub> = {(designCheck.Vu / 1000).toFixed(1)} kN
+              </span>
+              <span
+                className={`text-sm font-bold ${designCheck.ratioShear <= 1 ? "text-success" : "text-danger"}`}
+              >
+                {designCheck.ratioShear <= 1 ? "✓" : "✗"} Ratio: {designCheck.ratioShear.toFixed(2)}
+              </span>
+            </div>
+            <div className="flex flex-col gap-1 p-3 bg-surface-alt rounded-lg">
+              <span className="text-xs text-text-muted">Deformación</span>
+              <span className="text-sm">
+                δ<sub>max</sub> = {designCheck.maxDeflection.toFixed(1)} mm
+              </span>
+              <span className="text-sm">
+                δ<sub>adm</sub> = {designCheck.allowableDeflection.toFixed(1)} mm
+              </span>
+              <span
+                className={`text-sm font-bold ${designCheck.deflectionOK ? "text-success" : "text-danger"}`}
+              >
+                {designCheck.deflectionOK ? "✓ Cumple" : "✗ No cumple"}
+              </span>
+            </div>
+          </div>
+          <details className="mt-3">
+            <summary className="cursor-pointer text-xs text-text-muted font-semibold uppercase tracking-wider">
+              Ver cuentas completas ▼
+            </summary>
+            <pre className="mt-2 p-3 bg-surface-alt rounded-lg text-xs text-text-muted font-mono whitespace-pre-wrap overflow-x-auto">
+              {designCheck.steps.join("\n")}
+            </pre>
+          </details>
+        </section>
+      )}
+
+      {/* Truss Results */}
+      {trussForces && (
+        <section className="bg-surface rounded-xl border border-border p-5">
+          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
+            Reticulado &mdash; Fuerzas en barras
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+            <div className="p-2 bg-surface-alt rounded text-xs">
+              <span className="text-text-muted">Cordón sup.</span>
+              <p className="font-bold text-danger">
+                {trussForces.maxTopChord.toFixed(1)} kN
+              </p>
+            </div>
+            <div className="p-2 bg-surface-alt rounded text-xs">
+              <span className="text-text-muted">Cordón inf.</span>
+              <p className="font-bold text-success">
+                {trussForces.maxBottomChord.toFixed(1)} kN
+              </p>
+            </div>
+            <div className="p-2 bg-surface-alt rounded text-xs">
+              <span className="text-text-muted">Diagonal máx</span>
+              <p className="font-bold">
+                {trussForces.maxDiagonal.toFixed(1)} kN
+              </p>
+            </div>
+            <div className="p-2 bg-surface-alt rounded text-xs">
+              <span className="text-text-muted">Montante máx</span>
+              <p className="font-bold">
+                {trussForces.maxVertical.toFixed(1)} kN
+              </p>
+            </div>
+          </div>
+          {trussChecks ? (
+            <>
+              <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
+                Verificación
+              </h3>
+              <div className="flex flex-col gap-2">
+                {trussChecks.map((check) => (
+                  <div
+                    key={check.memberType}
+                    className="p-3 bg-surface-alt rounded-lg"
+                  >
+                    <div className="flex items-center gap-2 text-sm font-semibold mb-2">
+                      <span>{check.memberType}</span>
+                      <span className="text-xs text-text-muted">
+                        φP<sub>n</sub> = {check.phiPn.toFixed(1)} kN &middot; P<sub>u</sub> = {check.force.toFixed(1)} kN
+                      </span>
+                      <span
+                        className={`ml-auto text-sm font-bold ${check.passes ? "text-success" : "text-danger"}`}
+                      >
+                        {check.passes ? "✓" : "✗"} Ratio: {check.ratio.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="border-t border-border pt-2 flex flex-col gap-0.5">
+                      {check.steps.map((s, i) => (
+                        <span key={i} className="text-xs text-text-muted font-mono">
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-danger">{trussError}</p>
+          )}
+        </section>
+      )}
 
       {/* Load Diagram */}
       <section className="bg-surface rounded-xl border border-border overflow-hidden">
@@ -118,13 +383,18 @@ export default function ResultsPage() {
           <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
             Diagrama de Cargas
           </h2>
+          <p className="text-xs text-text-muted mt-0.5">
+            Fuerzas externas aplicadas sobre la viga
+          </p>
         </div>
         <div className="p-2">
           <Mafs
             viewBox={{ x: [xMin, xMax], y: [-maxLoad * 0.2, maxLoad * 1.3] }}
-            height={260}
+            height={400}
+            preserveAspectRatio={false}
           >
             <Coordinates.Cartesian />
+            <Plot.OfX y={() => 0} domain={[xMin, xMax]} color="#6b7280" />
             {loads.map((load) => (
               <g key={load.id}>
                 {load.type === "point" && (
@@ -151,11 +421,11 @@ export default function ResultsPage() {
                 )}
               </g>
             ))}
-            {beamConfig.supports.map((s, i) => (
+            {supports.map((s, i) => (
               <Vector
                 key={`support-${i}`}
                 tip={[s.position, 0]}
-                tail={[s.position, -(i === 0 ? Ra : Rb)]}
+                tail={[s.position, -reactions[i]]}
                 color="#4ade80"
               />
             ))}
@@ -169,6 +439,9 @@ export default function ResultsPage() {
           <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
             Esfuerzo Cortante
           </h2>
+          <p className="text-xs text-text-muted mt-0.5">
+            Fuerza interna V(x) &mdash; integral del diagrama de cargas
+          </p>
         </div>
         <div className="p-2">
           <Mafs
@@ -176,56 +449,140 @@ export default function ResultsPage() {
               x: [xMin, xMax],
               y: [-maxLoad * 1.3, maxLoad * 1.3],
             }}
-            height={260}
+            height={400}
+            preserveAspectRatio={false}
           >
             <Coordinates.Cartesian />
-            {criticalPoints.map((x, i) => {
-              if (i === 0) return null;
-              const xPrev = criticalPoints[i - 1];
-              // Check if there's a discrete jump at xPrev (point load)
-              const hasPointLoad = loads.some(
-                (l) => l.type === "point" && (l.position ?? 0) === xPrev,
-              );
+            <Plot.OfX y={() => 0} domain={[xMin, xMax]} color="#6b7280" />
+            {(() => {
+              const eps = 0.001;
+              const isJump = (pos: number) =>
+                supports.some(
+                  (s) => Math.abs(s.position - pos) < eps,
+                ) ||
+                loads.some(
+                  (l) => l.type === "point" && Math.abs((l.position ?? 0) - pos) < eps,
+                );
 
-              if (hasPointLoad) {
-                const vBefore = shearForce(xPrev - 0.001);
-                const vAfter = shearForce(xPrev + 0.001);
-                return (
-                  <g key={x}>
+              const elements: React.ReactNode[] = [];
+
+              for (let i = 1; i < criticalPoints.length; i++) {
+                const xPrev = criticalPoints[i - 1];
+                const x = criticalPoints[i];
+                const jumpAtPrev = isJump(xPrev);
+                const jumpAtX = isJump(x);
+
+                let startV: number;
+                if (jumpAtPrev) {
+                  const vBefore = shearForce(xPrev - eps);
+                  const vAfter = shearForce(xPrev + eps);
+                  elements.push(
                     <Plot.OfY
+                      key={`jump-${xPrev}`}
                       x={() => xPrev}
                       domain={[
                         Math.min(vBefore, vAfter),
                         Math.max(vBefore, vAfter),
                       ]}
                       color="#f87171"
-                    />
-                    <Plot.OfX
-                      y={(t) => {
-                        // Linear between vAfter at xPrev and shearForce(x) at x
-                        const slope =
-                          (shearForce(x) - vAfter) / (x - xPrev);
-                        return vAfter + slope * (t - xPrev);
-                      }}
-                      domain={[xPrev, x]}
-                      color="#f87171"
-                    />
-                  </g>
+                    />,
+                  );
+                  startV = vAfter;
+                } else {
+                  startV = shearForce(xPrev);
+                }
+
+                const endV = jumpAtX
+                  ? shearForce(x - eps)
+                  : shearForce(x);
+
+                elements.push(
+                  <Plot.OfX
+                    key={`seg-${xPrev}-${x}`}
+                    y={(t) => {
+                      const slope = (endV - startV) / (x - xPrev);
+                      return startV + slope * (t - xPrev);
+                    }}
+                    domain={[xPrev, x]}
+                    color="#f87171"
+                  />,
                 );
               }
 
-              return (
-                <Plot.OfX
-                  key={x}
-                  y={(t) => {
-                    const vy = shearForce(t);
-                    return vy;
-                  }}
-                  domain={[xPrev, x]}
-                  color="#f87171"
-                />
-              );
-            })}
+              // Jump at the last critical point (e.g. right support)
+              const last = criticalPoints[criticalPoints.length - 1];
+              if (isJump(last)) {
+                const vBefore = shearForce(last - eps);
+                const vAfter = shearForce(last + eps);
+                elements.push(
+                  <Plot.OfY
+                    key={`jump-last`}
+                    x={() => last}
+                    domain={[
+                      Math.min(vBefore, vAfter),
+                      Math.max(vBefore, vAfter),
+                    ]}
+                    color="#f87171"
+                  />,
+                );
+              }
+
+              // Labels at critical points
+              const labeled = new Set<number>();
+              for (const cp of criticalPoints) {
+                if (labeled.has(cp)) continue;
+                labeled.add(cp);
+                if (isJump(cp)) {
+                  const vb = shearForce(cp - eps);
+                  const va = shearForce(cp + eps);
+                  const attachVb = vb >= 0 ? "n" : "s";
+                  const attachVa = va >= 0 ? "n" : "s";
+                  elements.push(
+                    <Text
+                      key={`label-before-${cp}`}
+                      x={cp}
+                      y={vb}
+                      attach={attachVb}
+                      attachDistance={8}
+                      color="#f87171"
+                      size={9}
+                    >
+                      {formatForce(vb)}
+                    </Text>,
+                  );
+                  elements.push(
+                    <Text
+                      key={`label-after-${cp}`}
+                      x={cp}
+                      y={va}
+                      attach={attachVa}
+                      attachDistance={8}
+                      color="#f87171"
+                      size={9}
+                    >
+                      {formatForce(va)}
+                    </Text>,
+                  );
+                } else {
+                  const v = shearForce(cp);
+                  elements.push(
+                    <Text
+                      key={`label-${cp}`}
+                      x={cp}
+                      y={v}
+                      attach={v >= 0 ? "n" : "s"}
+                      attachDistance={8}
+                      color="#f87171"
+                      size={9}
+                    >
+                      {formatForce(v)}
+                    </Text>,
+                  );
+                }
+              }
+
+              return elements;
+            })()}
           </Mafs>
         </div>
       </section>
@@ -236,6 +593,9 @@ export default function ResultsPage() {
           <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
             Momento Flector
           </h2>
+          <p className="text-xs text-text-muted mt-0.5">
+            Momento interno M(x) &mdash; integral del esfuerzo cortante
+          </p>
         </div>
         <div className="p-2">
           <Mafs
@@ -243,9 +603,11 @@ export default function ResultsPage() {
               x: [xMin, xMax],
               y: [-maxMomentAbs * 1.2, maxMomentAbs * 1.2],
             }}
-            height={260}
+            height={400}
+            preserveAspectRatio={false}
           >
             <Coordinates.Cartesian />
+            <Plot.OfX y={() => 0} domain={[xMin, xMax]} color="#6b7280" />
             {criticalPoints.map((x, i) => {
               if (i === 0) return null;
               const xPrev = criticalPoints[i - 1];
@@ -261,12 +623,36 @@ export default function ResultsPage() {
                 />
               );
             })}
+            {criticalPoints.map((cp) => {
+              const m = bendingMoment(cp);
+              const absM = Math.abs(m);
+              const label =
+                absM >= 1000
+                  ? `${(m / 1000).toFixed(2)} MN·m`
+                  : absM >= 1
+                    ? `${m.toFixed(2)} kN·m`
+                    : `${(m * 1000).toFixed(2)} N·m`;
+              return (
+                <Text
+                  key={`m-${cp}`}
+                  x={cp}
+                  y={-m}
+                  attach={m >= 0 ? "s" : "n"}
+                  attachDistance={8}
+                  color="#fbbf24"
+                  size={9}
+                >
+                  {label}
+                </Text>
+              );
+            })}
             <Text
               x={maxMoment.position}
               y={-maxMoment.value}
               attach="s"
               attachDistance={15}
               color="#fbbf24"
+              size={10}
             >
               Mmax
             </Text>

@@ -1,4 +1,4 @@
-type SupportType = "simple" | "fixed";
+type SupportType = "simple" | "fixed" | "free";
 
 interface Support {
   position: number;
@@ -6,8 +6,8 @@ interface Support {
 }
 
 interface BeamConfig {
-  length: number;
-  supports: [Support, Support];
+  spans: number[];
+  supportTypes: SupportType[];
 }
 
 interface Load {
@@ -20,9 +20,30 @@ interface Load {
 }
 
 interface BeamResults {
-  reactions: [number, number];
+  reactions: number[];
+  supportMoments: number[];
   shearForce: (x: number) => number;
   bendingMoment: (x: number) => number;
   maxMoment: { value: number; position: number };
   criticalPoints: number[];
+  maxShear: number;
+}
+
+interface SteelDesignParams {
+  profileName: string;
+  Fy: number;       // MPa
+  Lb: number;       // mm
+  Cb: number;
+  deflectionLimit: number;
+}
+
+interface TrussDesignParams {
+  height: number;         // m
+  panelSpacing: number;   // m
+  topChordProfile: string;
+  botChordProfile: string;
+  diagProfile: string;
+  vertProfile: string;
+  Fy: number;     // MPa
+  Fu: number;     // MPa
 }
