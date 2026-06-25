@@ -16,13 +16,13 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
     for (const ld of loads) {
       if (ld.type === "point") {
         const p = ld.position ?? 0;
-        if (p >= a && p <= b) ra += (ld.magnitude * (b - p)) / (b - a);
+        if (p >= a && p <= b) ra += ((ld.magnitude ?? 0) * (b - p)) / (b - a);
       } else {
         const s = Math.max(ld.start ?? 0, a);
         const e = Math.min(ld.end ?? 0, b);
         if (s < e) {
           const mid = (s + e) / 2;
-          ra += (ld.magnitude * (e - s) * (b - mid)) / (b - a);
+          ra += ((ld.magnitude ?? 0) * (e - s) * (b - mid)) / (b - a);
         }
       }
     }
@@ -36,13 +36,13 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
     for (const ld of loads) {
       if (ld.type === "point") {
         const p = ld.position ?? 0;
-        if (x >= p && p >= a) m -= ld.magnitude * (x - p);
+        if (x >= p && p >= a) m -= (ld.magnitude ?? 0) * (x - p);
       } else {
         const s = Math.max(ld.start ?? 0, a);
         const e = Math.min(ld.end ?? 0, b);
         if (x > s) {
           const ee = Math.min(x, e);
-          m -= ld.magnitude * (ee - s) * (x - (s + ee) / 2);
+          m -= (ld.magnitude ?? 0) * (ee - s) * (x - (s + ee) / 2);
         }
       }
     }
@@ -75,15 +75,15 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
       if (ld.type === "point") {
         const p = ld.position ?? 0;
         if (p >= a && p <= b) {
-          force += ld.magnitude;
-          momentA += ld.magnitude * (p - a);
+          force += (ld.magnitude ?? 0);
+          momentA += (ld.magnitude ?? 0) * (p - a);
         }
       } else {
         const s = Math.max(ld.start ?? 0, a);
         const e = Math.min(ld.end ?? 0, b);
         if (s < e) {
           const mid = (s + e) / 2;
-          const f = ld.magnitude * (e - s);
+          const f = (ld.magnitude ?? 0) * (e - s);
           force += f;
           momentA += f * (mid - a);
         }
@@ -213,15 +213,15 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
       if (ld.type === "point") {
         const p = ld.position ?? 0;
         if (p >= a && p <= b) {
-          ri += (ld.magnitude * (b - p)) / Ls;
-          rj += (ld.magnitude * (p - a)) / Ls;
+          ri += ((ld.magnitude ?? 0) * (b - p)) / Ls;
+          rj += ((ld.magnitude ?? 0) * (p - a)) / Ls;
         }
       } else {
         const s = Math.max(ld.start ?? 0, a);
         const e = Math.min(ld.end ?? 0, b);
         if (s < e) {
           const mid = (s + e) / 2;
-          const f = ld.magnitude * (e - s);
+          const f = (ld.magnitude ?? 0) * (e - s);
           ri += (f * (b - mid)) / Ls;
           rj += (f * (mid - a)) / Ls;
         }
@@ -246,12 +246,12 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
     }
     for (const ld of loads) {
       if (ld.type === "point") {
-        if (x >= (ld.position ?? 0)) v -= ld.magnitude;
+        if (x >= (ld.position ?? 0)) v -= (ld.magnitude ?? 0);
       } else {
         const a = ld.start ?? 0;
         const b = ld.end ?? 0;
         if (x > a) {
-          v -= ld.magnitude * (Math.min(x, b) - a);
+          v -= (ld.magnitude ?? 0) * (Math.min(x, b) - a);
         }
       }
     }
@@ -278,14 +278,14 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
     for (const ld of loads) {
       if (ld.type === "point") {
         if (x >= (ld.position ?? 0)) {
-          m -= ld.magnitude * (x - (ld.position ?? 0));
+          m -= (ld.magnitude ?? 0) * (x - (ld.position ?? 0));
         }
       } else {
         const a = ld.start ?? 0;
         const b = ld.end ?? 0;
         if (x > a) {
           const ee = Math.min(x, b);
-          m -= ld.magnitude * (ee - a) * (x - (a + ee) / 2);
+          m -= (ld.magnitude ?? 0) * (ee - a) * (x - (a + ee) / 2);
         }
       }
     }
