@@ -110,7 +110,7 @@ export default function FormPage() {
   function addLoad() {
     setLoads([
       ...loads,
-      { id: Math.random().toString(36).slice(2) + Date.now().toString(36), type: "point", magnitude: 0 },
+      { id: Math.random().toString(36).slice(2) + Date.now().toString(36), type: "point", deadLoad: 0, liveLoad: 0 },
     ]);
   }
 
@@ -125,10 +125,11 @@ export default function FormPage() {
   function handleSave() {
     const name = prompt("Nombre para guardar esta viga:");
     if (!name) return;
+    const loadForSave = loads.map((l) => ({ ...l, magnitude: l.deadLoad + l.liveLoad }));
     saveBeam(name, "acero", {
       spans: spanLengths,
       supportTypes,
-      loads,
+      loads: loadForSave,
       profileName, Fy, Lb, Cb, deflectionLimit,
       trussEnabled, trussHeight, trussPanelSpacing,
       topChordProfile, botChordProfile, diagProfile, vertProfile,
@@ -167,7 +168,7 @@ export default function FormPage() {
     spanLengths.every((l) => l > 0) &&
     supportTypes.some((t) => t !== "free") &&
     loads.length > 0 &&
-    loads.every((l) => l.magnitude !== 0);
+    loads.every((l) => l.deadLoad > 0 || l.liveLoad > 0);
 
   return (
     <MainLayout>
@@ -357,18 +358,36 @@ export default function FormPage() {
                 </label>
 
                 <label className="flex flex-col gap-1">
-                  <span className="text-xs text-text-muted">Magnitud (kN{load.type === "distributed" ? "/m" : ""})</span>
+                  <span className="text-xs text-text-muted">D (kN{load.type === "distributed" ? "/m" : ""})</span>
                   <input
                     type="number"
                     step="0.1"
-                    value={load.magnitude || ""}
+                    min="0"
+                    value={load.deadLoad || ""}
                     onKeyDown={handleCommaKey}
                     onChange={(e) =>
                       updateLoad(load.id, {
-                        magnitude: Number(e.target.value),
+                        deadLoad: Number(e.target.value),
                       })
                     }
-                    className="w-32"
+                    className="w-28"
+                  />
+                </label>
+
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">L (kN{load.type === "distributed" ? "/m" : ""})</span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={load.liveLoad || ""}
+                    onKeyDown={handleCommaKey}
+                    onChange={(e) =>
+                      updateLoad(load.id, {
+                        liveLoad: Number(e.target.value),
+                      })
+                    }
+                    className="w-28"
                   />
                 </label>
 
