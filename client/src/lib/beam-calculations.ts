@@ -337,6 +337,73 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
   };
 }
 
+/**
+ * Two-pass elastic analysis: runs calculateBeam() separately for dead and live
+ * loads, then combines via LRFD U = 1.2·D + 1.6·L.
+ *
+ * Returns per-load BeamResults (d, l) plus ultimate shear/moment functions
+ * derived from the combination.
+ */
+export function calculateBeamDual(config: BeamConfig, loads: Load[]): BeamResultsDual {
+  // D-only copy: deadLoad → magnitude, liveLoad zeroed
+  const dLoads: Load[] = loads.map((l) => ({
+    ...l,
+    magnitude: l.deadLoad,
+    deadLoad: l.deadLoad,
+    liveLoad: 0,
+  }));
+
+  // L-only copy: liveLoad → magnitude, deadLoad zeroed
+  const lLoads: Load[] = loads.map((l) => ({
+    ...l,
+    magnitude: l.liveLoad,
+    deadLoad: 0,
+    liveLoad: l.liveLoad,
+  }));
+
+  const d = calculateBeam(config, dLoads);
+  const l = calculateBeam(config, lLoads);
+
+  // LRFD ultimate combination functions
+  function shearForceU(x: number): number {
+    return 1.2 * d.shearForce(x) + 1.6 * l.shearForce(x);
+  }
+
+  function bendingMomentU(x: number): number {
+    return 1.2 * d.bendingMoment(x) + 1.6 * l.bendingMoment(x);
+  }
+
+  // Union of critical points from both passes
+  const criticalPointsU = [
+    ...new Set([...d.criticalPoints, ...l.criticalPoints]),
+  ].sort((a, b) => a - b);
+
+  // Max ultimate moment across combined critical points
+  let maxMomentU = { value: 0, position: 0 };
+  for (const x of criticalPointsU) {
+    const mu = Math.abs(bendingMomentU(x));
+    if (mu > Math.abs(maxMomentU.value)) {
+      maxMomentU = { value: bendingMomentU(x), position: x };
+    }
+  }
+
+  // Max ultimate shear
+  let maxShearU = 0;
+  for (const x of criticalPointsU) {
+    maxShearU = Math.max(maxShearU, Math.abs(shearForceU(x)));
+  }
+
+  return {
+    d,
+    l,
+    shearForceU,
+    bendingMomentU,
+    maxMomentU,
+    maxShearU,
+    criticalPointsU,
+  };
+}
+
 export function formatForce(value: number): string {
   const abs = Math.abs(value);
   if (abs >= 1000) return `${(value / 1000).toFixed(2)} MN`;
