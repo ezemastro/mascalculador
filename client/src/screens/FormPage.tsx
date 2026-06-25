@@ -30,7 +30,9 @@ export default function FormPage() {
     designParams?: SteelDesignParams;
     trussParams?: TrussDesignParams;
   } | null;
-  const [spanCount, setSpanCount] = useState(state?.beamConfig?.spans?.length ?? 1);
+  const [spanCount, setSpanCount] = useState(
+    state?.beamConfig?.spans?.length ?? 1,
+  );
   const [spanLengths, setSpanLengths] = useState<number[]>(
     state?.beamConfig?.spans ?? [6],
   );
@@ -44,7 +46,8 @@ export default function FormPage() {
   );
   const [Fy, setFy] = useState(state?.designParams?.Fy ?? 235);
   const [Lb, setLb] = useState(
-    state?.designParams?.Lb ?? (state?.beamConfig?.spans ?? [6]).reduce((a, b) => a + b, 0) * 1000,
+    state?.designParams?.Lb ??
+      (state?.beamConfig?.spans ?? [6]).reduce((a, b) => a + b, 0) * 1000,
   );
   const [Cb, setCb] = useState(state?.designParams?.Cb ?? 1.0);
   const [deflectionLimit, setDeflectionLimit] = useState(
@@ -112,7 +115,12 @@ export default function FormPage() {
   function addLoad() {
     setLoads([
       ...loads,
-      { id: Math.random().toString(36).slice(2) + Date.now().toString(36), type: "point", deadLoad: 0, liveLoad: 0 },
+      {
+        id: Math.random().toString(36).slice(2) + Date.now().toString(36),
+        type: "point",
+        deadLoad: 0,
+        liveLoad: 0,
+      },
     ]);
   }
 
@@ -127,15 +135,28 @@ export default function FormPage() {
   function handleSave() {
     const name = prompt("Nombre para guardar esta viga:");
     if (!name) return;
-    const loadForSave = loads.map((l) => ({ ...l, magnitude: l.deadLoad + l.liveLoad }));
+    const loadForSave = loads.map((l) => ({
+      ...l,
+      magnitude: (l.deadLoad ?? 0) + (l.liveLoad ?? 0),
+    }));
     saveBeam(name, "acero", {
       spans: spanLengths,
       supportTypes,
       loads: loadForSave,
-      profileName, Fy, Lb, Cb, deflectionLimit,
-      trussEnabled, trussHeight, trussPanelSpacing,
-      topChordProfile, botChordProfile, diagProfile, vertProfile,
-      trussFy, trussFu,
+      profileName,
+      Fy,
+      Lb,
+      Cb,
+      deflectionLimit,
+      trussEnabled,
+      trussHeight,
+      trussPanelSpacing,
+      topChordProfile,
+      botChordProfile,
+      diagProfile,
+      vertProfile,
+      trussFy,
+      trussFu,
     });
   }
 
@@ -170,7 +191,7 @@ export default function FormPage() {
     spanLengths.every((l) => l > 0) &&
     supportTypes.some((t) => t !== "free") &&
     loads.length > 0 &&
-    loads.every((l) => l.deadLoad > 0 || l.liveLoad > 0);
+    loads.every((l) => (l.deadLoad ?? 0) > 0 || (l.liveLoad ?? 0) > 0);
 
   return (
     <MainLayout>
@@ -194,43 +215,63 @@ export default function FormPage() {
           <h1 className="text-xl font-semibold text-text">
             Calculadora de Vigas
           </h1>
-          <p className="text-sm text-text-muted">
-            Definí la viga y sus cargas
-          </p>
+          <p className="text-sm text-text-muted">Definí la viga y sus cargas</p>
         </div>
       </header>
 
-      <SavedBeams type="acero" onLoad={(data) => {
-        const d = data as Record<string, number | number[] | SupportType[] | Record<string, unknown>[] | string | boolean | undefined>;
-        if (d.spans) { setSpanCount((d.spans as number[]).length); setSpanLengths(d.spans as number[]); }
-        if (d.supportTypes) setSupportTypes(d.supportTypes as SupportType[]);
-        if (d.loads) {
-          const raw = d.loads as Record<string, unknown>[];
-          const { loads: migratedLoads, migrated: wasMigrated } = migrateLoads(raw);
-          setLoads(migratedLoads);
-          setMigrated(wasMigrated);
-        } else {
-          setMigrated(false);
-        }
-        if (typeof d.profileName === "string") setProfileName(d.profileName);
-        if (typeof d.Fy === "number") setFy(d.Fy);
-        if (typeof d.Lb === "number") setLb(d.Lb);
-        if (typeof d.Cb === "number") setCb(d.Cb);
-        if (typeof d.deflectionLimit === "number") setDeflectionLimit(d.deflectionLimit);
-        if (typeof d.trussEnabled === "boolean") setTrussEnabled(d.trussEnabled);
-        if (typeof d.trussHeight === "number") setTrussHeight(d.trussHeight);
-        if (typeof d.trussPanelSpacing === "number") setTrussPanelSpacing(d.trussPanelSpacing);
-        if (typeof d.topChordProfile === "string") setTopChordProfile(d.topChordProfile);
-        if (typeof d.botChordProfile === "string") setBotChordProfile(d.botChordProfile);
-        if (typeof d.diagProfile === "string") setDiagProfile(d.diagProfile);
-        if (typeof d.vertProfile === "string") setVertProfile(d.vertProfile);
-        if (typeof d.trussFy === "number") setTrussFy(d.trussFy);
-        if (typeof d.trussFu === "number") setTrussFu(d.trussFu);
-      }} />
+      <SavedBeams
+        type="acero"
+        onLoad={(data) => {
+          const d = data as Record<
+            string,
+            | number
+            | number[]
+            | SupportType[]
+            | Record<string, unknown>[]
+            | string
+            | boolean
+            | undefined
+          >;
+          if (d.spans) {
+            setSpanCount((d.spans as number[]).length);
+            setSpanLengths(d.spans as number[]);
+          }
+          if (d.supportTypes) setSupportTypes(d.supportTypes as SupportType[]);
+          if (d.loads) {
+            const raw = d.loads as Record<string, unknown>[];
+            const { loads: migratedLoads, migrated: wasMigrated } =
+              migrateLoads(raw);
+            setLoads(migratedLoads);
+            setMigrated(wasMigrated);
+          } else {
+            setMigrated(false);
+          }
+          if (typeof d.profileName === "string") setProfileName(d.profileName);
+          if (typeof d.Fy === "number") setFy(d.Fy);
+          if (typeof d.Lb === "number") setLb(d.Lb);
+          if (typeof d.Cb === "number") setCb(d.Cb);
+          if (typeof d.deflectionLimit === "number")
+            setDeflectionLimit(d.deflectionLimit);
+          if (typeof d.trussEnabled === "boolean")
+            setTrussEnabled(d.trussEnabled);
+          if (typeof d.trussHeight === "number") setTrussHeight(d.trussHeight);
+          if (typeof d.trussPanelSpacing === "number")
+            setTrussPanelSpacing(d.trussPanelSpacing);
+          if (typeof d.topChordProfile === "string")
+            setTopChordProfile(d.topChordProfile);
+          if (typeof d.botChordProfile === "string")
+            setBotChordProfile(d.botChordProfile);
+          if (typeof d.diagProfile === "string") setDiagProfile(d.diagProfile);
+          if (typeof d.vertProfile === "string") setVertProfile(d.vertProfile);
+          if (typeof d.trussFy === "number") setTrussFy(d.trussFy);
+          if (typeof d.trussFu === "number") setTrussFu(d.trussFu);
+        }}
+      />
 
       {migrated && (
         <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-sm text-warning">
-          Cargas migradas: magnitudes previas asignadas a D; ajustá L si corresponde.
+          Cargas migradas: magnitudes previas asignadas a D; ajustá L si
+          corresponde.
         </div>
       )}
 
@@ -350,7 +391,7 @@ export default function FormPage() {
             </p>
           )}
 
-           <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3">
             {loads.map((load) => (
               <div
                 key={load.id}
@@ -373,7 +414,9 @@ export default function FormPage() {
                 </label>
 
                 <label className="flex flex-col gap-1">
-                  <span className="text-xs text-text-muted">D (kN{load.type === "distributed" ? "/m" : ""})</span>
+                  <span className="text-xs text-text-muted">
+                    D (kN{load.type === "distributed" ? "/m" : ""})
+                  </span>
                   <input
                     type="number"
                     step="0.1"
@@ -390,7 +433,9 @@ export default function FormPage() {
                 </label>
 
                 <label className="flex flex-col gap-1">
-                  <span className="text-xs text-text-muted">L (kN{load.type === "distributed" ? "/m" : ""})</span>
+                  <span className="text-xs text-text-muted">
+                    L (kN{load.type === "distributed" ? "/m" : ""})
+                  </span>
                   <input
                     type="number"
                     step="0.1"
@@ -408,7 +453,9 @@ export default function FormPage() {
 
                 {load.type === "point" ? (
                   <label className="flex flex-col gap-1">
-                    <span className="text-xs text-text-muted">Posición (m)</span>
+                    <span className="text-xs text-text-muted">
+                      Posición (m)
+                    </span>
                     <input
                       type="number"
                       step="0.1"
@@ -427,7 +474,9 @@ export default function FormPage() {
                 ) : (
                   <>
                     <label className="flex flex-col gap-1">
-                      <span className="text-xs text-text-muted">Inicio (m)</span>
+                      <span className="text-xs text-text-muted">
+                        Inicio (m)
+                      </span>
                       <input
                         type="number"
                         step="0.1"
@@ -496,7 +545,9 @@ export default function FormPage() {
               </select>
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">F<sub>y</sub> (MPa)</span>
+              <span className="text-xs text-text-muted">
+                F<sub>y</sub> (MPa)
+              </span>
               <select
                 value={Fy}
                 onChange={(e) => setFy(Number(e.target.value))}
@@ -507,7 +558,9 @@ export default function FormPage() {
               </select>
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">L<sub>b</sub> (mm)</span>
+              <span className="text-xs text-text-muted">
+                L<sub>b</sub> (mm)
+              </span>
               <input
                 type="number"
                 step="100"
@@ -518,7 +571,9 @@ export default function FormPage() {
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">C<sub>b</sub></span>
+              <span className="text-xs text-text-muted">
+                C<sub>b</sub>
+              </span>
               <input
                 type="number"
                 step="0.1"
@@ -529,7 +584,9 @@ export default function FormPage() {
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">δ<sub>adm</sub> = L /</span>
+              <span className="text-xs text-text-muted">
+                δ<sub>adm</sub> = L /
+              </span>
               <input
                 type="number"
                 step="50"
@@ -571,20 +628,22 @@ export default function FormPage() {
                 />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-xs text-text-muted">Sep. montantes (m)</span>
+                <span className="text-xs text-text-muted">
+                  Sep. montantes (m)
+                </span>
                 <input
                   type="number"
                   step="0.1"
                   min="0.2"
                   value={trussPanelSpacing || ""}
                   onKeyDown={handleCommaKey}
-                  onChange={(e) =>
-                    setTrussPanelSpacing(Number(e.target.value))
-                  }
+                  onChange={(e) => setTrussPanelSpacing(Number(e.target.value))}
                 />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-xs text-text-muted">F<sub>y</sub> (MPa)</span>
+                <span className="text-xs text-text-muted">
+                  F<sub>y</sub> (MPa)
+                </span>
                 <select
                   value={trussFy}
                   onChange={(e) => setTrussFy(Number(e.target.value))}
@@ -595,7 +654,9 @@ export default function FormPage() {
                 </select>
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-xs text-text-muted">F<sub>u</sub> (MPa)</span>
+                <span className="text-xs text-text-muted">
+                  F<sub>u</sub> (MPa)
+                </span>
                 <input
                   type="number"
                   step="1"
@@ -663,12 +724,18 @@ export default function FormPage() {
         </section>
 
         <div className="self-center flex gap-3">
-          <button type="submit" disabled={!valid}
-            className="bg-primary text-white font-semibold px-8 py-3 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-primary-hover transition-colors">
+          <button
+            type="submit"
+            disabled={!valid}
+            className="bg-primary text-white font-semibold px-8 py-3 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-primary-hover transition-colors"
+          >
             Calcular
           </button>
-          <button type="button" onClick={handleSave}
-            className="bg-surface-alt border border-border text-text-muted font-semibold px-6 py-3 rounded-lg hover:bg-surface transition-colors">
+          <button
+            type="button"
+            onClick={handleSave}
+            className="bg-surface-alt border border-border text-text-muted font-semibold px-6 py-3 rounded-lg hover:bg-surface transition-colors"
+          >
             Guardar
           </button>
         </div>

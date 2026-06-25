@@ -13,8 +13,8 @@ interface BeamConfig {
 interface Load {
   id: string;
   type: "point" | "distributed";
-  deadLoad: number;
-  liveLoad: number;
+  deadLoad?: number;
+  liveLoad?: number;
   magnitude?: number;
   position?: number;
   start?: number;
@@ -43,19 +43,19 @@ interface BeamResultsDual {
 
 interface SteelDesignParams {
   profileName: string;
-  Fy: number;       // MPa
-  Lb: number;       // mm
+  Fy: number; // MPa
+  Lb: number; // mm
   Cb: number;
   deflectionLimit: number;
 }
 
 interface TrussDesignParams {
-  height: number;         // m
-  panelSpacing: number;   // m
+  height: number; // m
+  panelSpacing: number; // m
   topChordProfile: string;
   botChordProfile: string;
   diagProfile: string;
   vertProfile: string;
-  Fy: number;     // MPa
-  Fu: number;     // MPa
+  Fy: number; // MPa
+  Fu: number; // MPa
 }
