@@ -404,6 +404,36 @@ export function calculateBeamDual(config: BeamConfig, loads: Load[]): BeamResult
   };
 }
 
+/**
+ * Detects legacy loads that only have `magnitude` (no `deadLoad`/`liveLoad`).
+ * Patches them to: deadLoad = magnitude, liveLoad = 0 (conservative default).
+ * Returns the migrated loads and a flag indicating whether any were patched.
+ */
+export function migrateLoads(
+  rawLoads: Record<string, unknown>[],
+): { loads: Load[]; migrated: boolean } {
+  let migrated = false;
+  const loads: Load[] = rawLoads.map((l) => {
+    if (typeof (l as Load).deadLoad === "number" && typeof (l as Load).liveLoad === "number") {
+      return l as unknown as Load;
+    }
+    migrated = true;
+    const mag =
+      typeof l.magnitude === "number" ? l.magnitude : 0;
+    return {
+      id: (l.id as string) || Math.random().toString(36).slice(2),
+      type: (l.type as Load["type"]) || "distributed",
+      deadLoad: mag,
+      liveLoad: 0,
+      magnitude: mag,
+      position: typeof l.position === "number" ? l.position : undefined,
+      start: typeof l.start === "number" ? l.start : undefined,
+      end: typeof l.end === "number" ? l.end : undefined,
+    };
+  });
+  return { loads, migrated };
+}
+
 export function formatForce(value: number): string {
   const abs = Math.abs(value);
   if (abs >= 1000) return `${(value / 1000).toFixed(2)} MN`;

@@ -5,6 +5,7 @@ import SavedBeams from "../components/SavedBeams";
 import { saveBeam } from "../lib/storage";
 import { IPN_PROFILES } from "../lib/profiles";
 import { ANGLE_PROFILES } from "../lib/angle-profiles";
+import { migrateLoads } from "../lib/beam-calculations";
 
 function handleCommaKey(e: React.KeyboardEvent<HTMLInputElement>) {
   if (e.key === ",") {
@@ -37,6 +38,7 @@ export default function FormPage() {
     state?.beamConfig?.supportTypes ?? ["simple", "simple"],
   );
   const [loads, setLoads] = useState<Load[]>(state?.loads ?? []);
+  const [migrated, setMigrated] = useState(false);
   const [profileName, setProfileName] = useState(
     state?.designParams?.profileName ?? "IPN 200",
   );
@@ -199,10 +201,17 @@ export default function FormPage() {
       </header>
 
       <SavedBeams type="acero" onLoad={(data) => {
-        const d = data as Record<string, number | number[] | SupportType[] | Load[] | string | boolean | undefined>;
+        const d = data as Record<string, number | number[] | SupportType[] | Record<string, unknown>[] | string | boolean | undefined>;
         if (d.spans) { setSpanCount((d.spans as number[]).length); setSpanLengths(d.spans as number[]); }
         if (d.supportTypes) setSupportTypes(d.supportTypes as SupportType[]);
-        if (d.loads) setLoads(d.loads as Load[]);
+        if (d.loads) {
+          const raw = d.loads as Record<string, unknown>[];
+          const { loads: migratedLoads, migrated: wasMigrated } = migrateLoads(raw);
+          setLoads(migratedLoads);
+          setMigrated(wasMigrated);
+        } else {
+          setMigrated(false);
+        }
         if (typeof d.profileName === "string") setProfileName(d.profileName);
         if (typeof d.Fy === "number") setFy(d.Fy);
         if (typeof d.Lb === "number") setLb(d.Lb);
@@ -218,6 +227,12 @@ export default function FormPage() {
         if (typeof d.trussFy === "number") setTrussFy(d.trussFy);
         if (typeof d.trussFu === "number") setTrussFu(d.trussFu);
       }} />
+
+      {migrated && (
+        <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 text-sm text-warning">
+          Cargas migradas: magnitudes previas asignadas a D; ajustá L si corresponde.
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-6">
         {/* Beam config */}
