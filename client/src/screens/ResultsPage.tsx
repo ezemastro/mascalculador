@@ -1,7 +1,7 @@
 import { useLocation, useNavigate } from "react-router";
 import { Coordinates, Mafs, Plot, Text, Vector } from "mafs";
 import MainLayout from "../components/MainLayout";
-import { calculateBeam, formatForce, formatLength } from "../lib/beam-calculations";
+import { calculateBeamDual, formatForce, formatLength } from "../lib/beam-calculations";
 import { checkBeam } from "../lib/steel-design";
 import { IPN_PROFILES } from "../lib/profiles";
 import { ANGLE_PROFILES } from "../lib/angle-profiles";
@@ -48,16 +48,19 @@ export default function ResultsPage() {
     type: supportTypes[i],
   }));
 
-  const results = calculateBeam(beamConfig, loads);
-  const { reactions, supportMoments, shearForce, bendingMoment, maxMoment, criticalPoints, maxShear } =
-    results;
+  const dual = calculateBeamDual(beamConfig, loads);
+  const { d, l, shearForceU, bendingMomentU, maxMomentU, maxShearU, criticalPointsU } = dual;
+
+  const reactionsU = beamConfig.supportTypes.map((_, i) =>
+    1.2 * d.reactions[i] + 1.6 * l.reactions[i],
+  );
 
   const maxLoad = Math.max(
-    ...loads.map((l) => l.magnitude),
-    ...reactions.map((r) => Math.abs(r)),
+    ...loads.map((ld) => ld.deadLoad + ld.liveLoad),
+    ...reactionsU.map((r) => Math.abs(r)),
     1,
   );
-  const maxMomentAbs = Math.max(Math.abs(maxMoment.value), 1);
+  const maxMomentAbs = Math.max(Math.abs(maxMomentU.value), 1);
   const xMin = -L * 0.1;
   const xMax = L * 1.1;
 
@@ -83,9 +86,9 @@ export default function ResultsPage() {
     );
     if (profile) {
       const totalBeamMm = L * 1000;
-      const Mu = Math.abs(maxMoment.value) * 1e6;  // kN·m → N·mm
-      const Vu = maxShear * 1e3;                     // kN → N
-      const serviceM = Mu / 1.4;
+      const Mu = Math.abs(maxMomentU.value) * 1e6;  // kN·m → N·mm (ultimate)
+      const Vu = maxShearU * 1e3;                     // kN → N (ultimate)
+      const serviceM = (d.maxMoment.value + l.maxMoment.value) * 1e6; // unfactored D+L
 
       const dr = checkBeam(
         profile,
@@ -122,9 +125,9 @@ export default function ResultsPage() {
   let trussError = "";
   if (trussParams) {
     trussForces = computeTrussForces(
-      maxMoment.value,
-      maxShear,
-      reactions,
+      maxMomentU.value,
+      maxShearU,
+      reactionsU,
       { height: trussParams.height, panelSpacing: trussParams.panelSpacing },
     );
     const topA = ANGLE_PROFILES.find(
@@ -194,11 +197,13 @@ export default function ResultsPage() {
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {supports.map((s, i) => {
-          const absM = Math.abs(supportMoments[i]);
+          const rD = d.reactions[i];
+          const rL = l.reactions[i];
+          const absM = Math.abs(d.supportMoments[i] + l.supportMoments[i]);
           const momentLabel =
             absM >= 1000
-              ? `${(supportMoments[i] / 1000).toFixed(2)} MN·m`
-              : `${supportMoments[i].toFixed(2)} kN·m`;
+              ? `${((d.supportMoments[i] + l.supportMoments[i]) / 1000).toFixed(2)} MN·m`
+              : `${(d.supportMoments[i] + l.supportMoments[i]).toFixed(2)} kN·m`;
           return (
             <div
               key={i}
@@ -209,9 +214,21 @@ export default function ResultsPage() {
                   ? `Reacción en Apoyo ${i === 0 ? "A" : "B"}`
                   : `Reacción en Apoyo ${i + 1}`}
               </span>
-              <p className="text-2xl font-bold text-primary mt-1">
-                {s.type === "free" ? "—" : formatForce(reactions[i])}
-              </p>
+              {s.type === "free" ? (
+                <p className="text-2xl font-bold text-primary mt-1">—</p>
+              ) : (
+                <div className="mt-1 space-y-0.5">
+                  <p className="text-sm text-text-muted">
+                    D: <span className="font-semibold text-primary">{formatForce(rD)}</span>
+                  </p>
+                  <p className="text-sm text-text-muted">
+                    L: <span className="font-semibold text-primary">{formatForce(rL)}</span>
+                  </p>
+                  <p className="text-sm text-text-muted">
+                    U: <span className="font-bold text-warning">{formatForce(1.2 * rD + 1.6 * rL)}</span>
+                  </p>
+                </div>
+              )}
               {s.type === "fixed" && (
                 <p className="text-sm text-warning mt-0.5">
                   M = {momentLabel}
@@ -234,10 +251,10 @@ export default function ResultsPage() {
             Momento Flector Máximo
           </span>
           <p className="text-2xl font-bold text-warning mt-1">
-            {(maxMoment.value / 1000).toFixed(2)} MN·m
+            {(maxMomentU.value / 1000).toFixed(2)} MN·m
           </p>
           <span className="text-xs text-text-muted">
-            Posición: x = {formatLength(maxMoment.position)}
+            Posición: x = {formatLength(maxMomentU.position)}
           </span>
         </div>
       </div>
@@ -400,22 +417,22 @@ export default function ResultsPage() {
                 {load.type === "point" && (
                   <Vector
                     tip={[load.position ?? 0, 0]}
-                    tail={[load.position ?? 0, load.magnitude]}
+                    tail={[load.position ?? 0, load.deadLoad + load.liveLoad]}
                   />
                 )}
                 {load.type === "distributed" && (
                   <>
                     <Plot.OfX
-                      y={() => load.magnitude}
+                      y={() => load.deadLoad + load.liveLoad}
                       domain={[load.start ?? 0, load.end ?? 0]}
                     />
                     <Plot.OfY
                       x={() => load.start ?? 0}
-                      domain={[0, load.magnitude]}
+                      domain={[0, load.deadLoad + load.liveLoad]}
                     />
                     <Plot.OfY
                       x={() => load.end ?? 0}
-                      domain={[0, load.magnitude]}
+                      domain={[0, load.deadLoad + load.liveLoad]}
                     />
                   </>
                 )}
@@ -425,7 +442,7 @@ export default function ResultsPage() {
               <Vector
                 key={`support-${i}`}
                 tip={[s.position, 0]}
-                tail={[s.position, -reactions[i]]}
+                tail={[s.position, -reactionsU[i]]}
                 color="#4ade80"
               />
             ))}
@@ -466,16 +483,16 @@ export default function ResultsPage() {
 
               const elements: React.ReactNode[] = [];
 
-              for (let i = 1; i < criticalPoints.length; i++) {
-                const xPrev = criticalPoints[i - 1];
-                const x = criticalPoints[i];
+              for (let i = 1; i < criticalPointsU.length; i++) {
+                const xPrev = criticalPointsU[i - 1];
+                const x = criticalPointsU[i];
                 const jumpAtPrev = isJump(xPrev);
                 const jumpAtX = isJump(x);
 
                 let startV: number;
                 if (jumpAtPrev) {
-                  const vBefore = shearForce(xPrev - eps);
-                  const vAfter = shearForce(xPrev + eps);
+                  const vBefore = shearForceU(xPrev - eps);
+                  const vAfter = shearForceU(xPrev + eps);
                   elements.push(
                     <Plot.OfY
                       key={`jump-${xPrev}`}
@@ -489,12 +506,12 @@ export default function ResultsPage() {
                   );
                   startV = vAfter;
                 } else {
-                  startV = shearForce(xPrev);
+                  startV = shearForceU(xPrev);
                 }
 
                 const endV = jumpAtX
-                  ? shearForce(x - eps)
-                  : shearForce(x);
+                  ? shearForceU(x - eps)
+                  : shearForceU(x);
 
                 elements.push(
                   <Plot.OfX
@@ -510,10 +527,10 @@ export default function ResultsPage() {
               }
 
               // Jump at the last critical point (e.g. right support)
-              const last = criticalPoints[criticalPoints.length - 1];
+              const last = criticalPointsU[criticalPointsU.length - 1];
               if (isJump(last)) {
-                const vBefore = shearForce(last - eps);
-                const vAfter = shearForce(last + eps);
+                const vBefore = shearForceU(last - eps);
+                const vAfter = shearForceU(last + eps);
                 elements.push(
                   <Plot.OfY
                     key={`jump-last`}
@@ -529,12 +546,12 @@ export default function ResultsPage() {
 
               // Labels at critical points
               const labeled = new Set<number>();
-              for (const cp of criticalPoints) {
+              for (const cp of criticalPointsU) {
                 if (labeled.has(cp)) continue;
                 labeled.add(cp);
                 if (isJump(cp)) {
-                  const vb = shearForce(cp - eps);
-                  const va = shearForce(cp + eps);
+                  const vb = shearForceU(cp - eps);
+                  const va = shearForceU(cp + eps);
                   const attachVb = vb >= 0 ? "n" : "s";
                   const attachVa = va >= 0 ? "n" : "s";
                   elements.push(
@@ -564,7 +581,7 @@ export default function ResultsPage() {
                     </Text>,
                   );
                 } else {
-                  const v = shearForce(cp);
+                  const v = shearForceU(cp);
                   elements.push(
                     <Text
                       key={`label-${cp}`}
@@ -608,23 +625,23 @@ export default function ResultsPage() {
           >
             <Coordinates.Cartesian />
             <Plot.OfX y={() => 0} domain={[xMin, xMax]} color="#6b7280" />
-            {criticalPoints.map((x, i) => {
+            {criticalPointsU.map((x, i) => {
               if (i === 0) return null;
-              const xPrev = criticalPoints[i - 1];
+              const xPrev = criticalPointsU[i - 1];
               return (
                 <Plot.OfX
                   key={x}
                   y={(t) => {
                     // Plot inverted: positive moment below baseline
-                    return -bendingMoment(t);
+                    return -bendingMomentU(t);
                   }}
                   domain={[xPrev, x]}
                   color="#fbbf24"
                 />
               );
             })}
-            {criticalPoints.map((cp) => {
-              const m = bendingMoment(cp);
+            {criticalPointsU.map((cp) => {
+              const m = bendingMomentU(cp);
               const absM = Math.abs(m);
               const label =
                 absM >= 1000
@@ -647,8 +664,8 @@ export default function ResultsPage() {
               );
             })}
             <Text
-              x={maxMoment.position}
-              y={-maxMoment.value}
+              x={maxMomentU.position}
+              y={-maxMomentU.value}
               attach="s"
               attachDistance={15}
               color="#fbbf24"
