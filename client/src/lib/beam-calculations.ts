@@ -75,7 +75,7 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
       if (ld.type === "point") {
         const p = ld.position ?? 0;
         if (p >= a && p <= b) {
-          force += (ld.magnitude ?? 0);
+          force += ld.magnitude ?? 0;
           momentA += (ld.magnitude ?? 0) * (p - a);
         }
       } else {
@@ -246,7 +246,7 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
     }
     for (const ld of loads) {
       if (ld.type === "point") {
-        if (x >= (ld.position ?? 0)) v -= (ld.magnitude ?? 0);
+        if (x >= (ld.position ?? 0)) v -= ld.magnitude ?? 0;
       } else {
         const a = ld.start ?? 0;
         const b = ld.end ?? 0;
@@ -302,6 +302,10 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
       pts.add(ld.end ?? 0);
     }
   }
+  // Add span midpoints to ensure moment peaks are captured for full-span UDL
+  for (let i = 0; i < pos.length - 1; i++) {
+    pts.add((pos[i] + pos[i + 1]) / 2);
+  }
   const sorted = [...pts].sort((a, b) => a - b);
   for (let i = 0; i < sorted.length - 1; i++) {
     const va = shearForce(sorted[i]);
@@ -344,21 +348,24 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
  * Returns per-load BeamResults (d, l) plus ultimate shear/moment functions
  * derived from the combination.
  */
-export function calculateBeamDual(config: BeamConfig, loads: Load[]): BeamResultsDual {
+export function calculateBeamDual(
+  config: BeamConfig,
+  loads: Load[],
+): BeamResultsDual {
   // D-only copy: deadLoad → magnitude, liveLoad zeroed
   const dLoads: Load[] = loads.map((l) => ({
     ...l,
-    magnitude: l.deadLoad,
-    deadLoad: l.deadLoad,
+    magnitude: l.deadLoad ?? 0,
+    deadLoad: l.deadLoad ?? 0,
     liveLoad: 0,
   }));
 
   // L-only copy: liveLoad → magnitude, deadLoad zeroed
   const lLoads: Load[] = loads.map((l) => ({
     ...l,
-    magnitude: l.liveLoad,
+    magnitude: l.liveLoad ?? 0,
     deadLoad: 0,
-    liveLoad: l.liveLoad,
+    liveLoad: l.liveLoad ?? 0,
   }));
 
   const d = calculateBeam(config, dLoads);
@@ -409,17 +416,20 @@ export function calculateBeamDual(config: BeamConfig, loads: Load[]): BeamResult
  * Patches them to: deadLoad = magnitude, liveLoad = 0 (conservative default).
  * Returns the migrated loads and a flag indicating whether any were patched.
  */
-export function migrateLoads(
-  rawLoads: Record<string, unknown>[],
-): { loads: Load[]; migrated: boolean } {
+export function migrateLoads(rawLoads: Record<string, unknown>[]): {
+  loads: Load[];
+  migrated: boolean;
+} {
   let migrated = false;
   const loads: Load[] = rawLoads.map((l) => {
-    if (typeof (l as Load).deadLoad === "number" && typeof (l as Load).liveLoad === "number") {
+    if (
+      typeof (l as unknown as Load).deadLoad === "number" &&
+      typeof (l as unknown as Load).liveLoad === "number"
+    ) {
       return l as unknown as Load;
     }
     migrated = true;
-    const mag =
-      typeof l.magnitude === "number" ? l.magnitude : 0;
+    const mag = typeof l.magnitude === "number" ? l.magnitude : 0;
     return {
       id: (l.id as string) || Math.random().toString(36).slice(2),
       type: (l.type as Load["type"]) || "distributed",

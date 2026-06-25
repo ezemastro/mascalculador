@@ -1,7 +1,11 @@
 import { useLocation, useNavigate } from "react-router";
 import { Coordinates, Mafs, Plot, Text, Vector } from "mafs";
 import MainLayout from "../components/MainLayout";
-import { calculateBeamDual, formatForce, formatLength } from "../lib/beam-calculations";
+import {
+  calculateBeamDual,
+  formatForce,
+  formatLength,
+} from "../lib/beam-calculations";
 import { checkBeam } from "../lib/steel-design";
 import { IPN_PROFILES } from "../lib/profiles";
 import { ANGLE_PROFILES } from "../lib/angle-profiles";
@@ -49,14 +53,22 @@ export default function ResultsPage() {
   }));
 
   const dual = calculateBeamDual(beamConfig, loads);
-  const { d, l, shearForceU, bendingMomentU, maxMomentU, maxShearU, criticalPointsU } = dual;
+  const {
+    d,
+    l,
+    shearForceU,
+    bendingMomentU,
+    maxMomentU,
+    maxShearU,
+    criticalPointsU,
+  } = dual;
 
-  const reactionsU = beamConfig.supportTypes.map((_, i) =>
-    1.2 * d.reactions[i] + 1.6 * l.reactions[i],
+  const reactionsU = beamConfig.supportTypes.map(
+    (_, i) => 1.2 * d.reactions[i] + 1.6 * l.reactions[i],
   );
 
   const maxLoad = Math.max(
-    ...loads.map((ld) => ld.deadLoad + ld.liveLoad),
+    ...loads.map((ld) => (ld.deadLoad ?? 0) + (ld.liveLoad ?? 0)),
     ...reactionsU.map((r) => Math.abs(r)),
     1,
   );
@@ -86,8 +98,8 @@ export default function ResultsPage() {
     );
     if (profile) {
       const totalBeamMm = L * 1000;
-      const Mu = Math.abs(maxMomentU.value) * 1e6;  // kN·m → N·mm (ultimate)
-      const Vu = maxShearU * 1e3;                     // kN → N (ultimate)
+      const Mu = Math.abs(maxMomentU.value) * 1e6; // kN·m → N·mm (ultimate)
+      const Vu = maxShearU * 1e3; // kN → N (ultimate)
       const serviceM = (d.maxMoment.value + l.maxMoment.value) * 1e6; // unfactored D+L
 
       const dr = checkBeam(
@@ -124,12 +136,10 @@ export default function ResultsPage() {
   let trussChecks: ReturnType<typeof designTrussMembers> | null = null;
   let trussError = "";
   if (trussParams) {
-    trussForces = computeTrussForces(
-      maxMomentU.value,
-      maxShearU,
-      reactionsU,
-      { height: trussParams.height, panelSpacing: trussParams.panelSpacing },
-    );
+    trussForces = computeTrussForces(maxMomentU.value, maxShearU, reactionsU, {
+      height: trussParams.height,
+      panelSpacing: trussParams.panelSpacing,
+    });
     const topA = ANGLE_PROFILES.find(
       (a) => a.name === trussParams.topChordProfile,
     );
@@ -144,7 +154,10 @@ export default function ResultsPage() {
     );
     if (topA && botA && diagA && vertA) {
       trussChecks = designTrussMembers(
-        topA, botA, diagA, vertA,
+        topA,
+        botA,
+        diagA,
+        vertA,
         trussForces!,
         trussParams.Fy,
         trussParams.Fu,
@@ -181,13 +194,15 @@ export default function ResultsPage() {
           </div>
           <div>
             <h1 className="text-xl font-semibold text-text">Resultados</h1>
-            <p className="text-sm text-text-muted">
-              Viga de {formatLength(L)}
-            </p>
+            <p className="text-sm text-text-muted">Viga de {formatLength(L)}</p>
           </div>
         </div>
         <button
-          onClick={() => navigate("/", { state: { loads, beamConfig, designParams, trussParams } })}
+          onClick={() =>
+            navigate("/", {
+              state: { loads, beamConfig, designParams, trussParams },
+            })
+          }
           className="text-sm bg-surface-alt border-border hover:bg-surface text-text-muted"
         >
           ← Volver
@@ -219,20 +234,27 @@ export default function ResultsPage() {
               ) : (
                 <div className="mt-1 space-y-0.5">
                   <p className="text-sm text-text-muted">
-                    D: <span className="font-semibold text-primary">{formatForce(rD)}</span>
+                    D:{" "}
+                    <span className="font-semibold text-primary">
+                      {formatForce(rD)}
+                    </span>
                   </p>
                   <p className="text-sm text-text-muted">
-                    L: <span className="font-semibold text-primary">{formatForce(rL)}</span>
+                    L:{" "}
+                    <span className="font-semibold text-primary">
+                      {formatForce(rL)}
+                    </span>
                   </p>
                   <p className="text-sm text-text-muted">
-                    U: <span className="font-bold text-warning">{formatForce(1.2 * rD + 1.6 * rL)}</span>
+                    U:{" "}
+                    <span className="font-bold text-warning">
+                      {formatForce(1.2 * rD + 1.6 * rL)}
+                    </span>
                   </p>
                 </div>
               )}
               {s.type === "fixed" && (
-                <p className="text-sm text-warning mt-0.5">
-                  M = {momentLabel}
-                </p>
+                <p className="text-sm text-warning mt-0.5">M = {momentLabel}</p>
               )}
               <span className="text-xs text-text-muted">
                 Tipo:{" "}
@@ -277,7 +299,8 @@ export default function ResultsPage() {
               <span
                 className={`text-sm font-bold ${designCheck.ratioFlex <= 1 ? "text-success" : "text-danger"}`}
               >
-                {designCheck.ratioFlex <= 1 ? "✓" : "✗"} Ratio: {designCheck.ratioFlex.toFixed(2)}
+                {designCheck.ratioFlex <= 1 ? "✓" : "✗"} Ratio:{" "}
+                {designCheck.ratioFlex.toFixed(2)}
               </span>
               <span className="text-xs text-text-muted">
                 {designCheck.limitingState}
@@ -294,7 +317,8 @@ export default function ResultsPage() {
               <span
                 className={`text-sm font-bold ${designCheck.ratioShear <= 1 ? "text-success" : "text-danger"}`}
               >
-                {designCheck.ratioShear <= 1 ? "✓" : "✗"} Ratio: {designCheck.ratioShear.toFixed(2)}
+                {designCheck.ratioShear <= 1 ? "✓" : "✗"} Ratio:{" "}
+                {designCheck.ratioShear.toFixed(2)}
               </span>
             </div>
             <div className="flex flex-col gap-1 p-3 bg-surface-alt rounded-lg">
@@ -303,7 +327,8 @@ export default function ResultsPage() {
                 δ<sub>max</sub> = {designCheck.maxDeflection.toFixed(1)} mm
               </span>
               <span className="text-sm">
-                δ<sub>adm</sub> = {designCheck.allowableDeflection.toFixed(1)} mm
+                δ<sub>adm</sub> = {designCheck.allowableDeflection.toFixed(1)}{" "}
+                mm
               </span>
               <span
                 className={`text-sm font-bold ${designCheck.deflectionOK ? "text-success" : "text-danger"}`}
@@ -369,17 +394,22 @@ export default function ResultsPage() {
                     <div className="flex items-center gap-2 text-sm font-semibold mb-2">
                       <span>{check.memberType}</span>
                       <span className="text-xs text-text-muted">
-                        φP<sub>n</sub> = {check.phiPn.toFixed(1)} kN &middot; P<sub>u</sub> = {check.force.toFixed(1)} kN
+                        φP<sub>n</sub> = {check.phiPn.toFixed(1)} kN &middot; P
+                        <sub>u</sub> = {check.force.toFixed(1)} kN
                       </span>
                       <span
                         className={`ml-auto text-sm font-bold ${check.passes ? "text-success" : "text-danger"}`}
                       >
-                        {check.passes ? "✓" : "✗"} Ratio: {check.ratio.toFixed(2)}
+                        {check.passes ? "✓" : "✗"} Ratio:{" "}
+                        {check.ratio.toFixed(2)}
                       </span>
                     </div>
                     <div className="border-t border-border pt-2 flex flex-col gap-0.5">
                       {check.steps.map((s, i) => (
-                        <span key={i} className="text-xs text-text-muted font-mono">
+                        <span
+                          key={i}
+                          className="text-xs text-text-muted font-mono"
+                        >
                           {s}
                         </span>
                       ))}
@@ -417,22 +447,25 @@ export default function ResultsPage() {
                 {load.type === "point" && (
                   <Vector
                     tip={[load.position ?? 0, 0]}
-                    tail={[load.position ?? 0, load.deadLoad + load.liveLoad]}
+                    tail={[
+                      load.position ?? 0,
+                      (load.deadLoad ?? 0) + (load.liveLoad ?? 0),
+                    ]}
                   />
                 )}
                 {load.type === "distributed" && (
                   <>
                     <Plot.OfX
-                      y={() => load.deadLoad + load.liveLoad}
+                      y={() => (load.deadLoad ?? 0) + (load.liveLoad ?? 0)}
                       domain={[load.start ?? 0, load.end ?? 0]}
                     />
                     <Plot.OfY
                       x={() => load.start ?? 0}
-                      domain={[0, load.deadLoad + load.liveLoad]}
+                      domain={[0, (load.deadLoad ?? 0) + (load.liveLoad ?? 0)]}
                     />
                     <Plot.OfY
                       x={() => load.end ?? 0}
-                      domain={[0, load.deadLoad + load.liveLoad]}
+                      domain={[0, (load.deadLoad ?? 0) + (load.liveLoad ?? 0)]}
                     />
                   </>
                 )}
@@ -474,11 +507,11 @@ export default function ResultsPage() {
             {(() => {
               const eps = 0.001;
               const isJump = (pos: number) =>
-                supports.some(
-                  (s) => Math.abs(s.position - pos) < eps,
-                ) ||
+                supports.some((s) => Math.abs(s.position - pos) < eps) ||
                 loads.some(
-                  (l) => l.type === "point" && Math.abs((l.position ?? 0) - pos) < eps,
+                  (l) =>
+                    l.type === "point" &&
+                    Math.abs((l.position ?? 0) - pos) < eps,
                 );
 
               const elements: React.ReactNode[] = [];
@@ -509,9 +542,7 @@ export default function ResultsPage() {
                   startV = shearForceU(xPrev);
                 }
 
-                const endV = jumpAtX
-                  ? shearForceU(x - eps)
-                  : shearForceU(x);
+                const endV = jumpAtX ? shearForceU(x - eps) : shearForceU(x);
 
                 elements.push(
                   <Plot.OfX
