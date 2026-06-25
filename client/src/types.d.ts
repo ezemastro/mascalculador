@@ -13,7 +13,9 @@ interface BeamConfig {
 interface Load {
   id: string;
   type: "point" | "distributed";
-  magnitude: number;
+  deadLoad: number;
+  liveLoad: number;
+  magnitude?: number;
   position?: number;
   start?: number;
   end?: number;
@@ -27,6 +29,16 @@ interface BeamResults {
   maxMoment: { value: number; position: number };
   criticalPoints: number[];
   maxShear: number;
+}
+
+interface BeamResultsDual {
+  d: BeamResults;
+  l: BeamResults;
+  shearForceU: (x: number) => number;
+  bendingMomentU: (x: number) => number;
+  maxMomentU: { value: number; position: number };
+  maxShearU: number;
+  criticalPointsU: number[];
 }
 
 interface SteelDesignParams {
