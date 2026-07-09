@@ -6,11 +6,20 @@ import { UPN_PROFILES } from "../lib/upn-profiles";
 import { TUBE_PROFILES } from "../lib/tube-profiles";
 
 export interface ColumnState {
-  profileType: "IPN" | "UPN" | "2UPN" | "TUBO";
+  profileType: "IPN" | "UPN" | "2UPN" | "TUBO" | "ARMADA_I" | "ARMADA_CAJON";
   profileName: string;
   upnName: string;
   upnGap: number;
   tubeName?: string;
+  // Built-up I
+  armadaBf?: number;
+  armadaTf?: number;
+  armadaHw?: number;
+  armadaTw?: number;
+  // Built-up box
+  cajonH?: number;
+  cajonB?: number;
+  cajonT?: number;
   Pu: number;
   Mux: number;
   Muy: number;
@@ -29,12 +38,21 @@ export default function ColumnForm() {
   const navigate = useNavigate();
 
   const [profileType, setProfileType] = useState<
-    "IPN" | "UPN" | "2UPN" | "TUBO"
+    "IPN" | "UPN" | "2UPN" | "TUBO" | "ARMADA_I" | "ARMADA_CAJON"
   >("IPN");
   const [profileName, setProfileName] = useState("IPN 200");
   const [upnName, setUpnName] = useState("UPN 200");
   const [upnGap, setUpnGap] = useState(10); // mm
   const [tubeName, setTubeName] = useState("□ 100×100×4");
+  // Built-up I defaults
+  const [armadaBf, setArmadaBf] = useState(200); // mm
+  const [armadaTf, setArmadaTf] = useState(12); // mm
+  const [armadaHw, setArmadaHw] = useState(200); // mm
+  const [armadaTw, setArmadaTw] = useState(8); // mm
+  // Built-up box defaults
+  const [cajonH, setCajonH] = useState(200); // mm
+  const [cajonB, setCajonB] = useState(200); // mm
+  const [cajonT, setCajonT] = useState(6); // mm
   const [Pu, setPu] = useState(100);
   const [Mux, setMux] = useState(20);
   const [Muy, setMuy] = useState(5);
@@ -51,6 +69,13 @@ export default function ColumnForm() {
       upnName,
       upnGap,
       tubeName,
+      armadaBf,
+      armadaTf,
+      armadaHw,
+      armadaTw,
+      cajonH,
+      cajonB,
+      cajonT,
       Pu,
       Mux,
       Muy,
@@ -103,7 +128,7 @@ export default function ColumnForm() {
                 value={profileType}
                 onChange={(e) =>
                   setProfileType(
-                    e.target.value as "IPN" | "UPN" | "2UPN" | "TUBO",
+                    e.target.value as typeof profileType,
                   )
                 }
               >
@@ -111,6 +136,8 @@ export default function ColumnForm() {
                 <option value="UPN">UPN</option>
                 <option value="2UPN">Doble UPN (cajón)</option>
                 <option value="TUBO">Tubo (SHS/RHS)</option>
+                <option value="ARMADA_I">Doble T armada</option>
+                <option value="ARMADA_CAJON">Cajón armado</option>
               </select>
             </label>
             {profileType === "IPN" && (
@@ -202,6 +229,113 @@ export default function ColumnForm() {
                   </optgroup>
                 </select>
               </label>
+            )}
+            {profileType === "ARMADA_I" && (
+              <>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">
+                    b<sub>f</sub> ala (mm)
+                  </span>
+                  <input
+                    type="text"
+                    defaultValue={armadaBf ?? ""}
+                    key={`col-armadaBf-${armadaBf}`}
+                    onChange={(e) => {
+                      const raw = sanitizeDecimal(e.target.value);
+                      const num = parseFloat(raw);
+                      setArmadaBf(isNaN(num) ? 0 : num);
+                    }}
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">
+                    t<sub>f</sub> ala (mm)
+                  </span>
+                  <input
+                    type="text"
+                    defaultValue={armadaTf ?? ""}
+                    key={`col-armadaTf-${armadaTf}`}
+                    onChange={(e) => {
+                      const raw = sanitizeDecimal(e.target.value);
+                      const num = parseFloat(raw);
+                      setArmadaTf(isNaN(num) ? 0 : num);
+                    }}
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">
+                    h<sub>w</sub> alma (mm)
+                  </span>
+                  <input
+                    type="text"
+                    defaultValue={armadaHw ?? ""}
+                    key={`col-armadaHw-${armadaHw}`}
+                    onChange={(e) => {
+                      const raw = sanitizeDecimal(e.target.value);
+                      const num = parseFloat(raw);
+                      setArmadaHw(isNaN(num) ? 0 : num);
+                    }}
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">
+                    t<sub>w</sub> alma (mm)
+                  </span>
+                  <input
+                    type="text"
+                    defaultValue={armadaTw ?? ""}
+                    key={`col-armadaTw-${armadaTw}`}
+                    onChange={(e) => {
+                      const raw = sanitizeDecimal(e.target.value);
+                      const num = parseFloat(raw);
+                      setArmadaTw(isNaN(num) ? 0 : num);
+                    }}
+                  />
+                </label>
+              </>
+            )}
+            {profileType === "ARMADA_CAJON" && (
+              <>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">h altura (mm)</span>
+                  <input
+                    type="text"
+                    defaultValue={cajonH ?? ""}
+                    key={`col-cajonH-${cajonH}`}
+                    onChange={(e) => {
+                      const raw = sanitizeDecimal(e.target.value);
+                      const num = parseFloat(raw);
+                      setCajonH(isNaN(num) ? 0 : num);
+                    }}
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">b ancho (mm)</span>
+                  <input
+                    type="text"
+                    defaultValue={cajonB ?? ""}
+                    key={`col-cajonB-${cajonB}`}
+                    onChange={(e) => {
+                      const raw = sanitizeDecimal(e.target.value);
+                      const num = parseFloat(raw);
+                      setCajonB(isNaN(num) ? 0 : num);
+                    }}
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">t espesor (mm)</span>
+                  <input
+                    type="text"
+                    defaultValue={cajonT ?? ""}
+                    key={`col-cajonT-${cajonT}`}
+                    onChange={(e) => {
+                      const raw = sanitizeDecimal(e.target.value);
+                      const num = parseFloat(raw);
+                      setCajonT(isNaN(num) ? 0 : num);
+                    }}
+                  />
+                </label>
+              </>
             )}
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">

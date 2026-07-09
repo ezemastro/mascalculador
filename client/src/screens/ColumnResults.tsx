@@ -5,6 +5,8 @@ import { UPN_PROFILES, getDoubleUPN } from "../lib/upn-profiles";
 import { TUBE_PROFILES } from "../lib/tube-profiles";
 import {
   designColumn,
+  computeBuiltUpI,
+  computeBuiltUpBox,
   type LocalBucklingParams,
 } from "../lib/column-calc";
 import type { ColumnState } from "./ColumnForm";
@@ -36,6 +38,13 @@ export default function ColumnResults() {
     upnName,
     upnGap,
     tubeName,
+    armadaBf,
+    armadaTf,
+    armadaHw,
+    armadaTw,
+    cajonH,
+    cajonB,
+    cajonT,
     Pu,
     Mux,
     Muy,
@@ -113,6 +122,51 @@ export default function ColumnResults() {
       h: tube.h,
       tw: tube.t,
     };
+  } else if (profileType === "ARMADA_I") {
+    if (
+      armadaBf === undefined ||
+      armadaTf === undefined ||
+      armadaHw === undefined ||
+      armadaTw === undefined
+    ) {
+      return (
+        <MainLayout>
+          <p className="text-danger p-8">
+            Faltan dimensiones de la doble T armada.
+          </p>
+        </MainLayout>
+      );
+    }
+    const built = computeBuiltUpI(armadaBf, armadaTf, armadaHw, armadaTw);
+    Ag = built.Ag;
+    Ix = built.Ix;
+    Iy = built.Iy;
+    Zx = built.Zx;
+    Zy = built.Zy;
+    displayName = built.name;
+    localBuckling = built.localBuckling;
+  } else if (profileType === "ARMADA_CAJON") {
+    if (
+      cajonH === undefined ||
+      cajonB === undefined ||
+      cajonT === undefined
+    ) {
+      return (
+        <MainLayout>
+          <p className="text-danger p-8">
+            Faltan dimensiones del cajón armado.
+          </p>
+        </MainLayout>
+      );
+    }
+    const built = computeBuiltUpBox(cajonH, cajonB, cajonT);
+    Ag = built.Ag;
+    Ix = built.Ix;
+    Iy = built.Iy;
+    Zx = built.Zx;
+    Zy = built.Zy;
+    displayName = built.name;
+    localBuckling = built.localBuckling;
   } else {
     const upn = UPN_PROFILES.find((x) => x.name === upnName);
     if (!upn) {

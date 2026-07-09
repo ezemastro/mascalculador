@@ -7,11 +7,11 @@ const PHI_B = 0.9;
 // ---- Local Buckling Verification (CIRSOC 301-05 Tabla B.4.1a) ----
 
 export interface LocalBucklingParams {
-  section: "I" | "C" | "HSS";
-  bf: number; // mm — flange width (I/C: full width; HSS: width dimension)
-  tf: number; // mm — flange thickness (I/C) or wall thickness (HSS)
-  h: number; // mm — section height
-  tw: number; // mm — web thickness (I/C only; for HSS use same value as tf)
+  section: "I" | "C" | "HSS" | "I_BUILTUP" | "CAJON";
+  bf: number; // mm — flange width (I/C: full width; HSS/CAJON: width dimension)
+  tf: number; // mm — flange thickness (I/C) or wall thickness (HSS/CAJON)
+  h: number; // mm — section height (total for I/C; outer dim for HSS/CAJON)
+  tw: number; // mm — web thickness (I/C/I_BUILTUP); for HSS/CAJON use same as tf
 }
 
 export interface LocalBucklingResult {
@@ -49,15 +49,28 @@ export function checkLocalBuckling(
   let webDesc: string;
 
   if (section === "I") {
-    // I-shape (IPN): Case 1 flange (unstiffened), Case 5 web (stiffened)
+    // I-shape rolled (IPN): Case 1 flange (unstiffened), Case 5 web (stiffened)
     flangeLambda = bf / (2 * tf);
     flangeLambdaR = 0.56 * lambdaR0;
     flangeDesc = `bf/(2·tf)`;
 
-    const hw = h - 2 * tf; // clear web height (approximate)
+    const hw = h - 2 * tf;
     webLambda = hw / tw;
     webLambdaR = 1.49 * lambdaR0;
     webDesc = `hw/tw`;
+  } else if (section === "I_BUILTUP") {
+    // I-shape built-up (doble T armada): Case 2 flange, Case 5 web
+    const hw = h - 2 * tf;
+    const kc = Math.max(0.35, Math.min(0.76, 4 / Math.sqrt(hw / tw)));
+
+    flangeLambda = bf / (2 * tf);
+    flangeLambdaR = 0.64 * Math.sqrt(kc) * lambdaR0;
+    flangeDesc = `bf/(2·tf)`;
+    webLambda = hw / tw;
+    webLambdaR = 1.49 * lambdaR0;
+    webDesc = `hw/tw`;
+
+    st.push(`  k_c = 4/√(hw/tw) = ${kc.toFixed(3)} (0.35 ≤ k_c ≤ 0.76)`);
   } else if (section === "C") {
     // Channel (UPN): Case 3 flange (unstiffened, free edge), Case 5 web (stiffened)
     flangeLambda = bf / tf;
@@ -69,7 +82,7 @@ export function checkLocalBuckling(
     webLambdaR = 1.49 * lambdaR0;
     webDesc = `hw/tw`;
   } else {
-    // HSS (tube): Case 6 — both sides stiffened
+    // HSS or CAJON (tube/box): Case 6 — both sides stiffened
     flangeLambda = bf / tf;
     webLambda = h / tw;
     flangeLambdaR = 1.40 * lambdaR0;
@@ -115,6 +128,111 @@ export interface ColumnInput {
   Ky: number; // effective length factor y-y
   L: number; // mm (unbraced length)
   Fy: number; // MPa
+}
+
+// ---- Built-Up Section Computations ----
+
+export interface BuiltUpProperties {
+  name: string;
+  Ag: number; // cm²
+  Ix: number; // cm⁴
+  Iy: number; // cm⁴
+  Zx: number; // cm³
+  Zy: number; // cm³
+  localBuckling: LocalBucklingParams;
+}
+
+/**
+ * Doble T armada (built-up I-section).
+ * Inputs in mm: bf (ala), tf (espesor ala), hw (alma altura), tw (espesor alma).
+ */
+export function computeBuiltUpI(
+  bf: number,
+  tf: number,
+  hw: number,
+  tw: number,
+): BuiltUpProperties {
+  const h = hw + 2 * tf; // total height
+  // Area
+  const A_mm2 = 2 * bf * tf + hw * tw;
+  const Ag = Math.round((A_mm2 / 100) * 10) / 10; // cm²
+
+  // Ix: parallel axis — flanges about centroid
+  const d = (hw + tf) / 2; // distance from centroid to flange centroid
+  const Ix_mm4 =
+    2 * ((bf * Math.pow(tf, 3)) / 12 + bf * tf * d * d) +
+    (tw * Math.pow(hw, 3)) / 12;
+  const Ix = Math.round(Ix_mm4 / 10000); // cm⁴
+
+  // Iy: flanges + web about y-axis
+  const Iy_mm4 =
+    2 * ((tf * Math.pow(bf, 3)) / 12) + (hw * Math.pow(tw, 3)) / 12;
+  const Iy = Math.round(Iy_mm4 / 10000);
+
+  // Plastic moduli (approximate)
+  // Zx: flanges + web plastic contributions
+  const Zx_flanges = 2 * bf * tf * (hw / 2 + tf / 2); // mm³
+  const Zx_web = tw * (hw * hw) / 4; // mm³
+  const Zx = Math.round(((Zx_flanges + Zx_web) / 1000) * 10) / 10; // cm³
+
+  // Zy: flanges + web
+  const Zy_flanges = 2 * tf * (bf * bf) / 4; // mm³
+  const Zy_web = hw * (tw * tw) / 4; // mm³
+  const Zy = Math.round(((Zy_flanges + Zy_web) / 1000) * 10) / 10;
+
+  const name = `T armada ${bf}×${tf}+${hw}×${tw}`;
+  const localBuckling: LocalBucklingParams = {
+    section: "I_BUILTUP",
+    bf,
+    tf,
+    h,
+    tw,
+  };
+
+  return { name, Ag, Ix, Iy, Zx, Zy, localBuckling };
+}
+
+/**
+ * Cajón armado (built-up box section).
+ * Inputs in mm: h (altura), b (ancho), t (espesor).
+ */
+export function computeBuiltUpBox(
+  h: number,
+  b: number,
+  t: number,
+): BuiltUpProperties {
+  // Area: 2*t*(h+b-2*t)
+  const A_mm2 = 2 * t * (h + b - 2 * t);
+  const Ag = Math.round((A_mm2 / 100) * 10) / 10;
+
+  // Ix = (b*h³ - (b-2t)*(h-2t)³) / 12
+  const Ix_mm4 =
+    (b * Math.pow(h, 3) - (b - 2 * t) * Math.pow(h - 2 * t, 3)) / 12;
+  const Ix = Math.round(Ix_mm4 / 10000);
+
+  // Iy = (h*b³ - (h-2t)*(b-2t)³) / 12
+  const Iy_mm4 =
+    (h * Math.pow(b, 3) - (h - 2 * t) * Math.pow(b - 2 * t, 3)) / 12;
+  const Iy = Math.round(Iy_mm4 / 10000);
+
+  // Elastic moduli
+  const Sx = (2 * Ix * 10) / h; // cm³  (20*Ix/h)
+  const Sy = (2 * Iy * 10) / b;
+
+  // Plastic moduli (HSS approximation)
+  const Zx = Math.round(1.12 * Sx * 10) / 10;
+  const Zy = Math.round(1.12 * Sy * 10) / 10;
+
+  const name = `Cajón ${h}×${b}×${t}`;
+  const localBuckling: LocalBucklingParams = {
+    section: "CAJON",
+    bf: b,
+    tf: t,
+    h,
+    tw: t,
+  };
+
+  return { name, Ag, Ix, Iy, Zx, Zy, localBuckling };
 }
 
 export interface ColumnCheck {
