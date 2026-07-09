@@ -1,8 +1,111 @@
 // CIRSOC 301-05 — Column design (axial + bending)
 
 const E = 200000; // MPa
-const PHI_C = 0.85;  // CIRSOC 301-05 Cap. E — φc compresión
+const PHI_C = 0.85; // CIRSOC 301-05 Cap. E — φc compresión
 const PHI_B = 0.9;
+
+// ---- Local Buckling Verification (CIRSOC 301-05 Tabla B.4.1a) ----
+
+export interface LocalBucklingParams {
+  section: "I" | "C" | "HSS";
+  bf: number; // mm — flange width (I/C: full width; HSS: width dimension)
+  tf: number; // mm — flange thickness (I/C) or wall thickness (HSS)
+  h: number; // mm — section height
+  tw: number; // mm — web thickness (I/C only; for HSS use same value as tf)
+}
+
+export interface LocalBucklingResult {
+  flangeLambda: number;
+  webLambda: number;
+  flangeLambdaR: number;
+  webLambdaR: number;
+  flangeOk: boolean;
+  webOk: boolean;
+  isNonSlender: boolean;
+  Q: number;
+  steps: string[];
+}
+
+/**
+ * Verifica pandeo local según CIRSOC 301-05 Tabla B.4.1a.
+ * Retorna Q = 1.0 si la sección es no-esbelta.
+ */
+export function checkLocalBuckling(
+  params: LocalBucklingParams,
+  Fy: number,
+): LocalBucklingResult {
+  const { section, bf, tf, h, tw } = params;
+  const lambdaR0 = Math.sqrt(E / Fy);
+  const st: string[] = [];
+
+  st.push("--- Pandeo Local (Tabla B.4.1a) ---");
+
+  let flangeLambda: number;
+  let flangeLambdaR: number;
+  let flangeDesc: string;
+
+  let webLambda: number;
+  let webLambdaR: number;
+  let webDesc: string;
+
+  if (section === "I") {
+    // I-shape (IPN): Case 1 flange (unstiffened), Case 5 web (stiffened)
+    flangeLambda = bf / (2 * tf);
+    flangeLambdaR = 0.56 * lambdaR0;
+    flangeDesc = `bf/(2·tf)`;
+
+    const hw = h - 2 * tf; // clear web height (approximate)
+    webLambda = hw / tw;
+    webLambdaR = 1.49 * lambdaR0;
+    webDesc = `hw/tw`;
+  } else if (section === "C") {
+    // Channel (UPN): Case 3 flange (unstiffened, free edge), Case 5 web (stiffened)
+    flangeLambda = bf / tf;
+    flangeLambdaR = 0.45 * lambdaR0;
+    flangeDesc = `bf/tf`;
+
+    const hw = h - 2 * tf;
+    webLambda = hw / tw;
+    webLambdaR = 1.49 * lambdaR0;
+    webDesc = `hw/tw`;
+  } else {
+    // HSS (tube): Case 6 — both sides stiffened
+    flangeLambda = bf / tf;
+    webLambda = h / tw;
+    flangeLambdaR = 1.40 * lambdaR0;
+    webLambdaR = 1.40 * lambdaR0;
+    flangeDesc = `b/t`;
+    webDesc = `h/t`;
+  }
+
+  const flangeOk = flangeLambda <= flangeLambdaR;
+  const webOk = webLambda <= webLambdaR;
+  const isNonSlender = flangeOk && webOk;
+  const Q = isNonSlender ? 1.0 : 0; // Q < 1 requires effective area (not implemented yet)
+
+  st.push(
+    `Ala: λ = ${flangeDesc} = ${flangeLambda.toFixed(1)} ≤ λ_r = ${flangeLambdaR.toFixed(1)} ${flangeOk ? "✓ no esbelta" : "✗ ESBELTA"}`,
+  );
+  st.push(
+    `Alma: λ = ${webDesc} = ${webLambda.toFixed(1)} ≤ λ_r = ${webLambdaR.toFixed(1)} ${webOk ? "✓ no esbelta" : "✗ ESBELTA"}`,
+  );
+  st.push(
+    `Sección ${isNonSlender ? "NO ESBELTA" : "ESBELTA"} → Q = ${Q.toFixed(2)}`,
+  );
+  st.push("");
+
+  return {
+    flangeLambda,
+    webLambda,
+    flangeLambdaR,
+    webLambdaR,
+    flangeOk,
+    webOk,
+    isNonSlender,
+    Q,
+    steps: st,
+  };
+}
 
 export interface ColumnInput {
   Pu: number; // kN (axial)
@@ -45,6 +148,7 @@ export function designColumn(
   Zx: number, // cm³
   Zy: number, // cm³
   profileName: string,
+  localBuckling?: LocalBucklingParams,
 ): ColumnCheck {
   const { Pu, Mux, Muy, Kx, Ky, L, Fy } = input;
   const Ag_mm2 = Ag * 100;
@@ -107,6 +211,16 @@ export function designColumn(
   st.push(`Perfil: ${profileName}, F_y = ${Fy} MPa`);
   st.push(`L = ${L} mm, K_x = ${Kx}, K_y = ${Ky}`);
   st.push("");
+
+  // Local buckling check (if geometry provided)
+  if (localBuckling) {
+    const lb = checkLocalBuckling(localBuckling, Fy);
+    st.push(...lb.steps);
+    if (!lb.isNonSlender) {
+      st.push("⚠ ADVERTENCIA: Sección esbelta — Q < 1. Se requiere área efectiva (no implementado).");
+      st.push("");
+    }
+  }
 
   st.push("--- Compresión (Capítulo E) ---");
   st.push(`A_g = ${Ag} cm² = ${Ag_mm2.toFixed(0)} mm²`);
