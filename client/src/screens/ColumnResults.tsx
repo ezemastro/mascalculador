@@ -3,7 +3,10 @@ import MainLayout from "../components/MainLayout";
 import { IPN_PROFILES } from "../lib/profiles";
 import { UPN_PROFILES, getDoubleUPN } from "../lib/upn-profiles";
 import { TUBE_PROFILES } from "../lib/tube-profiles";
-import { designColumn } from "../lib/column-calc";
+import {
+  designColumn,
+  type LocalBucklingParams,
+} from "../lib/column-calc";
 import type { ColumnState } from "./ColumnForm";
 
 export default function ColumnResults() {
@@ -48,6 +51,7 @@ export default function ColumnResults() {
     Zx: number,
     Zy: number,
     displayName: string;
+  let localBuckling: LocalBucklingParams | undefined;
 
   if (profileType === "IPN") {
     const p = IPN_PROFILES.find((x) => x.name === profileName);
@@ -64,6 +68,7 @@ export default function ColumnResults() {
     Zx = p.Zx;
     Zy = p.Zx * 0.6; // approximate Zy for IPN
     displayName = p.name;
+    localBuckling = { section: "I", bf: p.b, tf: p.tf, h: p.h, tw: p.tw };
   } else if (profileType === "UPN") {
     const upn = UPN_PROFILES.find((x) => x.name === upnName);
     if (!upn) {
@@ -79,6 +84,13 @@ export default function ColumnResults() {
     Zx = upn.Zx;
     Zy = upn.Zy;
     displayName = upn.name;
+    localBuckling = {
+      section: "C",
+      bf: upn.b,
+      tf: upn.tf,
+      h: upn.h,
+      tw: upn.tw,
+    };
   } else if (profileType === "TUBO") {
     const tube = TUBE_PROFILES.find((x) => x.name === tubeName);
     if (!tube) {
@@ -94,6 +106,13 @@ export default function ColumnResults() {
     Zx = tube.Zx;
     Zy = tube.Zy;
     displayName = tube.name;
+    localBuckling = {
+      section: "HSS",
+      bf: tube.b,
+      tf: tube.t,
+      h: tube.h,
+      tw: tube.t,
+    };
   } else {
     const upn = UPN_PROFILES.find((x) => x.name === upnName);
     if (!upn) {
@@ -110,6 +129,14 @@ export default function ColumnResults() {
     Zx = d.Zx;
     Zy = d.Zy;
     displayName = d.name;
+    // 2UPN: local buckling per individual channel
+    localBuckling = {
+      section: "C",
+      bf: upn.b,
+      tf: upn.tf,
+      h: upn.h,
+      tw: upn.tw,
+    };
   }
 
   const result = designColumn(
@@ -120,6 +147,7 @@ export default function ColumnResults() {
     Zx,
     Zy,
     displayName,
+    localBuckling,
   );
 
   return (
