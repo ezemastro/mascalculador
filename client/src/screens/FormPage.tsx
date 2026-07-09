@@ -1,24 +1,16 @@
-import { useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router";
 import MainLayout from "../components/MainLayout";
 import SavedBeams from "../components/SavedBeams";
-import { saveBeam } from "../lib/storage";
+import { saveBeam, saveLastFormState, loadLastFormState } from "../lib/storage";
 import { IPN_PROFILES } from "../lib/profiles";
-import { ANGLE_PROFILES } from "../lib/angle-profiles";
-import { migrateLoads } from "../lib/beam-calculations";
+import { UPN_PROFILES } from "../lib/upn-profiles";
+import { calculateBeamDual, migrateLoads } from "../lib/beam-calculations";
 
-function handleCommaKey(e: React.KeyboardEvent<HTMLInputElement>) {
-  if (e.key === ",") {
-    e.preventDefault();
-    const input = e.currentTarget;
-    const start = input.selectionStart ?? 0;
-    const end = input.selectionEnd ?? 0;
-    const before = input.value.substring(0, start);
-    const after = input.value.substring(end);
-    input.value = before + "." + after;
-    input.setSelectionRange(start + 1, start + 1);
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  }
+// Controlled decimal input: comma→period conversion
+function sanitizeDecimal(val: string): string {
+  // Replace comma (both regular and numpad) with dot
+  return val.replace(/,/g, ".");
 }
 
 export default function FormPage() {
@@ -28,57 +20,75 @@ export default function FormPage() {
     loads?: Load[];
     beamConfig?: BeamConfig;
     designParams?: SteelDesignParams;
-    trussParams?: TrussDesignParams;
   } | null;
+
+  // Auto-restore last form state when no navigation state is present
+  const lastForm = !state ? loadLastFormState() : null;
+
   const [spanCount, setSpanCount] = useState(
-    state?.beamConfig?.spans?.length ?? 1,
+    state?.beamConfig?.spans?.length ?? lastForm?.spanCount ?? 1,
   );
   const [spanLengths, setSpanLengths] = useState<number[]>(
-    state?.beamConfig?.spans ?? [6],
+    state?.beamConfig?.spans ?? lastForm?.spanLengths ?? [6],
   );
   const [supportTypes, setSupportTypes] = useState<SupportType[]>(
-    state?.beamConfig?.supportTypes ?? ["simple", "simple"],
+    state?.beamConfig?.supportTypes ??
+      (lastForm?.supportTypes as SupportType[]) ?? ["simple", "simple"],
   );
-  const [loads, setLoads] = useState<Load[]>(state?.loads ?? []);
+  const [loads, setLoads] = useState<Load[]>(
+    state?.loads ?? lastForm?.loads ?? [],
+  );
   const [migrated, setMigrated] = useState(false);
   const [profileName, setProfileName] = useState(
-    state?.designParams?.profileName ?? "IPN 200",
+    state?.designParams?.profileName ?? lastForm?.profileName ?? "IPN 200",
   );
-  const [Fy, setFy] = useState(state?.designParams?.Fy ?? 235);
-  const [Lb, setLb] = useState(
-    state?.designParams?.Lb ??
-      (state?.beamConfig?.spans ?? [6]).reduce((a, b) => a + b, 0) * 1000,
+  const [profileType, setProfileType] = useState<"IPN" | "UPN">(
+    state?.designParams?.profileType ?? (lastForm?.profileType as "IPN" | "UPN") ?? "IPN",
   );
-  const [Cb, setCb] = useState(state?.designParams?.Cb ?? 1.0);
-  const [deflectionLimit, setDeflectionLimit] = useState(
-    state?.designParams?.deflectionLimit ?? 300,
+  const [Fy, setFy] = useState(
+    state?.designParams?.Fy ?? lastForm?.Fy ?? 235,
   );
-
   const totalLength = spanLengths.reduce((a, b) => a + b, 0);
 
-  const [trussEnabled, setTrussEnabled] = useState(
-    state?.trussParams !== undefined,
+  // L = luz total (auto-calculado), siempre en cm para el form
+  const Lb = totalLength * 100; // cm
+
+  const [Lb1, setLb1] = useState(
+    // Navigation state comes in mm (×10 in handleSubmit); convert back to cm
+    state?.designParams?.Lb1 != null ? state.designParams.Lb1 / 10 : (lastForm?.Lb1 ?? Lb),
   );
-  const [trussHeight, setTrussHeight] = useState(
-    state?.trussParams?.height ?? totalLength / 10,
+  const [Lb2, setLb2] = useState(
+    state?.designParams?.Lb2 != null ? state.designParams.Lb2 / 10 : (lastForm?.Lb2 ?? Lb),
   );
-  const [trussPanelSpacing, setTrussPanelSpacing] = useState(
-    state?.trussParams?.panelSpacing ?? 1.0,
+  const [Cb, setCb] = useState(state?.designParams?.Cb ?? lastForm?.Cb ?? 1.0);
+  const [deflectionLimit, setDeflectionLimit] = useState(
+    state?.designParams?.deflectionLimit ?? lastForm?.deflectionLimit ?? 300,
   );
-  const [topChordProfile, setTopChordProfile] = useState(
-    state?.trussParams?.topChordProfile ?? 'L 2 1/2" x 1/4"',
-  );
-  const [botChordProfile, setBotChordProfile] = useState(
-    state?.trussParams?.botChordProfile ?? 'L 2 1/2" x 1/4"',
-  );
-  const [diagProfile, setDiagProfile] = useState(
-    state?.trussParams?.diagProfile ?? 'L 1 1/2" x 3/16"',
-  );
-  const [vertProfile, setVertProfile] = useState(
-    state?.trussParams?.vertProfile ?? 'L 1 1/4" x 1/8"',
-  );
-  const [trussFy, setTrussFy] = useState(state?.trussParams?.Fy ?? 235);
-  const [trussFu, setTrussFu] = useState(state?.trussParams?.Fu ?? 370);
+  const [loadPosition, setLoadPosition] = useState<
+    "top" | "shear" | "bottom"
+  >(state?.designParams?.loadPosition ?? (lastForm?.loadPosition as "top" | "shear" | "bottom") ?? "top");
+
+  // Auto-save form state to localStorage on every change
+  useEffect(() => {
+    saveLastFormState({
+      spanCount,
+      spanLengths,
+      supportTypes,
+      loads,
+      profileName,
+      profileType,
+      Fy,
+      Lb,
+      Lb1,
+      Lb2,
+      Cb,
+      deflectionLimit,
+      loadPosition,
+    });
+  }, [
+    spanCount, spanLengths, supportTypes, loads,
+    profileName, profileType, Fy, Lb1, Lb2, Cb, deflectionLimit, loadPosition,
+  ]);
 
   const supportPositions = spanLengths.reduce(
     (acc, len, i) => {
@@ -144,19 +154,14 @@ export default function FormPage() {
       supportTypes,
       loads: loadForSave,
       profileName,
+      profileType,
       Fy,
       Lb,
+      Lb1,
+      Lb2,
       Cb,
       deflectionLimit,
-      trussEnabled,
-      trussHeight,
-      trussPanelSpacing,
-      topChordProfile,
-      botChordProfile,
-      diagProfile,
-      vertProfile,
-      trussFy,
-      trussFu,
+      loadPosition,
     });
   }
 
@@ -165,25 +170,17 @@ export default function FormPage() {
     const beamConfig: BeamConfig = { spans: spanLengths, supportTypes };
     const designParams: SteelDesignParams = {
       profileName,
+      profileType,
       Fy,
-      Lb,
+      Lb: Lb * 10, // cm→mm, auto = luz total
+      Lb1: Lb1 * 10,
+      Lb2: Lb2 * 10,
       Cb,
       deflectionLimit,
+      loadPosition,
     };
-    const trussParams: TrussDesignParams | undefined = trussEnabled
-      ? {
-          height: trussHeight,
-          panelSpacing: trussPanelSpacing,
-          topChordProfile,
-          botChordProfile,
-          diagProfile,
-          vertProfile,
-          Fy: trussFy,
-          Fu: trussFu,
-        }
-      : undefined;
     navigate("/results", {
-      state: { loads, beamConfig, designParams, trussParams },
+      state: { loads, beamConfig, designParams },
     });
   }
 
@@ -192,6 +189,32 @@ export default function FormPage() {
     supportTypes.some((t) => t !== "free") &&
     loads.length > 0 &&
     loads.every((l) => (l.deadLoad ?? 0) > 0 || (l.liveLoad ?? 0) > 0);
+
+  // Zx_req preview (task 1.10): derived from Mu (kN·m) → cm³
+  const Zx_req = useMemo<number | null>(() => {
+    if (!valid) return null;
+    try {
+      const beamConfig: BeamConfig = { spans: spanLengths, supportTypes };
+      const dual = calculateBeamDual(beamConfig, loads);
+      // Mu (kN·m) × 1e6 → N·mm, / (0.9·Fy) → mm³, / 1000 → cm³
+      const Zx_req_cm3 =
+        (Math.abs(dual.maxMomentU.value) * 1e6) / (0.9 * Fy) / 1000;
+      return Zx_req_cm3;
+    } catch {
+      return null;
+    }
+  }, [spanLengths, supportTypes, loads, Fy, valid]);
+
+  const selectedProfile = profileType === "UPN"
+    ? UPN_PROFILES.find((p) => p.name === profileName)
+    : IPN_PROFILES.find((p) => p.name === profileName);
+  // For Zx comparison, get Zx from the appropriate profile
+  const selectedProfileZx = profileType === "UPN"
+    ? (UPN_PROFILES.find((p) => p.name === profileName)?.Zx ?? 0)
+    : (IPN_PROFILES.find((p) => p.name === profileName)?.Zx ?? 0);
+  // Soft-warn when selected profile Zx < Zx_req (task 1.11)
+  const showZxWarning =
+    Zx_req !== null && selectedProfileZx < Zx_req;
 
   return (
     <MainLayout>
@@ -247,24 +270,17 @@ export default function FormPage() {
             setMigrated(false);
           }
           if (typeof d.profileName === "string") setProfileName(d.profileName);
+          if (typeof d.profileType === "string") setProfileType(d.profileType as "IPN" | "UPN");
           if (typeof d.Fy === "number") setFy(d.Fy);
-          if (typeof d.Lb === "number") setLb(d.Lb);
+          if (typeof d.Lb1 === "number") setLb1(d.Lb1);
+          else if (typeof d.Lb === "number") setLb1(d.Lb);
+          if (typeof d.Lb2 === "number") setLb2(d.Lb2);
+          else if (typeof d.Lb === "number") setLb2(d.Lb);
           if (typeof d.Cb === "number") setCb(d.Cb);
           if (typeof d.deflectionLimit === "number")
             setDeflectionLimit(d.deflectionLimit);
-          if (typeof d.trussEnabled === "boolean")
-            setTrussEnabled(d.trussEnabled);
-          if (typeof d.trussHeight === "number") setTrussHeight(d.trussHeight);
-          if (typeof d.trussPanelSpacing === "number")
-            setTrussPanelSpacing(d.trussPanelSpacing);
-          if (typeof d.topChordProfile === "string")
-            setTopChordProfile(d.topChordProfile);
-          if (typeof d.botChordProfile === "string")
-            setBotChordProfile(d.botChordProfile);
-          if (typeof d.diagProfile === "string") setDiagProfile(d.diagProfile);
-          if (typeof d.vertProfile === "string") setVertProfile(d.vertProfile);
-          if (typeof d.trussFy === "number") setTrussFy(d.trussFy);
-          if (typeof d.trussFu === "number") setTrussFu(d.trussFu);
+          if (typeof d.loadPosition === "string")
+            setLoadPosition(d.loadPosition as "top" | "shear" | "bottom");
         }}
       />
 
@@ -302,15 +318,17 @@ export default function FormPage() {
               {spanLengths.map((len, i) => (
                 <label key={i} className="flex flex-col gap-1.5">
                   <span className="text-xs text-text-muted font-medium">
-                    Tramo {i + 1} (m)
+                    Luz tramo {i + 1} (m)
                   </span>
                   <input
-                    type="number"
-                    step="0.1"
-                    min="0.1"
-                    value={len || ""}
-                    onKeyDown={handleCommaKey}
-                    onChange={(e) => setSpanLength(i, Number(e.target.value))}
+                    type="text"
+                    defaultValue={len ?? ""}
+                    key={`span-${i}-${spanLengths[i]}`}
+                    onChange={(e) => {
+                      const raw = sanitizeDecimal(e.target.value);
+                      const num = parseFloat(raw);
+                      setSpanLength(i, isNaN(num) ? 0 : num);
+                    }}
                   />
                 </label>
               ))}
@@ -418,16 +436,16 @@ export default function FormPage() {
                     D (kN{load.type === "distributed" ? "/m" : ""})
                   </span>
                   <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    value={load.deadLoad || ""}
-                    onKeyDown={handleCommaKey}
-                    onChange={(e) =>
+                    type="text"
+                    defaultValue={load.deadLoad ?? ""}
+                    key={`dead-${load.id}-${load.deadLoad}`}
+                    onChange={(e) => {
+                      const raw = sanitizeDecimal(e.target.value);
+                      const num = parseFloat(raw);
                       updateLoad(load.id, {
-                        deadLoad: Number(e.target.value),
-                      })
-                    }
+                        deadLoad: isNaN(num) ? 0 : num,
+                      });
+                    }}
                     className="w-28"
                   />
                 </label>
@@ -437,16 +455,16 @@ export default function FormPage() {
                     L (kN{load.type === "distributed" ? "/m" : ""})
                   </span>
                   <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    value={load.liveLoad || ""}
-                    onKeyDown={handleCommaKey}
-                    onChange={(e) =>
+                    type="text"
+                    defaultValue={load.liveLoad ?? ""}
+                    key={`live-${load.id}-${load.liveLoad}`}
+                    onChange={(e) => {
+                      const raw = sanitizeDecimal(e.target.value);
+                      const num = parseFloat(raw);
                       updateLoad(load.id, {
-                        liveLoad: Number(e.target.value),
-                      })
-                    }
+                        liveLoad: isNaN(num) ? 0 : num,
+                      });
+                    }}
                     className="w-28"
                   />
                 </label>
@@ -457,17 +475,16 @@ export default function FormPage() {
                       Posición (m)
                     </span>
                     <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      max={totalLength}
-                      value={load.position ?? ""}
-                      onKeyDown={handleCommaKey}
-                      onChange={(e) =>
+                      type="text"
+                      defaultValue={load.position ?? ""}
+                      key={`pos-${load.id}-${load.position}`}
+                      onChange={(e) => {
+                        const raw = sanitizeDecimal(e.target.value);
+                        const num = parseFloat(raw);
                         updateLoad(load.id, {
-                          position: Number(e.target.value),
-                        })
-                      }
+                          position: isNaN(num) ? 0 : num,
+                        });
+                      }}
                       className="w-32"
                     />
                   </label>
@@ -478,34 +495,32 @@ export default function FormPage() {
                         Inicio (m)
                       </span>
                       <input
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        max={totalLength}
-                        value={load.start ?? ""}
-                        onKeyDown={handleCommaKey}
-                        onChange={(e) =>
+                        type="text"
+                        defaultValue={load.start ?? ""}
+                        key={`start-${load.id}-${load.start}`}
+                        onChange={(e) => {
+                          const raw = sanitizeDecimal(e.target.value);
+                          const num = parseFloat(raw);
                           updateLoad(load.id, {
-                            start: Number(e.target.value),
-                          })
-                        }
+                            start: isNaN(num) ? 0 : num,
+                          });
+                        }}
                         className="w-28"
                       />
                     </label>
                     <label className="flex flex-col gap-1">
                       <span className="text-xs text-text-muted">Fin (m)</span>
                       <input
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        max={totalLength}
-                        value={load.end ?? ""}
-                        onKeyDown={handleCommaKey}
-                        onChange={(e) =>
+                        type="text"
+                        defaultValue={load.end ?? ""}
+                        key={`end-${load.id}-${load.end}`}
+                        onChange={(e) => {
+                          const raw = sanitizeDecimal(e.target.value);
+                          const num = parseFloat(raw);
                           updateLoad(load.id, {
-                            end: Number(e.target.value),
-                          })
-                        }
+                            end: isNaN(num) ? 0 : num,
+                          });
+                        }}
                         className="w-28"
                       />
                     </label>
@@ -530,14 +545,50 @@ export default function FormPage() {
           <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
             Dimensionamiento (CIRSOC 301-05)
           </h2>
+          {Zx_req !== null && (
+            <div className="mb-4 p-3 bg-surface-alt rounded-lg text-sm">
+              <span className="text-text-muted">
+                Z<sub>x,req</sub> = {Zx_req.toFixed(0)} cm³
+                {" · "}F<sub>y</sub> = {Fy} MPa
+              </span>
+              {selectedProfile && (
+                <span className="ml-2 text-text-muted">
+                  · Perfil {selectedProfile.name}: Z<sub>x</sub> ={" "}
+                  {selectedProfileZx.toFixed(0)} cm³
+                </span>
+              )}
+            </div>
+          )}
+          {showZxWarning && (
+            <div className="mb-4 p-3 border border-warning/30 rounded-lg bg-warning/10 text-sm text-warning">
+              Perfil bajo: Z<sub>x</sub> = {selectedProfileZx.toFixed(0)} cm³,
+              necesario ≥ {Zx_req!.toFixed(0)} cm³
+            </div>
+          )}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-text-muted">Tipo</span>
+              <select
+                value={profileType}
+                onChange={(e) => {
+                  const newType = e.target.value as "IPN" | "UPN";
+                  setProfileType(newType);
+                  // Reset profile to first of the new type
+                  if (newType === "IPN") setProfileName("IPN 200");
+                  else setProfileName("UPN 200");
+                }}
+              >
+                <option value="IPN">IPN (Doble T)</option>
+                <option value="UPN">UPN (Canal)</option>
+              </select>
+            </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">Perfil</span>
               <select
                 value={profileName}
                 onChange={(e) => setProfileName(e.target.value)}
               >
-                {IPN_PROFILES.map((p) => (
+                {(profileType === "UPN" ? UPN_PROFILES : IPN_PROFILES).map((p) => (
                   <option key={p.name} value={p.name}>
                     {p.name}
                   </option>
@@ -559,28 +610,53 @@ export default function FormPage() {
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
-                L<sub>b</sub> (mm)
+                L<sub>1</sub> (cm)
               </span>
               <input
-                type="number"
-                step="100"
-                min="0"
-                value={Lb || ""}
-                onKeyDown={handleCommaKey}
-                onChange={(e) => setLb(Number(e.target.value))}
+                type="text"
+                defaultValue={Lb1 ?? ""}
+                key={`lb1-${Lb1}`}
+                onChange={(e) => {
+                  const raw = sanitizeDecimal(e.target.value);
+                  const num = parseFloat(raw);
+                  setLb1(isNaN(num) ? 0 : num);
+                }}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-text-muted">
+                L<sub>2</sub> (cm)
+              </span>
+              <input
+                type="text"
+                defaultValue={Lb2 ?? ""}
+                key={`lb2-${Lb2}`}
+                onChange={(e) => {
+                  const raw = sanitizeDecimal(e.target.value);
+                  const num = parseFloat(raw);
+                  setLb2(isNaN(num) ? 0 : num);
+                }}
               />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
                 C<sub>b</sub>
+                <span
+                  className="ml-1 cursor-help"
+                  title="Cb = 1.0 para momentos uniformes. Para vigas simplemente apoyadas con carga uniforme usar 1.14. Para voladizos usar 1.0. Valores mayores indican diagrama de momentos más favorable."
+                >
+                  ⓘ
+                </span>
               </span>
               <input
-                type="number"
-                step="0.1"
-                min="1.0"
-                value={Cb || ""}
-                onKeyDown={handleCommaKey}
-                onChange={(e) => setCb(Number(e.target.value))}
+                type="text"
+                defaultValue={Cb ?? ""}
+                key={`cb-${Cb}`}
+                onChange={(e) => {
+                  const raw = sanitizeDecimal(e.target.value);
+                  const num = parseFloat(raw);
+                  setCb(isNaN(num) ? 0 : num);
+                }}
               />
             </label>
             <label className="flex flex-col gap-1">
@@ -588,139 +664,32 @@ export default function FormPage() {
                 δ<sub>adm</sub> = L /
               </span>
               <input
-                type="number"
-                step="50"
-                min="100"
-                value={deflectionLimit || ""}
-                onKeyDown={handleCommaKey}
-                onChange={(e) => setDeflectionLimit(Number(e.target.value))}
+                type="text"
+                defaultValue={deflectionLimit ?? ""}
+                key={`defl-${deflectionLimit}`}
+                onChange={(e) => {
+                  const raw = sanitizeDecimal(e.target.value);
+                  const num = parseFloat(raw);
+                  setDeflectionLimit(isNaN(num) ? 0 : num);
+                }}
               />
             </label>
-          </div>
-        </section>
-
-        {/* Truss Design */}
-        <section className="bg-surface rounded-xl border border-border p-5">
-          <div className="flex items-center gap-3 mb-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={trussEnabled}
-                onChange={(e) => setTrussEnabled(e.target.checked)}
-                className="w-4 h-4"
-              />
-              <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
-                Reticulado
-              </h2>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-text-muted">Carga aplicada en</span>
+              <select
+                value={loadPosition}
+                onChange={(e) =>
+                  setLoadPosition(
+                    e.target.value as "top" | "shear" | "bottom",
+                  )
+                }
+              >
+                <option value="top">Ala superior</option>
+                <option value="shear">Centro de corte</option>
+                <option value="bottom">Ala inferior</option>
+              </select>
             </label>
           </div>
-          {trussEnabled && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-text-muted">Altura (m)</span>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0.2"
-                  value={trussHeight || ""}
-                  onKeyDown={handleCommaKey}
-                  onChange={(e) => setTrussHeight(Number(e.target.value))}
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-text-muted">
-                  Sep. montantes (m)
-                </span>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0.2"
-                  value={trussPanelSpacing || ""}
-                  onKeyDown={handleCommaKey}
-                  onChange={(e) => setTrussPanelSpacing(Number(e.target.value))}
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-text-muted">
-                  F<sub>y</sub> (MPa)
-                </span>
-                <select
-                  value={trussFy}
-                  onChange={(e) => setTrussFy(Number(e.target.value))}
-                >
-                  <option value={235}>235 (F-24)</option>
-                  <option value={275}>275 (F-28)</option>
-                  <option value={355}>355 (F-36)</option>
-                </select>
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-text-muted">
-                  F<sub>u</sub> (MPa)
-                </span>
-                <input
-                  type="number"
-                  step="1"
-                  min="300"
-                  value={trussFu || ""}
-                  onKeyDown={handleCommaKey}
-                  onChange={(e) => setTrussFu(Number(e.target.value))}
-                />
-              </label>
-              <div />
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-text-muted">Cordón superior</span>
-                <select
-                  value={topChordProfile}
-                  onChange={(e) => setTopChordProfile(e.target.value)}
-                >
-                  {ANGLE_PROFILES.map((a) => (
-                    <option key={a.name} value={a.name}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-text-muted">Cordón inferior</span>
-                <select
-                  value={botChordProfile}
-                  onChange={(e) => setBotChordProfile(e.target.value)}
-                >
-                  {ANGLE_PROFILES.map((a) => (
-                    <option key={a.name} value={a.name}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-text-muted">Diagonal</span>
-                <select
-                  value={diagProfile}
-                  onChange={(e) => setDiagProfile(e.target.value)}
-                >
-                  {ANGLE_PROFILES.map((a) => (
-                    <option key={a.name} value={a.name}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-text-muted">Montante</span>
-                <select
-                  value={vertProfile}
-                  onChange={(e) => setVertProfile(e.target.value)}
-                >
-                  {ANGLE_PROFILES.map((a) => (
-                    <option key={a.name} value={a.name}>
-                      {a.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          )}
         </section>
 
         <div className="self-center flex gap-3">
