@@ -1,9 +1,15 @@
-import { useState } from "react";
-import { useNavigate } from "react-router";
+import { useState, useEffect, useRef } from "react";
+import { useLocation, useNavigate } from "react-router";
 import MainLayout from "../components/MainLayout";
+import SavedBeams from "../components/SavedBeams";
 import { IPN_PROFILES } from "../lib/profiles";
 import { UPN_PROFILES } from "../lib/upn-profiles";
 import { TUBE_PROFILES } from "../lib/tube-profiles";
+import {
+  saveBeam,
+  saveLastColumnFormState,
+  loadLastColumnFormState,
+} from "../lib/storage";
 
 export interface ColumnState {
   profileType: "IPN" | "UPN" | "2UPN" | "TUBO" | "ARMADA_I" | "ARMADA_CAJON";
@@ -35,35 +41,173 @@ function sanitizeDecimal(val: string): string {
 }
 
 export default function ColumnForm() {
+  const location = useLocation();
   const navigate = useNavigate();
+  const state = location.state as ColumnState | null;
+
+  // Init hierarchy: state > lastForm > defaults
+  const lastForm = !state ? loadLastColumnFormState() : null;
 
   const [profileType, setProfileType] = useState<
     "IPN" | "UPN" | "2UPN" | "TUBO" | "ARMADA_I" | "ARMADA_CAJON"
-  >("IPN");
-  const [profileName, setProfileName] = useState("IPN 200");
-  const [upnName, setUpnName] = useState("UPN 200");
-  const [upnGap, setUpnGap] = useState(10); // mm
-  const [tubeName, setTubeName] = useState("□ 100×100×4");
-  // Built-up I defaults
-  const [armadaBf, setArmadaBf] = useState(200); // mm
-  const [armadaTf, setArmadaTf] = useState(12); // mm
-  const [armadaHw, setArmadaHw] = useState(200); // mm
-  const [armadaTw, setArmadaTw] = useState(8); // mm
-  // Built-up box defaults
-  const [cajonH, setCajonH] = useState(200); // mm
-  const [cajonB, setCajonB] = useState(200); // mm
-  const [cajonT, setCajonT] = useState(6); // mm
-  const [Pu, setPu] = useState(100);
-  const [Mux, setMux] = useState(20);
-  const [Muy, setMuy] = useState(5);
-  const [L, setL] = useState(3000); // mm
-  const [Kx, setKx] = useState(1.0);
-  const [Ky, setKy] = useState(1.0);
-  const [Fy, setFy] = useState(235);
+  >(
+    (state?.profileType as
+      | "IPN"
+      | "UPN"
+      | "2UPN"
+      | "TUBO"
+      | "ARMADA_I"
+      | "ARMADA_CAJON") ??
+      (lastForm?.profileType as
+        | "IPN"
+        | "UPN"
+        | "2UPN"
+        | "TUBO"
+        | "ARMADA_I"
+        | "ARMADA_CAJON") ??
+      "IPN",
+  );
+  const [profileName, setProfileName] = useState(
+    state?.profileName ?? lastForm?.profileName ?? "IPN 200",
+  );
+  const [upnName, setUpnName] = useState(
+    state?.upnName ?? lastForm?.upnName ?? "UPN 200",
+  );
+  const [upnGap, setUpnGap] = useState(state?.upnGap ?? lastForm?.upnGap ?? 10);
+  const [tubeName, setTubeName] = useState(
+    state?.tubeName ?? lastForm?.tubeName ?? "□ 100×100×4",
+  );
+  const [armadaBf, setArmadaBf] = useState(
+    state?.armadaBf ?? lastForm?.armadaBf ?? 200,
+  );
+  const [armadaTf, setArmadaTf] = useState(
+    state?.armadaTf ?? lastForm?.armadaTf ?? 12,
+  );
+  const [armadaHw, setArmadaHw] = useState(
+    state?.armadaHw ?? lastForm?.armadaHw ?? 200,
+  );
+  const [armadaTw, setArmadaTw] = useState(
+    state?.armadaTw ?? lastForm?.armadaTw ?? 8,
+  );
+  const [cajonH, setCajonH] = useState(
+    state?.cajonH ?? lastForm?.cajonH ?? 200,
+  );
+  const [cajonB, setCajonB] = useState(
+    state?.cajonB ?? lastForm?.cajonB ?? 200,
+  );
+  const [cajonT, setCajonT] = useState(state?.cajonT ?? lastForm?.cajonT ?? 6);
+  const [Pu, setPu] = useState(state?.Pu ?? lastForm?.Pu ?? 100);
+  const [Mux, setMux] = useState(state?.Mux ?? lastForm?.Mux ?? 20);
+  const [Muy, setMuy] = useState(state?.Muy ?? lastForm?.Muy ?? 5);
+  const [L, setL] = useState(state?.L ?? lastForm?.L ?? 3000);
+  const [Kx, setKx] = useState(state?.Kx ?? lastForm?.Kx ?? 1.0);
+  const [Ky, setKy] = useState(state?.Ky ?? lastForm?.Ky ?? 1.0);
+  const [Fy, setFy] = useState(state?.Fy ?? lastForm?.Fy ?? 235);
+
+  // Guard: skip first auto-save to avoid overwriting router state with defaults
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    saveLastColumnFormState({
+      profileType,
+      profileName,
+      upnName,
+      upnGap,
+      tubeName,
+      armadaBf,
+      armadaTf,
+      armadaHw,
+      armadaTw,
+      cajonH,
+      cajonB,
+      cajonT,
+      Pu,
+      Mux,
+      Muy,
+      L,
+      Kx,
+      Ky,
+      Fy,
+    });
+  }, [
+    profileType,
+    profileName,
+    upnName,
+    upnGap,
+    tubeName,
+    armadaBf,
+    armadaTf,
+    armadaHw,
+    armadaTw,
+    cajonH,
+    cajonB,
+    cajonT,
+    Pu,
+    Mux,
+    Muy,
+    L,
+    Kx,
+    Ky,
+    Fy,
+  ]);
+
+  function handleSave() {
+    const name = prompt("Nombre para guardar esta columna:");
+    if (!name) return;
+    saveBeam(name, "columna", {
+      profileType,
+      profileName,
+      upnName,
+      upnGap,
+      tubeName,
+      armadaBf,
+      armadaTf,
+      armadaHw,
+      armadaTw,
+      cajonH,
+      cajonB,
+      cajonT,
+      Pu,
+      Mux,
+      Muy,
+      L,
+      Kx,
+      Ky,
+      Fy,
+    });
+  }
+
+  function handleLoad(data: Record<string, unknown>) {
+    const d = data as Record<string, unknown>;
+    if (typeof d.profileType === "string") {
+      setProfileType(d.profileType as typeof profileType);
+    }
+    if (typeof d.profileName === "string") setProfileName(d.profileName);
+    if (typeof d.upnName === "string") setUpnName(d.upnName);
+    if (typeof d.upnGap === "number") setUpnGap(d.upnGap);
+    if (typeof d.tubeName === "string") setTubeName(d.tubeName);
+    if (typeof d.armadaBf === "number") setArmadaBf(d.armadaBf);
+    if (typeof d.armadaTf === "number") setArmadaTf(d.armadaTf);
+    if (typeof d.armadaHw === "number") setArmadaHw(d.armadaHw);
+    if (typeof d.armadaTw === "number") setArmadaTw(d.armadaTw);
+    if (typeof d.cajonH === "number") setCajonH(d.cajonH);
+    if (typeof d.cajonB === "number") setCajonB(d.cajonB);
+    if (typeof d.cajonT === "number") setCajonT(d.cajonT);
+    if (typeof d.Pu === "number") setPu(d.Pu);
+    if (typeof d.Mux === "number") setMux(d.Mux);
+    if (typeof d.Muy === "number") setMuy(d.Muy);
+    if (typeof d.L === "number") setL(d.L);
+    if (typeof d.Kx === "number") setKx(d.Kx);
+    if (typeof d.Ky === "number") setKy(d.Ky);
+    if (typeof d.Fy === "number") setFy(d.Fy);
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const state: ColumnState = {
+    const columnState: ColumnState = {
       profileType,
       profileName,
       upnName,
@@ -84,7 +228,7 @@ export default function ColumnForm() {
       Ky,
       Fy,
     };
-    navigate("/column-results", { state });
+    navigate("/column-results", { state: columnState });
   }
 
   return (
@@ -115,6 +259,12 @@ export default function ColumnForm() {
         </div>
       </header>
 
+      <SavedBeams
+        type="columna"
+        onLoad={handleLoad}
+        label="Columnas guardadas"
+      />
+
       <form onSubmit={handleSubmit} className="flex flex-col gap-6">
         {/* Perfil */}
         <section className="bg-surface rounded-xl border border-border p-5">
@@ -127,9 +277,7 @@ export default function ColumnForm() {
               <select
                 value={profileType}
                 onChange={(e) =>
-                  setProfileType(
-                    e.target.value as typeof profileType,
-                  )
+                  setProfileType(e.target.value as typeof profileType)
                 }
               >
                 <option value="IPN">IPN</option>
@@ -210,22 +358,18 @@ export default function ColumnForm() {
                   onChange={(e) => setTubeName(e.target.value)}
                 >
                   <optgroup label="Cuadrados (SHS)">
-                    {TUBE_PROFILES.filter((t) => t.shape === "SHS").map(
-                      (t) => (
-                        <option key={t.name} value={t.name}>
-                          {t.name}
-                        </option>
-                      ),
-                    )}
+                    {TUBE_PROFILES.filter((t) => t.shape === "SHS").map((t) => (
+                      <option key={t.name} value={t.name}>
+                        {t.name}
+                      </option>
+                    ))}
                   </optgroup>
                   <optgroup label="Rectangulares (RHS)">
-                    {TUBE_PROFILES.filter((t) => t.shape === "RHS").map(
-                      (t) => (
-                        <option key={t.name} value={t.name}>
-                          {t.name}
-                        </option>
-                      ),
-                    )}
+                    {TUBE_PROFILES.filter((t) => t.shape === "RHS").map((t) => (
+                      <option key={t.name} value={t.name}>
+                        {t.name}
+                      </option>
+                    ))}
                   </optgroup>
                 </select>
               </label>
@@ -323,7 +467,9 @@ export default function ColumnForm() {
                   />
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className="text-xs text-text-muted">t espesor (mm)</span>
+                  <span className="text-xs text-text-muted">
+                    t espesor (mm)
+                  </span>
                   <input
                     type="text"
                     defaultValue={cajonT ?? ""}
@@ -457,12 +603,21 @@ export default function ColumnForm() {
           </div>
         </section>
 
-        <button
-          type="submit"
-          className="self-center bg-primary text-white font-semibold px-8 py-3 rounded-lg hover:bg-primary-hover transition-colors"
-        >
-          Calcular
-        </button>
+        <div className="self-center flex gap-3">
+          <button
+            type="submit"
+            className="bg-primary text-white font-semibold px-8 py-3 rounded-lg hover:bg-primary-hover transition-colors"
+          >
+            Calcular
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            className="bg-surface-alt border border-border text-text-muted font-semibold px-6 py-3 rounded-lg hover:bg-surface transition-colors"
+          >
+            Guardar
+          </button>
+        </div>
       </form>
     </MainLayout>
   );
