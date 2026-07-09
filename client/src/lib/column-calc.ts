@@ -22,7 +22,6 @@ export interface LocalBucklingResult {
   flangeOk: boolean;
   webOk: boolean;
   isNonSlender: boolean;
-  Q: number;
   steps: string[];
 }
 
@@ -94,7 +93,6 @@ export function checkLocalBuckling(
   const flangeOk = flangeLambda <= flangeLambdaR;
   const webOk = webLambda <= webLambdaR;
   const isNonSlender = flangeOk && webOk;
-  const Q = isNonSlender ? 1.0 : 0; // Q < 1 requires effective area (not implemented yet)
 
   st.push(
     `Ala: λ = ${flangeDesc} = ${flangeLambda.toFixed(1)} ≤ λ_r = ${flangeLambdaR.toFixed(1)} ${flangeOk ? "✓ no esbelta" : "✗ ESBELTA"}`,
@@ -102,9 +100,7 @@ export function checkLocalBuckling(
   st.push(
     `Alma: λ = ${webDesc} = ${webLambda.toFixed(1)} ≤ λ_r = ${webLambdaR.toFixed(1)} ${webOk ? "✓ no esbelta" : "✗ ESBELTA"}`,
   );
-  st.push(
-    `Sección ${isNonSlender ? "NO ESBELTA" : "ESBELTA"} → Q = ${Q.toFixed(2)}`,
-  );
+  st.push(`Sección ${isNonSlender ? "NO ESBELTA" : "ESBELTA"}`);
   st.push("");
 
   return {
@@ -115,9 +111,113 @@ export function checkLocalBuckling(
     flangeOk,
     webOk,
     isNonSlender,
-    Q,
     steps: st,
   };
+}
+
+/**
+ * Calcula factor Q = Qs·Qa para secciones esbeltas según CIRSOC 301-05 E.7.
+ * Qs: reducción por elementos no rigidizados (alas).
+ * Qa: reducción por elementos rigidizados (almas, paredes de tubos).
+ */
+export function computeSlenderQ(
+  lb: LocalBucklingResult,
+  params: LocalBucklingParams,
+  Fy: number,
+  Ag_mm2: number,
+): { Q: number; Qs: number; Qa: number; steps: string[] } {
+  if (lb.isNonSlender) {
+    return {
+      Q: 1.0,
+      Qs: 1.0,
+      Qa: 1.0,
+      steps: ["Q = 1.0 (sección no esbelta)", ""],
+    };
+  }
+
+  const lambdaR0 = Math.sqrt(E / Fy);
+  const st: string[] = [];
+  st.push("--- Factor Q por esbeltez local (CIRSOC E.7) ---");
+
+  const { section, bf, tf, h, tw } = params;
+
+  // ---- Qs: unstiffened elements (flanges) ----
+  let Qs = 1.0;
+  if (!lb.flangeOk && (section === "I" || section === "I_BUILTUP")) {
+    const lambda = bf / (2 * tf);
+    const lambdaR = 1.03 * lambdaR0;
+    if (lambda <= lambdaR) {
+      Qs = 1.415 - (0.65 * lambda) / lambdaR0;
+      st.push(
+        `Q_s ala: λ=${lambda.toFixed(1)} ≤ 1.03√(E/F_y)=${lambdaR.toFixed(1)} → Q_s=1.415−0.65·λ/√(E/F_y)=${Qs.toFixed(3)}`,
+      );
+    } else {
+      Qs = (0.69 * E) / (Fy * lambda * lambda);
+      st.push(
+        `Q_s ala: λ=${lambda.toFixed(1)} > 1.03√(E/F_y) → Q_s=0.69·E/(F_y·λ²)=${Qs.toFixed(3)}`,
+      );
+    }
+    Qs = Math.min(1.0, Qs);
+  } else if (!lb.flangeOk && section === "C") {
+    const lambda = bf / tf;
+    const lambdaR = 0.91 * lambdaR0;
+    if (lambda <= lambdaR) {
+      Qs = 1.34 - (0.76 * lambda) / lambdaR0;
+    } else {
+      Qs = (0.53 * E) / (Fy * lambda * lambda);
+    }
+    Qs = Math.min(1.0, Qs);
+    st.push(`Q_s ala (UPN): λ=${lambda.toFixed(1)}, Q_s=${Qs.toFixed(3)}`);
+  }
+  // HSS/CAJON: no unstiffened elements → Qs stays 1.0
+
+  // ---- Qa: stiffened elements (webs / HSS walls) ----
+  let Qa = 1.0;
+  let Ae = Ag_mm2;
+  if (!lb.webOk) {
+    if (section === "I" || section === "I_BUILTUP" || section === "C") {
+      const hw = h - 2 * tf;
+      const lambda = hw / tw;
+      const be =
+        1.92 * tw * lambdaR0 * (1 - (0.34 / lambda) * lambdaR0);
+      const beEff = Math.min(Math.max(be, 0), hw);
+      const areaLoss = (hw - beEff) * tw;
+      Ae = Ag_mm2 - areaLoss;
+      st.push(
+        `Q_a alma: h_w/t_w=${lambda.toFixed(1)}, b_e=1.92·t_w√(E/f)·[1−0.34/λ·√(E/f)]=${beEff.toFixed(0)} mm`,
+      );
+    } else {
+      // HSS/CAJON: check both sides
+      const lambdaH = h / tw;
+      const lambdaB = bf / tf;
+      const lambdaSlender = Math.max(lambdaH, lambdaB);
+      const bSlender = lambdaSlender === lambdaH ? h : bf;
+      const tSlender = lambdaSlender === lambdaH ? tw : tf;
+      const be =
+        1.92 *
+        tSlender *
+        lambdaR0 *
+        (1 - (0.34 / lambdaSlender) * lambdaR0);
+      const beEff = Math.min(Math.max(be, 0), bSlender);
+      // HSS: simplify — reduce both sides proportionally if one is slender
+      const aLoss =
+        (bSlender - beEff) * tSlender * (section === "CAJON" ? 1 : 2);
+      Ae = Math.max(Ag_mm2 - aLoss, Ag_mm2 * 0.6);
+      st.push(
+        `Q_a pared: λ=${lambdaSlender.toFixed(1)}, b_e=${beEff.toFixed(0)} mm`,
+      );
+    }
+    Qa = Ae / Ag_mm2;
+    st.push(
+      `A_e = ${(Ae / 100).toFixed(1)} cm² (A_g = ${(Ag_mm2 / 100).toFixed(1)} cm²) → Q_a = ${Qa.toFixed(3)}`,
+    );
+  }
+
+  const Q = +(Qs * Qa).toFixed(3);
+  st.push(`Q = Q_s·Q_a = ${Qs.toFixed(3)}·${Qa.toFixed(3)} = ${Q.toFixed(3)}`);
+  st.push("");
+
+  return { Q, Qs, Qa, steps: st };
 }
 
 export interface ColumnInput {
@@ -279,14 +379,49 @@ export function designColumn(
   const lambdaCx = (KLrx / Math.PI) * Math.sqrt(Fy / E);
   const lambdaCy = (KLry / Math.PI) * Math.sqrt(Fy / E);
 
+  // Steps accumulator (declared early for local buckling output)
+  const st: string[] = [];
+  st.push(`Perfil: ${profileName}, F_y = ${Fy} MPa`);
+  st.push(`L = ${L} mm, K_x = ${Kx}, K_y = ${Ky}`);
+  st.push("");
+
+  // Local buckling check and Q factor
+  let Q = 1.0;
+  if (localBuckling) {
+    const lb = checkLocalBuckling(localBuckling, Fy);
+    st.push(...lb.steps);
+    if (!lb.isNonSlender) {
+      const qResult = computeSlenderQ(lb, localBuckling, Fy, Ag_mm2);
+      Q = qResult.Q;
+      st.push(...qResult.steps);
+    } else {
+      st.push("Q = 1.0 (sección no esbelta)", "");
+    }
+  }
+
   function computeFcr(lambdaC: number): { Fcr: number; mode: string } {
-    if (lambdaC <= 1.5) {
+    if (Q >= 1.0) {
+      // Non-slender: standard column curve
+      if (lambdaC <= 1.5) {
+        return {
+          Fcr: Math.pow(0.658, lambdaC * lambdaC) * Fy,
+          mode: "inelástico",
+        };
+      }
+      return { Fcr: (0.877 / (lambdaC * lambdaC)) * Fy, mode: "elástico" };
+    }
+    // Slender: modified column curve per CIRSOC E.7
+    const lambdaCe = lambdaC * Math.sqrt(Q);
+    if (lambdaCe <= 1.5) {
       return {
-        Fcr: Math.pow(0.658, lambdaC * lambdaC) * Fy,
-        mode: "inelástico",
+        Fcr: Q * Math.pow(0.658, Q * lambdaC * lambdaC) * Fy,
+        mode: `inelástico (Q=${Q.toFixed(3)})`,
       };
     }
-    return { Fcr: (0.877 / (lambdaC * lambdaC)) * Fy, mode: "elástico" };
+    return {
+      Fcr: (0.877 / (lambdaC * lambdaC)) * Fy,
+      mode: `elástico (Q=${Q.toFixed(3)})`,
+    };
   }
 
   const x = computeFcr(lambdaCx);
@@ -323,22 +458,6 @@ export function designColumn(
   }
 
   const passes = ratio <= 1.0;
-
-  // Steps
-  const st: string[] = [];
-  st.push(`Perfil: ${profileName}, F_y = ${Fy} MPa`);
-  st.push(`L = ${L} mm, K_x = ${Kx}, K_y = ${Ky}`);
-  st.push("");
-
-  // Local buckling check (if geometry provided)
-  if (localBuckling) {
-    const lb = checkLocalBuckling(localBuckling, Fy);
-    st.push(...lb.steps);
-    if (!lb.isNonSlender) {
-      st.push("⚠ ADVERTENCIA: Sección esbelta — Q < 1. Se requiere área efectiva (no implementado).");
-      st.push("");
-    }
-  }
 
   st.push("--- Compresión (Capítulo E) ---");
   st.push(`A_g = ${Ag} cm² = ${Ag_mm2.toFixed(0)} mm²`);
