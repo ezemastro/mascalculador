@@ -22,19 +22,15 @@ function CompatCard({ data, supportMoment, supportDesign, onDelete }: {
 }) {
   const [diam, setDiam] = useState(10);
   const [sep, setSep] = useState(150);
-  const [adoptedSpanAs, setAdoptedSpanAs] = useState(0);
 
   const requiredAs = supportDesign?.AsReq ?? 0;
 
-  // Available from bent bars: 50% of adopted span As
-  // Default = average of both slabs' span AsReq in the relevant direction
+  // Available from bent bars: 50% of adopted span As from each slab
   const slabA = loadSlab(data.slabA.id);
   const slabB = loadSlab(data.slabB.id);
-  const spanAsA = slabA ? (data.edgeA <= 1 ? slabA.result.x.AsReq : slabA.result.y.AsReq) : 0;
-  const spanAsB = slabB ? (data.edgeB <= 1 ? slabB.result.x.AsReq : slabB.result.y.AsReq) : 0;
-  const defaultSpanAs = Math.round((spanAsA + spanAsB) / 2);
-  const effectiveAdoptedAs = adoptedSpanAs > 0 ? adoptedSpanAs : defaultSpanAs;
-  const availableFromSpan = effectiveAdoptedAs / 2;
+  const adoptedA = slabA ? (data.edgeA <= 1 ? (slabA.result.adoptedAsX ?? 0) : (slabA.result.adoptedAsY ?? 0)) : 0;
+  const adoptedB = slabB ? (data.edgeB <= 1 ? (slabB.result.adoptedAsX ?? 0) : (slabB.result.adoptedAsY ?? 0)) : 0;
+  const availableFromSpan = (adoptedA + adoptedB) / 4; // 50% of avg adopted from both slabs
   const additionalNeeded = Math.max(0, requiredAs - availableFromSpan);
 
   const barArea = BAR_AREA[diam] || 0;
@@ -96,17 +92,8 @@ function CompatCard({ data, supportMoment, supportDesign, onDelete }: {
           </div>
           <div>
             <span className="text-text-muted">As disponible (barras dobladas)</span>
-            <div className="flex items-center gap-1 mt-0.5">
-              <input
-                type="text"
-                value={adoptedSpanAs || ""}
-                placeholder={String(defaultSpanAs)}
-                onChange={(e) => setAdoptedSpanAs(Number(e.target.value) || 0)}
-                className="w-16 text-xs bg-surface border border-border rounded px-1.5 py-0.5 text-text"
-              />
-              <span className="text-text-muted/60">mm²/m</span>
-            </div>
             <p className="font-bold text-text">{Math.round(availableFromSpan)} mm²/m</p>
+            <span className="text-text-muted/60">= 50% × avg({adoptedA}, {adoptedB})</span>
           </div>
           <div>
             <span className="text-text-muted">As adicional</span>
@@ -161,7 +148,6 @@ export default function CompatList() {
   // Individual support designer state
   const [selectedSlabId, setSelectedSlabId] = useState("");
   const [selectedEdge, setSelectedEdge] = useState<EdgeIndex>(0);
-  const [adoptedSpanAs, setAdoptedSpanAs] = useState(0); // adopted span reinforcement (user input)
   const [supDiam, setSupDiam] = useState(10);
   const [supSep, setSupSep] = useState(150);
 
@@ -183,12 +169,12 @@ export default function CompatList() {
   const spanAsReq = slab
     ? (supportEdge <= 1 ? slab.result.x.AsReq : slab.result.y.AsReq)
     : 0;
+  const adoptedSpanAs = slab
+    ? (supportEdge <= 1 ? (slab.result.adoptedAsX ?? 0) : (slab.result.adoptedAsY ?? 0))
+    : 0;
 
-  // Default adopted span As = user input, fallback to span AsReq
-  const effectiveAdoptedAs = adoptedSpanAs > 0 ? adoptedSpanAs : spanAsReq;
-
-  // Available from bent bars = 50% of adopted span As
-  const availableFromSpan = effectiveAdoptedAs / 2;
+  // Available from bent bars = 50% of adopted span As (from saved slab)
+  const availableFromSpan = adoptedSpanAs / 2;
 
   // Required support As from Mneg
   const supportDesign = slab && mneg !== 0
@@ -244,7 +230,7 @@ export default function CompatList() {
                 <span className="text-xs text-text-muted">Losa</span>
                 <select
                   value={selectedSlabId}
-                  onChange={(e) => { setSelectedSlabId(e.target.value); setSelectedEdge(0); setAdoptedSpanAs(0); }}
+                  onChange={(e) => { setSelectedSlabId(e.target.value); setSelectedEdge(0); }}
                 >
                   <option value="">— Seleccionar —</option>
                   {savedSlabs.map((s) => (
@@ -256,7 +242,7 @@ export default function CompatList() {
                 <span className="text-xs text-text-muted">Borde continuo</span>
                 <select
                   value={supportEdge}
-                  onChange={(e) => { setSelectedEdge(Number(e.target.value) as EdgeIndex); setAdoptedSpanAs(0); }}
+                  onChange={(e) => { setSelectedEdge(Number(e.target.value) as EdgeIndex); }}
                   disabled={continuousEdges.length === 0}
                 >
                   {continuousEdges.length === 0 ? (
@@ -294,19 +280,10 @@ export default function CompatList() {
                   </div>
                   <div className="bg-surface-alt rounded-lg p-3">
                     <span className="text-text-muted">As disponible (barras dobladas)</span>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-text-muted/60">Adoptado tramo:</span>
-                      <input
-                        type="text"
-                        defaultValue={spanAsReq}
-                        placeholder={String(spanAsReq)}
-                        onChange={(e) => setAdoptedSpanAs(Number(e.target.value) || 0)}
-                        className="w-20 text-xs bg-surface border border-border rounded px-2 py-1 text-text"
-                      />
-                      <span className="text-text-muted/60">mm²/m</span>
-                    </div>
                     <p className="text-lg font-bold text-text mt-1">{Math.round(availableFromSpan)} mm²/m</p>
-                    <p className="text-text-muted/60">= 50% × adoptado</p>
+                    <p className="text-text-muted/60">
+                      = 50% × {adoptedSpanAs} mm²/m (adoptado)
+                    </p>
                   </div>
                   <div className="bg-surface-alt rounded-lg p-3">
                     <span className="text-text-muted">As adicional necesario</span>

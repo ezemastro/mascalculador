@@ -60,6 +60,10 @@ export interface SlabResult {
   MnegArr: number;
   /** Support negative moment at edge[3] (Abajo) in kN·m/m — 0 if not continuous. */
   MnegAba: number;
+  /** Adopted span reinforcement in X direction (user-selected), mm²/m — 0 if not adopted. */
+  adoptedAsX?: number;
+  /** Adopted span reinforcement in Y direction (user-selected), mm²/m — 0 if not adopted. */
+  adoptedAsY?: number;
   steps: string[];
 }
 

@@ -25,13 +25,19 @@ function DirSection({
   label,
   dir,
   dist,
+  diam,
+  setDiam,
+  sep,
+  setSep,
 }: {
   label: string;
   dir: DirectionResult;
   dist: DirectionResult;
+  diam: number;
+  setDiam: (d: number) => void;
+  sep: number;
+  setSep: (s: number) => void;
 }) {
-  const [diam, setDiam] = useState(10);
-  const [sep, setSep] = useState(150);
   const areaBar = BAR_AREA[diam] || 0;
   const asProvided = sep > 0 ? (areaBar * 1000) / sep : 0;
 
@@ -140,6 +146,14 @@ export default function SlabResults() {
     dBarY,
   });
 
+  // Adopted reinforcement state (persisted when saving)
+  const [diamX, setDiamX] = useState(10);
+  const [sepX, setSepX] = useState(150);
+  const [diamY, setDiamY] = useState(10);
+  const [sepY, setSepY] = useState(150);
+  const adoptedAsX = sepX > 0 ? Math.round((BAR_AREA[diamX] || 0) * 1000 / sepX) : 0;
+  const adoptedAsY = sepY > 0 ? Math.round((BAR_AREA[diamY] || 0) * 1000 / sepY) : 0;
+
   return (
     <MainLayout>
       <header className="flex items-center justify-between">
@@ -160,14 +174,14 @@ export default function SlabResults() {
               const slabInput = { lx, ly, edges: [edgeX0, edgeXL, edgeY0, edgeYL], D, L, fc, fy, cover, h, dBarX, dBarY };
 
               if (loadedSaveId) {
-                updateSlab(loadedSaveId, slabInput, result);
+                updateSlab(loadedSaveId, slabInput, { ...result, adoptedAsX, adoptedAsY });
                 return;
               }
 
               const name = prompt("Nombre para guardar esta losa:");
               if (!name) return;
               try {
-                saveSlab(name, slabInput, result);
+                saveSlab(name, slabInput, { ...result, adoptedAsX, adoptedAsY });
               } catch (err: unknown) {
                 alert(err instanceof Error ? err.message : "Error al guardar");
               }
@@ -251,8 +265,8 @@ export default function SlabResults() {
         </div>
       )}
 
-      <DirSection label="Dirección X" dir={result.x} dist={result.distX} />
-      <DirSection label="Dirección Y" dir={result.y} dist={result.distY} />
+      <DirSection label="Dirección X" dir={result.x} dist={result.distX} diam={diamX} setDiam={setDiamX} sep={sepX} setSep={setSepX} />
+      <DirSection label="Dirección Y" dir={result.y} dist={result.distY} diam={diamY} setDiam={setDiamY} sep={sepY} setSep={setSepY} />
 
       <details className="bg-surface rounded-xl border border-border p-5">
         <summary className="cursor-pointer text-sm font-semibold text-text-muted uppercase tracking-wider">
