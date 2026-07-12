@@ -70,7 +70,7 @@ export default function SlabCompat() {
                 <span className="text-xs text-text-muted">Losa A</span>
                 <select value={selectedA} onChange={(e) => { setSelectedA(e.target.value); setResult(null); }}>
                   <option value="">— Seleccionar —</option>
-                  {savedSlabs.filter(s => s.id !== selectedB).map(s => (
+                  {savedSlabs.map(s => (
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>
@@ -79,13 +79,19 @@ export default function SlabCompat() {
                 <span className="text-xs text-text-muted">Losa B</span>
                 <select value={selectedB} onChange={(e) => { setSelectedB(e.target.value); setResult(null); }}>
                   <option value="">— Seleccionar —</option>
-                  {savedSlabs.filter(s => s.id !== selectedA).map(s => (
+                  {savedSlabs.map(s => (
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>
               </label>
             </div>
           </section>
+
+          {selectedA && selectedB && selectedA !== selectedB && !detection && (
+            <section className="bg-surface rounded-xl border border-border p-5">
+              <p className="text-sm text-warning">No se detectó un borde continuo compartido entre estas losas. Verificá que ambas tengan bordes enfrentados con condición "continuo".</p>
+            </section>
+          )}
 
           {detection && (
             <section className="bg-surface rounded-xl border border-border p-5">
