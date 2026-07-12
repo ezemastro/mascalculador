@@ -194,7 +194,7 @@ export default function SlabCompat() {
               </div>
               <button
                 onClick={handleSaveCompat}
-                className="mt-3 text-sm bg-accent/10 text-accent border border-accent/20 font-semibold px-4 py-2 rounded-lg hover:bg-accent/20 transition-colors"
+                className="mt-3 text-sm bg-primary text-white font-semibold px-4 py-2 rounded-lg hover:bg-primary-hover transition-colors"
               >
                 Guardar compatibilización
               </button>
