@@ -52,6 +52,14 @@ export interface SlabResult {
   RyArr: number;
   /** Per-edge reaction at edge[3] (Abajo) in kN/m. */
   RyAba: number;
+  /** Support negative moment at edge[0] (Izquierdo) in kN·m/m — 0 if not continuous. */
+  MnegIzq: number;
+  /** Support negative moment at edge[1] (Derecho) in kN·m/m — 0 if not continuous. */
+  MnegDer: number;
+  /** Support negative moment at edge[2] (Arriba) in kN·m/m — 0 if not continuous. */
+  MnegArr: number;
+  /** Support negative moment at edge[3] (Abajo) in kN·m/m — 0 if not continuous. */
+  MnegAba: number;
   steps: string[];
 }
 
@@ -2106,6 +2114,10 @@ export function designSlab(input: SlabInput): SlabResult {
     RxDer = 0,
     RyArr = 0,
     RyAba = 0;
+  let MnegIzq = 0,
+    MnegDer = 0,
+    MnegArr = 0,
+    MnegAba = 0;
 
   if (!isCrossed) {
     // ---- Unidirectional: beam-strip coefficients ----
@@ -2475,7 +2487,13 @@ export function designSlab(input: SlabInput): SlabResult {
     st.push(`   Y: ${distY.AsReq} mm²/m (s ≤ ${distY.sMax} mm)`);
   }
 
-  return { d, h, qu, x: dirX, y: dirY, distX, distY, Rx, Ry, RxIzq, RxDer, RyArr, RyAba, steps: st };
+  // Per-edge support moments (only non-zero for continuous edges)
+  MnegIzq = isX0Fixed ? MnegX : 0;
+  MnegDer = isXLFixed ? MnegX : 0;
+  MnegArr = isY0Fixed ? MnegY : 0;
+  MnegAba = isYLFixed ? MnegY : 0;
+
+  return { d, h, qu, x: dirX, y: dirY, distX, distY, Rx, Ry, RxIzq, RxDer, RyArr, RyAba, MnegIzq, MnegDer, MnegArr, MnegAba, steps: st };
 }
 
 // ---- Slab Compatibilization ----
