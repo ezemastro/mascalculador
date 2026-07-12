@@ -22,10 +22,25 @@ function CompatCard({ data, supportMoment, supportDesign, onDelete }: {
 }) {
   const [diam, setDiam] = useState(10);
   const [sep, setSep] = useState(150);
+  const [adoptedSpanAs, setAdoptedSpanAs] = useState(0);
+
   const requiredAs = supportDesign?.AsReq ?? 0;
+
+  // Available from bent bars: 50% of adopted span As
+  // Default = average of both slabs' span AsReq in the relevant direction
+  const slabA = loadSlab(data.slabA.id);
+  const slabB = loadSlab(data.slabB.id);
+  const spanAsA = slabA ? (data.edgeA <= 1 ? slabA.result.x.AsReq : slabA.result.y.AsReq) : 0;
+  const spanAsB = slabB ? (data.edgeB <= 1 ? slabB.result.x.AsReq : slabB.result.y.AsReq) : 0;
+  const defaultSpanAs = Math.round((spanAsA + spanAsB) / 2);
+  const effectiveAdoptedAs = adoptedSpanAs > 0 ? adoptedSpanAs : defaultSpanAs;
+  const availableFromSpan = effectiveAdoptedAs / 2;
+  const additionalNeeded = Math.max(0, requiredAs - availableFromSpan);
+
   const barArea = BAR_AREA[diam] || 0;
   const providedAs = sep > 0 ? Math.round((barArea * 1000) / sep) : 0;
-  const ok = providedAs >= requiredAs;
+  const totalAs = availableFromSpan + providedAs;
+  const ok = totalAs >= requiredAs;
 
   return (
     <div className="bg-surface-alt rounded-lg p-4">
@@ -72,13 +87,34 @@ function CompatCard({ data, supportMoment, supportDesign, onDelete }: {
         )}
       </div>
 
-      {/* Support reinforcement designer for this compat */}
+      {/* Support reinforcement designer */}
       <div className="mt-3 pt-3 border-t border-border">
-        <p className="text-xs text-text-muted mb-2">
-          Momento de apoyo final: <strong className="text-text">{supportMoment.toFixed(2)} kN·m/m</strong>
-          {" → "}A<sub>s</sub> necesaria: <strong className="text-primary">{requiredAs} mm²/m</strong>
-          {supportDesign && <span className="text-text-muted/60"> (s<sub>máx</sub> = {supportDesign.sMax} mm)</span>}
-        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs mb-3">
+          <div>
+            <span className="text-text-muted">As apoyo necesario</span>
+            <p className="font-bold text-primary">{requiredAs} mm²/m</p>
+          </div>
+          <div>
+            <span className="text-text-muted">As disponible (barras dobladas)</span>
+            <div className="flex items-center gap-1 mt-0.5">
+              <input
+                type="text"
+                value={adoptedSpanAs || ""}
+                placeholder={String(defaultSpanAs)}
+                onChange={(e) => setAdoptedSpanAs(Number(e.target.value) || 0)}
+                className="w-16 text-xs bg-surface border border-border rounded px-1.5 py-0.5 text-text"
+              />
+              <span className="text-text-muted/60">mm²/m</span>
+            </div>
+            <p className="font-bold text-text">{Math.round(availableFromSpan)} mm²/m</p>
+          </div>
+          <div>
+            <span className="text-text-muted">As adicional</span>
+            <p className="font-bold text-warning">{additionalNeeded} mm²/m</p>
+            <span className="text-text-muted/60">= máx(0, nec − 50%·adopt)</span>
+          </div>
+        </div>
+
         <div className="flex gap-3 items-end">
           <label className="flex flex-col gap-1">
             <span className="text-xs text-text-muted">Ø (mm)</span>
@@ -101,10 +137,17 @@ function CompatCard({ data, supportMoment, supportDesign, onDelete }: {
             <span className="text-xs text-text-muted">Provisto</span>
             <p className="text-sm font-bold text-text">{providedAs} mm²/m</p>
           </div>
-          <span className={`text-sm font-semibold ${ok ? "text-success" : "text-warning"}`}>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-text-muted">Total</span>
+            <p className="text-sm font-bold text-primary">{totalAs} mm²/m</p>
+          </div>
+          <span className={`text-sm font-semibold pb-1 ${ok ? "text-success" : "text-warning"}`}>
             {ok ? "✓" : "✗"}
           </span>
         </div>
+        {additionalNeeded === 0 && (
+          <p className="text-xs text-success mt-1">Cubierto con barras dobladas, no requiere adicionales.</p>
+        )}
       </div>
     </div>
   );
