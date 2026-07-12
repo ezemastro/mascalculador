@@ -222,6 +222,51 @@ export default function SlabResults() {
         </div>
       </div>
 
+      {(edgeX0 === "continuo" || edgeXL === "continuo" || edgeY0 === "continuo" || edgeYL === "continuo") && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {edgeX0 === "continuo" && (
+            <div className="bg-surface rounded-xl border border-border p-3">
+              <span className="text-xs text-text-muted">
+                M<sub>neg</sub> Izquierdo
+              </span>
+              <p className="text-sm font-bold text-accent">
+                {result.MnegIzq !== undefined ? result.MnegIzq.toFixed(2) : "—"} kN·m/m
+              </p>
+            </div>
+          )}
+          {edgeXL === "continuo" && (
+            <div className="bg-surface rounded-xl border border-border p-3">
+              <span className="text-xs text-text-muted">
+                M<sub>neg</sub> Derecho
+              </span>
+              <p className="text-sm font-bold text-accent">
+                {result.MnegDer !== undefined ? result.MnegDer.toFixed(2) : "—"} kN·m/m
+              </p>
+            </div>
+          )}
+          {edgeY0 === "continuo" && (
+            <div className="bg-surface rounded-xl border border-border p-3">
+              <span className="text-xs text-text-muted">
+                M<sub>neg</sub> Arriba
+              </span>
+              <p className="text-sm font-bold text-accent">
+                {result.MnegArr !== undefined ? result.MnegArr.toFixed(2) : "—"} kN·m/m
+              </p>
+            </div>
+          )}
+          {edgeYL === "continuo" && (
+            <div className="bg-surface rounded-xl border border-border p-3">
+              <span className="text-xs text-text-muted">
+                M<sub>neg</sub> Abajo
+              </span>
+              <p className="text-sm font-bold text-accent">
+                {result.MnegAba !== undefined ? result.MnegAba.toFixed(2) : "—"} kN·m/m
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
       <DirSection label="Dirección X" dir={result.x} dist={result.distX} />
       <DirSection label="Dirección Y" dir={result.y} dist={result.distY} />
 
