@@ -2592,28 +2592,28 @@ export function compatibilizeSlabs(
     };
   }
 
-  // Not compatible — recalculate the weaker slab
-  const weakerIsA = MnegA <= MnegB;
-  const weakerInput = { ...weakerIsA ? slabA.input : slabB.input };
-  const weakerEdge = weakerIsA ? edgeA : edgeB;
+  // Not compatible — recalculate the slab with HIGHER Mneg (overestimated fixity)
+  const recalcIsA = MnegA >= MnegB;
+  const recalcInput = { ...recalcIsA ? slabA.input : slabB.input };
+  const recalcEdge = recalcIsA ? edgeA : edgeB;
 
-  // Change the shared edge from empotrado/continuo to "simple"
-  const newEdges = [...weakerInput.edges] as [EdgeCondition, EdgeCondition, EdgeCondition, EdgeCondition];
-  if (newEdges[weakerEdge] === "continuo") {
-    newEdges[weakerEdge] = "simple";
+  // Change the shared edge from "continuo" to "simple"
+  const newEdges = [...recalcInput.edges] as [EdgeCondition, EdgeCondition, EdgeCondition, EdgeCondition];
+  if (newEdges[recalcEdge] === "continuo") {
+    newEdges[recalcEdge] = "simple";
   }
-  weakerInput.edges = newEdges;
+  recalcInput.edges = newEdges;
 
   // Recalculate
-  const recalculated = designSlab(weakerInput);
+  const recalculated = designSlab(recalcInput);
 
   return {
     compatOK: false,
     ratio,
     MnegA,
     MnegB,
-    recalculatedSlab: weakerIsA ? "A" : "B",
+    recalculatedSlab: recalcIsA ? "A" : "B",
     recalculatedResult: recalculated,
-    message: `No compatibles (ratio = ${ratio.toFixed(2)} < 0.6). Losa ${weakerIsA ? "A" : "B"} recalculada con borde simple.`,
+    message: `No compatibles (ratio = ${ratio.toFixed(2)} < 0.6). Losa ${recalcIsA ? "A" : "B"} recalculada con borde simple.`,
   };
 }

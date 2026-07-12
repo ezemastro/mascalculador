@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router";
 import MainLayout from "../components/MainLayout";
-import { getSavedSlabs, loadSlab, type SavedSlabData } from "../lib/storage";
+import { getSavedSlabs, loadSlab, updateSlab, type SavedSlabData } from "../lib/storage";
 import { detectSharedEdge, compatibilizeSlabs, type EdgeIndex, type CompatResult } from "../lib/slab-calc";
 
 const EDGE_LABELS: Record<EdgeIndex, string> = {
@@ -40,6 +40,19 @@ export default function SlabCompat() {
     if (!slabA || !slabB) return;
     const r = compatibilizeSlabs(slabA, slabB, edgeA, edgeB);
     setResult(r);
+  }
+
+  function handleSaveRecalculated() {
+    if (!result?.recalculatedResult || !result.recalculatedSlab) return;
+    const slabId = result.recalculatedSlab === "A" ? selectedA : selectedB;
+    const slab = result.recalculatedSlab === "A" ? slabA : slabB;
+    if (!slabId || !slab) return;
+    // Update edges: change the shared edge to "simple"
+    const newEdges = [...slab.input.edges] as [typeof slab.input.edges[0], typeof slab.input.edges[1], typeof slab.input.edges[2], typeof slab.input.edges[3]];
+    const sharedEdge = result.recalculatedSlab === "A" ? edgeA : edgeB;
+    newEdges[sharedEdge] = "simple";
+    updateSlab(slabId, { ...slab.input, edges: newEdges }, result.recalculatedResult);
+    alert(`Losa ${result.recalculatedSlab} guardada con borde articulado.`);
   }
 
   const canCompat = selectedA && selectedB && selectedA !== selectedB && !!detection;
@@ -137,12 +150,20 @@ export default function SlabCompat() {
                   <p>Ratio = {result.ratio.toFixed(2)}</p>
                   {result.Mcompat && <p className="font-bold text-text">M_compat = {result.Mcompat.toFixed(2)} kN·m/m</p>}
                   {result.recalculatedResult && (
-                    <details className="mt-2">
-                      <summary className="cursor-pointer text-text">Ver losa recalculada</summary>
-                      <pre className="mt-2 p-2 bg-surface-alt rounded text-xs whitespace-pre-wrap">
-                        {result.recalculatedResult.steps.join("\n")}
-                      </pre>
-                    </details>
+                    <>
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-text">Ver losa recalculada</summary>
+                        <pre className="mt-2 p-2 bg-surface-alt rounded text-xs whitespace-pre-wrap">
+                          {result.recalculatedResult.steps.join("\n")}
+                        </pre>
+                      </details>
+                      <button
+                        onClick={handleSaveRecalculated}
+                        className="mt-3 text-sm bg-primary text-white font-semibold px-4 py-2 rounded-lg hover:bg-primary-hover transition-colors"
+                      >
+                        Guardar losa {result.recalculatedSlab} corregida
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
