@@ -2281,18 +2281,24 @@ export function designSlab(input: SlabInput): SlabResult {
     const qArea = qu * lShort * lShort;
     if (hasOneFixedX) {
       const cf = interpolateKalmanok1Fixed(r);
-      RxIzq = RxDer = cf.CRx * qu * lShort;
-      RyArr = cf.CRy * qu * lShort;
-      RyAba = cf.CRey * qu * lShort;
-      Rx = RxIzq;
-      Ry = (RyArr + RyAba) / 2;
-    } else if (hasOneFixedY) {
-      const cf = interpolateKalmanok1FixedY(r);
-      RxIzq = cf.CRey * qu * lShort;
-      RxDer = cf.CRx * qu * lShort;
+      // CRey = continuous edge reaction (the fixed X edge), CRx = articulated X edge
+      // X direction: asymmetric (one fixed, one simple) → use CRey for fixed edge
+      // Y direction: symmetric (both simple) → use CRy for both
+      RxIzq = isX0Fixed ? cf.CRey * qu * lShort : cf.CRx * qu * lShort;
+      RxDer = isXLFixed ? cf.CRey * qu * lShort : cf.CRx * qu * lShort;
       RyArr = RyAba = cf.CRy * qu * lShort;
       Rx = (RxIzq + RxDer) / 2;
       Ry = RyArr;
+    } else if (hasOneFixedY) {
+      const cf = interpolateKalmanok1FixedY(r);
+      // CRey = continuous edge reaction (the fixed Y edge), CRy = articulated Y edge
+      // X direction: symmetric (both simple) → use CRx for both
+      // Y direction: asymmetric (one fixed, one simple) → use CRey for fixed edge
+      RxIzq = RxDer = cf.CRx * qu * lShort;
+      RyArr = isY0Fixed ? cf.CRey * qu * lShort : cf.CRy * qu * lShort;
+      RyAba = isYLFixed ? cf.CRey * qu * lShort : cf.CRy * qu * lShort;
+      Rx = RxIzq;
+      Ry = (RyArr + RyAba) / 2;
     } else if (hasTwoFixedX) {
       const cf = interpolateKalmanok2FixedX(r);
       RxIzq = RxDer = (cf.CRex * qArea) / lx;
