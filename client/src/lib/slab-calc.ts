@@ -40,8 +40,18 @@ export interface SlabResult {
   y: DirectionResult;
   distX: DirectionResult;
   distY: DirectionResult;
-  Rx: number; // kN/m (reaction at X edges)
-  Ry: number; // kN/m (reaction at Y edges)
+  /** Aggregate X-direction reaction in kN/m (backward compat). */
+  Rx: number;
+  /** Aggregate Y-direction reaction in kN/m (backward compat). */
+  Ry: number;
+  /** Per-edge reaction at edge[0] (Izquierdo) in kN/m. */
+  RxIzq: number;
+  /** Per-edge reaction at edge[1] (Derecho) in kN/m. */
+  RxDer: number;
+  /** Per-edge reaction at edge[2] (Arriba) in kN/m. */
+  RyArr: number;
+  /** Per-edge reaction at edge[3] (Abajo) in kN/m. */
+  RyAba: number;
   steps: string[];
 }
 
@@ -2092,6 +2102,10 @@ export function designSlab(input: SlabInput): SlabResult {
     MnegY = 0;
   let Rx = 0,
     Ry = 0;
+  let RxIzq = 0,
+    RxDer = 0,
+    RyArr = 0,
+    RyAba = 0;
 
   if (!isCrossed) {
     // ---- Unidirectional: beam-strip coefficients ----
@@ -2113,15 +2127,23 @@ export function designSlab(input: SlabInput): SlabResult {
     const ySupported = [edges[2], edges[3]].filter((e) => e !== "free").length;
     if (xSupported >= 2) {
       Rx = (qu * lx) / 2;
+      RxIzq = RxDer = Rx;
+      RyArr = RyAba = 0;
     } else if (ySupported >= 2) {
       Ry = (qu * ly) / 2;
+      RxIzq = RxDer = 0;
+      RyArr = RyAba = Ry;
     } else if (xSupported === 1) {
       Rx = (qu * lx) / 2;
+      RxIzq = RxDer = Rx;
+      RyArr = RyAba = 0;
     } else if (ySupported === 1) {
       Ry = (qu * ly) / 2;
+      RxIzq = RxDer = 0;
+      RyArr = RyAba = Ry;
     }
     st.push(
-      `Reacciones: R_x = ${Rx.toFixed(2)} kN/m, R_y = ${Ry.toFixed(2)} kN/m`,
+      `Reacciones: R_xIzq = ${RxIzq.toFixed(2)} kN/m, R_xDer = ${RxDer.toFixed(2)} kN/m, R_yArr = ${RyArr.toFixed(2)} kN/m, R_yAba = ${RyAba.toFixed(2)} kN/m`,
     );
     st.push("");
   } else {
@@ -2255,50 +2277,81 @@ export function designSlab(input: SlabInput): SlabResult {
       st.push(`   M_y,neg = ${MnegY.toFixed(2)} kN·m/m (en apoyo continuo Y)`);
     st.push("");
 
-    // Reactions: Rex = CRex * qu * l_short² / lx, Rey = CRey * qu * l_short² / ly
+    // Reactions: CRx-type uses Rex = C * qu * lShort, CRex-type uses Rex = C * qArea / edgeLength
     const qArea = qu * lShort * lShort;
     if (hasOneFixedX) {
       const cf = interpolateKalmanok1Fixed(r);
-      Rx = cf.CRx * qu * lShort;
-      Ry = cf.CRy > 0 ? cf.CRy * qu * lShort : (qArea * 0.4) / ly;
+      RxIzq = RxDer = cf.CRx * qu * lShort;
+      RyArr = cf.CRy * qu * lShort;
+      RyAba = cf.CRey * qu * lShort;
+      Rx = RxIzq;
+      Ry = (RyArr + RyAba) / 2;
     } else if (hasOneFixedY) {
       const cf = interpolateKalmanok1FixedY(r);
-      Ry = cf.CRy > 0 ? cf.CRy * qu * lShort : (qArea * 0.4) / ly;
-      Rx = cf.CRx > 0 ? cf.CRx * qu * lShort : (qArea * 0.4) / lx;
+      RxIzq = cf.CRey * qu * lShort;
+      RxDer = cf.CRx * qu * lShort;
+      RyArr = RyAba = cf.CRy * qu * lShort;
+      Rx = (RxIzq + RxDer) / 2;
+      Ry = RyArr;
     } else if (hasTwoFixedX) {
       const cf = interpolateKalmanok2FixedX(r);
-      Rx = cf.CRex > 0 ? (cf.CRex * qArea) / lx : (qArea * 0.5) / lx;
-      Ry = cf.CRy > 0 ? cf.CRy * qu * lShort : (qArea * 0.5) / ly;
+      RxIzq = RxDer = (cf.CRex * qArea) / lx;
+      RyArr = RyAba = cf.CRy * qu * lShort;
+      Rx = RxIzq;
+      Ry = RyArr;
     } else if (hasTwoFixedY) {
       const cf = interpolateKalmanok2FixedY(r);
-      Ry = cf.CRey > 0 ? (cf.CRey * qArea) / ly : (qArea * 0.5) / ly;
-      Rx = cf.CRx > 0 ? cf.CRx * qu * lShort : (qArea * 0.5) / lx;
+      RxIzq = RxDer = cf.CRx * qu * lShort;
+      RyArr = RyAba = (cf.CRey * qArea) / ly;
+      Rx = RxIzq;
+      Ry = RyArr;
     } else if (hasTwoAdj) {
       const cf = interpolateKalmanok2Adj(r);
-      Rx = cf.CRx > 0 ? cf.CRx * qu * lShort : (qArea * 0.4) / lx;
-      Ry = cf.CRy > 0 ? cf.CRy * qu * lShort : (qArea * 0.4) / ly;
+      // CRx2 → continuous X edge, CRx → simple X edge
+      // CRy0 → continuous Y edge, CRy → simple Y edge
+      // Remap based on which edges are "continuo"
+      const isX0Cont = edges[0] === "continuo";
+      const isXLCont = edges[1] === "continuo";
+      const isY0Cont = edges[2] === "continuo";
+      const isYLCont = edges[3] === "continuo";
+      RxIzq = isX0Cont ? cf.CRx2 * qu * lShort : cf.CRx * qu * lShort;
+      RxDer = isXLCont ? cf.CRx2 * qu * lShort : cf.CRx * qu * lShort;
+      RyArr = isY0Cont ? cf.CRy0 * qu * lShort : cf.CRy * qu * lShort;
+      RyAba = isYLCont ? cf.CRy0 * qu * lShort : cf.CRy * qu * lShort;
+      Rx = (RxIzq + RxDer) / 2;
+      Ry = (RyArr + RyAba) / 2;
     } else if (hasThreeFixed) {
       const isYsimple = !isY0Fixed || !isYLFixed;
-      const cf = isYsimple
-        ? interpolateKalmanok3FixedY(r)
-        : interpolateKalmanok3Fixed(r);
-      Rx = (cf as { CRex?: number }).CRex
-        ? ((cf as { CRex: number }).CRex * qArea) / lx
-        : (qArea * 0.4) / lx;
-      Ry = (cf as { CRey?: number }).CRey
-        ? ((cf as { CRey: number }).CRey * qArea) / ly
-        : (qArea * 0.4) / ly;
+      if (isYsimple) {
+        const cf = interpolateKalmanok3FixedY(r);
+        RxIzq = RxDer = (cf.CRex * qArea) / lx;
+        RyArr = isY0Fixed ? (cf.CRey * qArea) / ly : cf.CRy * qu * lShort;
+        RyAba = isYLFixed ? (cf.CRey * qArea) / ly : cf.CRy * qu * lShort;
+        Rx = RxIzq;
+        Ry = (RyArr + RyAba) / 2;
+      } else {
+        const cf = interpolateKalmanok3Fixed(r);
+        RxIzq = isX0Fixed ? (cf.CRex * qArea) / lx : cf.CRx * qu * lShort;
+        RxDer = isXLFixed ? (cf.CRex * qArea) / lx : cf.CRx * qu * lShort;
+        RyArr = RyAba = (cf.CRey * qArea) / ly;
+        Rx = (RxIzq + RxDer) / 2;
+        Ry = RyArr;
+      }
     } else if (hasFourFixed) {
       const cf = interpolateKalmanok4Fixed(r);
-      Rx = (cf.CRex * qArea) / lx;
-      Ry = (cf.CRey * qArea) / ly;
+      RxIzq = RxDer = (cf.CRex * qArea) / lx;
+      RyArr = RyAba = (cf.CRey * qArea) / ly;
+      Rx = RxIzq;
+      Ry = RyArr;
     } else {
       const cf = interpolateKalmanokSimple(r);
-      Rx = cf.CRx * qu * lShort;
-      Ry = cf.CRy * qu * lShort;
+      RxIzq = RxDer = cf.CRx * qu * lShort;
+      RyArr = RyAba = cf.CRy * qu * lShort;
+      Rx = RxIzq;
+      Ry = RyArr;
     }
     st.push(
-      `Reacciones: R_x = ${Rx.toFixed(2)} kN/m, R_y = ${Ry.toFixed(2)} kN/m`,
+      `Reacciones: R_xIzq = ${RxIzq.toFixed(2)} kN/m, R_xDer = ${RxDer.toFixed(2)} kN/m, R_yArr = ${RyArr.toFixed(2)} kN/m, R_yAba = ${RyAba.toFixed(2)} kN/m`,
     );
     st.push("");
   }
@@ -2416,7 +2469,7 @@ export function designSlab(input: SlabInput): SlabResult {
     st.push(`   Y: ${distY.AsReq} mm²/m (s ≤ ${distY.sMax} mm)`);
   }
 
-  return { d, h, qu, x: dirX, y: dirY, distX, distY, Rx, Ry, steps: st };
+  return { d, h, qu, x: dirX, y: dirY, distX, distY, Rx, Ry, RxIzq, RxDer, RyArr, RyAba, steps: st };
 }
 
 // ---- Slab Compatibilization ----
