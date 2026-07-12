@@ -43,11 +43,17 @@ interface BeamResultsDual {
 
 interface SteelDesignParams {
   profileName: string;
+  profileType?: "IPN" | "UPN"; // default "IPN" for backward compat
   Fy: number; // MPa
-  Lb: number; // mm
+  Lb: number; // mm (legacy, retained for backward compat)
+  Lb1?: number; // mm (defaults to totalLength × 1000)
+  Lb2?: number; // mm (defaults to totalLength × 1000)
   Cb: number;
   deflectionLimit: number;
+  loadPosition: "top" | "shear" | "bottom"; // punto de aplicación de carga (default: "top" = ala superior)
 }
+
+type Classification = "COMPACT" | "NON_COMPACT" | "SLENDER";
 
 interface TrussDesignParams {
   height: number; // m

@@ -233,12 +233,20 @@ export default function ColumnResults() {
             </p>
           </div>
         </div>
-        <button
-          onClick={() => navigate("/columns")}
-          className="text-sm bg-surface-alt border-border hover:bg-surface text-text-muted"
-        >
-          ← Volver
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate("/columns", { state })}
+            className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-4 py-1.5 rounded-lg"
+          >
+            ← Volver
+          </button>
+          <button
+            onClick={() => navigate("/column-print", { state })}
+            className="text-sm bg-primary text-white hover:bg-primary-hover px-4 py-1.5 rounded-lg"
+          >
+            🖨 Imprimir
+          </button>
+        </div>
       </header>
 
       {/* Summary */}

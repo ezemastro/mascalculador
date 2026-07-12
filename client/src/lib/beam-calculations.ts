@@ -445,10 +445,11 @@ export function migrateLoads(rawLoads: Record<string, unknown>[]): {
 }
 
 export function formatForce(value: number): string {
-  const abs = Math.abs(value);
-  if (abs >= 1000) return `${(value / 1000).toFixed(2)} MN`;
-  if (abs >= 1) return `${value.toFixed(2)} kN`;
-  return `${(value * 1000).toFixed(2)} N`;
+  return `${value.toFixed(2)} kN`;
+}
+
+export function formatMoment(value: number): string {
+  return `${value.toFixed(2)} kN·m`;
 }
 
 export function formatLength(value: number): string {

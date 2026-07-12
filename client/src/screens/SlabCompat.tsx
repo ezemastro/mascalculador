@@ -76,9 +76,14 @@ export default function SlabCompat() {
           <h1 className="text-xl font-semibold text-text">Compatibilizar Losas</h1>
           <p className="text-sm text-text-muted">CIRSOC 201-05 — Compatibilización de apoyos</p>
         </div>
-        <button onClick={() => navigate("/slab")} className="text-sm bg-surface-alt border-border hover:bg-surface text-text-muted">
-          ← Volver
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => navigate("/slab-compats")} className="text-sm bg-surface-alt border-border hover:bg-surface text-text-muted">
+            Ver guardadas
+          </button>
+          <button onClick={() => navigate("/slab")} className="text-sm bg-surface-alt border-border hover:bg-surface text-text-muted">
+            ← Volver
+          </button>
+        </div>
       </header>
 
       {savedSlabs.length < 2 ? (
