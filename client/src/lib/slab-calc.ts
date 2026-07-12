@@ -73,6 +73,8 @@ export interface CompatResult {
   Mcompat?: number;
   recalculatedSlab?: "A" | "B";
   recalculatedResult?: SlabResult;
+  /** Reinforcement design for the compatibilized support moment. */
+  supportDesign?: DirectionResult;
   message: string;
 }
 
@@ -2037,6 +2039,67 @@ function calcUnidirectionalMoments(
   return { Mx, My, MnegX, MnegY };
 }
 
+// ---- Standalone support moment reinforcement design ----
+// Used by compatibilizeSlabs to design reinforcement for the compatibilized support moment.
+export function designSupportMoment(
+  Mu: number,
+  d: number,
+  h: number,
+  fc: number,
+  fy: number,
+  bw: number,
+  dB: number,
+  Mneg?: number,
+): DirectionResult {
+  const Mn = Mu / 0.9;
+  const mn_val = (Mn * 1e6) / (0.85 * fc * bw * d * d);
+  const Ka = 1 - Math.sqrt(1 - 2 * mn_val);
+  const beta1 =
+    fc <= 30 ? 0.85 : Math.max(0.85 - 0.05 * ((fc - 30) / 7), 0.65);
+  const KaMax = 0.375 * beta1;
+  const KaMin = fc <= 30 ? 1.4 / (0.85 * fc) : 1 / (3.4 * Math.sqrt(fc));
+
+  let AsReq = 0,
+    caseLabel = "";
+  if (Ka <= KaMin) {
+    const ka1 = 1.33 * Ka;
+    AsReq =
+      ka1 >= KaMin
+        ? (0.85 * fc * bw * KaMin * d) / fy
+        : (0.85 * fc * bw * ka1 * d) / fy;
+    caseLabel = `K_a ≤ K_a min → k₁ = ${ka1.toFixed(4)}`;
+  } else if (Ka <= KaMax) {
+    AsReq = (0.85 * fc * bw * Ka * d) / fy;
+    caseLabel = "K_a min < K_a ≤ K_a max";
+  } else {
+    AsReq = (0.85 * fc * bw * KaMax * d) / fy;
+    caseLabel = "K_a > K_a max → sección sobre-reforzada.";
+  }
+
+  const AsMin1 = (Math.sqrt(fc) / (4 * fy)) * bw * d;
+  const AsMin2 = (1.4 / fy) * bw * d;
+  const AsMin = Math.max(AsMin1, AsMin2);
+  const AsTemp = 0.0018 * bw * h;
+  AsReq = Math.max(AsReq, AsMin, AsTemp);
+  const sMax = Math.min(2.5 * h, 25 * dB, 300);
+
+  return {
+    Mu,
+    Mn,
+    mn: mn_val,
+    Ka,
+    KaMin,
+    KaMax,
+    caseLabel,
+    AsReq: Math.round(AsReq),
+    AsMin: Math.round(AsMin),
+    AsTemp: Math.round(AsTemp),
+    sMax: Math.round(sMax),
+    phi: 0.9,
+    Mneg,
+  };
+}
+
 // ---- Main calculation ----
 export function designSlab(input: SlabInput): SlabResult {
   const { lx, ly, edges, D, L, fc, fy, cover, h: hInput, dBarX, dBarY } = input;
@@ -2400,54 +2463,7 @@ export function designSlab(input: SlabInput): SlabResult {
 
   // Step 5-8: Design each direction
   function designDir(Mu: number, _dir: string, dB: number, Mneg?: number): DirectionResult {
-    const Mn = Mu / 0.9;
-    const mn_val = (Mn * 1e6) / (0.85 * fc * bw * d * d);
-    const Ka = 1 - Math.sqrt(1 - 2 * mn_val);
-    const beta1 =
-      fc <= 30 ? 0.85 : Math.max(0.85 - 0.05 * ((fc - 30) / 7), 0.65);
-    const KaMax = 0.375 * beta1;
-    const KaMin = fc <= 30 ? 1.4 / (0.85 * fc) : 1 / (3.4 * Math.sqrt(fc));
-
-    let AsReq = 0,
-      caseLabel = "";
-    if (Ka <= KaMin) {
-      const ka1 = 1.33 * Ka;
-      AsReq =
-        ka1 >= KaMin
-          ? (0.85 * fc * bw * KaMin * d) / fy
-          : (0.85 * fc * bw * ka1 * d) / fy;
-      caseLabel = `K_a ≤ K_a min → k₁ = ${ka1.toFixed(4)}`;
-    } else if (Ka <= KaMax) {
-      AsReq = (0.85 * fc * bw * Ka * d) / fy;
-      caseLabel = "K_a min < K_a ≤ K_a max";
-    } else {
-      AsReq = (0.85 * fc * bw * KaMax * d) / fy;
-      caseLabel = "K_a > K_a max → sección sobre-reforzada. Recomendar aumentar h.";
-      st.push("⚠️ K_a > K_a max: se recomienda aumentar el espesor h.");
-    }
-
-    const AsMin1 = (Math.sqrt(fc) / (4 * fy)) * bw * d;
-    const AsMin2 = (1.4 / fy) * bw * d;
-    const AsMin = Math.max(AsMin1, AsMin2);
-    const AsTemp = 0.0018 * bw * h;
-    AsReq = Math.max(AsReq, AsMin, AsTemp);
-    const sMax = Math.min(2.5 * h, 25 * dB, 300);
-
-    return {
-      Mu,
-      Mn,
-      mn: mn_val,
-      Ka,
-      KaMin,
-      KaMax,
-      caseLabel,
-      AsReq: Math.round(AsReq),
-      AsMin: Math.round(AsMin),
-      AsTemp: Math.round(AsTemp),
-      sMax: Math.round(sMax),
-      phi: 0.9,
-      Mneg,
-    };
+    return designSupportMoment(Mu, d, h, fc, fy, bw, dB, Mneg);
   }
 
   const dirX = designDir(Mx, "X", dBarX, MnegX || undefined);
@@ -2580,14 +2596,21 @@ export function compatibilizeSlabs(
 
   const ratio = Math.min(MnegA, MnegB) / Math.max(MnegA, MnegB);
 
+  // Slab parameters for support reinforcement design (use slabA as reference)
+  const { d, h, fc, fy } = slabA.result;
+  const dB = edgeA <= 1 ? slabA.input.dBarX : slabA.input.dBarY;
+  const bw = 1000; // per-meter strip
+
   if (ratio >= 0.6) {
     const Mcompat = (MnegA + MnegB) / 2;
+    const supportDesign = designSupportMoment(Math.abs(Mcompat), d, h, fc, fy, bw, dB, Mcompat);
     return {
       compatOK: true,
       ratio,
       MnegA,
       MnegB,
       Mcompat,
+      supportDesign,
       message: `Compatibles (ratio = ${ratio.toFixed(2)} ≥ 0.6). Momento compatibilizado: M = ${Mcompat.toFixed(2)} kN·m/m`,
     };
   }
@@ -2607,6 +2630,10 @@ export function compatibilizeSlabs(
   // Recalculate
   const recalculated = designSlab(recalcInput);
 
+  // Design reinforcement for the surviving (lower) Mneg
+  const survivingMneg = recalcIsA ? MnegB : MnegA;
+  const supportDesign = designSupportMoment(Math.abs(survivingMneg), d, h, fc, fy, bw, dB, survivingMneg);
+
   return {
     compatOK: false,
     ratio,
@@ -2614,6 +2641,7 @@ export function compatibilizeSlabs(
     MnegB,
     recalculatedSlab: recalcIsA ? "A" : "B",
     recalculatedResult: recalculated,
+    supportDesign,
     message: `No compatibles (ratio = ${ratio.toFixed(2)} < 0.6). Losa ${recalcIsA ? "A" : "B"} recalculada con borde simple.`,
   };
 }

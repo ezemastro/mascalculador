@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router";
 import MainLayout from "../components/MainLayout";
-import { getSavedSlabs, loadSlab, updateSlab, type SavedSlabData } from "../lib/storage";
+import { getSavedSlabs, loadSlab, updateSlab, saveCompat, type SavedSlabData } from "../lib/storage";
 import { detectSharedEdge, compatibilizeSlabs, type EdgeIndex, type CompatResult } from "../lib/slab-calc";
 
 const EDGE_LABELS: Record<EdgeIndex, string> = {
@@ -47,12 +47,24 @@ export default function SlabCompat() {
     const slabId = result.recalculatedSlab === "A" ? selectedA : selectedB;
     const slab = result.recalculatedSlab === "A" ? slabA : slabB;
     if (!slabId || !slab) return;
-    // Update edges: change the shared edge to "simple"
     const newEdges = [...slab.input.edges] as [typeof slab.input.edges[0], typeof slab.input.edges[1], typeof slab.input.edges[2], typeof slab.input.edges[3]];
     const sharedEdge = result.recalculatedSlab === "A" ? edgeA : edgeB;
     newEdges[sharedEdge] = "simple";
     updateSlab(slabId, { ...slab.input, edges: newEdges }, result.recalculatedResult);
     alert(`Losa ${result.recalculatedSlab} guardada con borde articulado.`);
+  }
+
+  function handleSaveCompat() {
+    if (!result || !slabA || !slabB) return;
+    const nameA = savedSlabs.find(s => s.id === selectedA)?.name || "?";
+    const nameB = savedSlabs.find(s => s.id === selectedB)?.name || "?";
+    const name = `Apoyo ${nameA}-${nameB}`;
+    try {
+      saveCompat(name, { id: selectedA, name: nameA }, { id: selectedB, name: nameB }, edgeA, edgeB, result);
+      alert(`Compatibilización "${name}" guardada.`);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Error al guardar");
+    }
   }
 
   const canCompat = selectedA && selectedB && selectedA !== selectedB && !!detection;
@@ -149,6 +161,14 @@ export default function SlabCompat() {
                   <p>M_neg B = {result.MnegB.toFixed(2)} kN·m/m</p>
                   <p>Ratio = {result.ratio.toFixed(2)}</p>
                   {result.Mcompat && <p className="font-bold text-text">M_compat = {result.Mcompat.toFixed(2)} kN·m/m</p>}
+                  {result.supportDesign && (
+                    <div className="mt-2 p-2 bg-surface-alt rounded text-xs text-text-muted space-y-1">
+                      <p className="font-semibold text-text">Armadura de apoyo:</p>
+                      <p>A<sub>s</sub> req = {result.supportDesign.AsReq} mm²/m</p>
+                      <p>mín: {result.supportDesign.AsMin} &middot; s<sub>máx</sub>: {result.supportDesign.sMax} mm</p>
+                      <p className="text-text-muted/60">{result.supportDesign.caseLabel}</p>
+                    </div>
+                  )}
                   {result.recalculatedResult && (
                     <>
                       <details className="mt-2">
@@ -167,6 +187,12 @@ export default function SlabCompat() {
                   )}
                 </div>
               </div>
+              <button
+                onClick={handleSaveCompat}
+                className="mt-3 text-sm bg-accent/10 text-accent border border-accent/20 font-semibold px-4 py-2 rounded-lg hover:bg-accent/20 transition-colors"
+              >
+                Guardar compatibilización
+              </button>
             </section>
           )}
         </>
