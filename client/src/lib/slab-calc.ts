@@ -2119,6 +2119,12 @@ export function designSlab(input: SlabInput): SlabResult {
     MnegArr = 0,
     MnegAba = 0;
 
+  // Per-edge continuity flags (used by both unidirectional and crossed paths)
+  const isX0Fixed = edges[0] === "continuo";
+  const isXLFixed = edges[1] === "continuo";
+  const isY0Fixed = edges[2] === "continuo";
+  const isYLFixed = edges[3] === "continuo";
+
   if (!isCrossed) {
     // ---- Unidirectional: beam-strip coefficients ----
     const ud = calcUnidirectionalMoments(lx, ly, edges, qu);
@@ -2160,10 +2166,6 @@ export function designSlab(input: SlabInput): SlabResult {
     st.push("");
   } else {
     // ---- Crossed: Kalmanok tables ----
-    const isX0Fixed = edges[0] === "continuo";
-    const isXLFixed = edges[1] === "continuo";
-    const isY0Fixed = edges[2] === "continuo";
-    const isYLFixed = edges[3] === "continuo";
     const hasOneFixedX = fixedEdges === 1 && (isX0Fixed || isXLFixed);
     const hasOneFixedY = fixedEdges === 1 && (isY0Fixed || isYLFixed);
     const hasTwoFixedX = fixedEdges === 2 && isX0Fixed && isXLFixed;
