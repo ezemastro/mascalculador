@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import MainLayout from "../components/MainLayout";
 import SlabPlan from "../components/SlabPlan";
-import { designSlab, designSupportMoment, type DirectionResult } from "../lib/slab-calc";
+import { designSlab, type DirectionResult } from "../lib/slab-calc";
 import { saveSlab, updateSlab } from "../lib/storage";
 import type { SlabState } from "./SlabForm";
 
@@ -224,58 +224,30 @@ export default function SlabResults() {
 
       {(edgeX0 === "continuo" || edgeXL === "continuo" || edgeY0 === "continuo" || edgeYL === "continuo") && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {edgeX0 === "continuo" && (() => {
-            const sd = designSupportMoment(Math.abs(result.MnegIzq), result.d, result.h, fc, fy, 1000, dBarX, result.MnegIzq);
-            return (
-              <div className="bg-surface rounded-xl border border-border p-3">
-                <span className="text-xs text-text-muted">M<sub>neg</sub> Izquierdo</span>
-                <p className="text-sm font-bold text-primary">{result.MnegIzq.toFixed(2)} kN·m/m</p>
-                <div className="mt-1 pt-1 border-t border-border text-xs text-text-muted space-y-0.5">
-                  <p>A<sub>s</sub> = {sd.AsReq} mm²/m</p>
-                  <p>s<sub>máx</sub> = {sd.sMax} mm</p>
-                </div>
-              </div>
-            );
-          })()}
-          {edgeXL === "continuo" && (() => {
-            const sd = designSupportMoment(Math.abs(result.MnegDer), result.d, result.h, fc, fy, 1000, dBarX, result.MnegDer);
-            return (
-              <div className="bg-surface rounded-xl border border-border p-3">
-                <span className="text-xs text-text-muted">M<sub>neg</sub> Derecho</span>
-                <p className="text-sm font-bold text-primary">{result.MnegDer.toFixed(2)} kN·m/m</p>
-                <div className="mt-1 pt-1 border-t border-border text-xs text-text-muted space-y-0.5">
-                  <p>A<sub>s</sub> = {sd.AsReq} mm²/m</p>
-                  <p>s<sub>máx</sub> = {sd.sMax} mm</p>
-                </div>
-              </div>
-            );
-          })()}
-          {edgeY0 === "continuo" && (() => {
-            const sd = designSupportMoment(Math.abs(result.MnegArr), result.d, result.h, fc, fy, 1000, dBarY, result.MnegArr);
-            return (
-              <div className="bg-surface rounded-xl border border-border p-3">
-                <span className="text-xs text-text-muted">M<sub>neg</sub> Arriba</span>
-                <p className="text-sm font-bold text-primary">{result.MnegArr.toFixed(2)} kN·m/m</p>
-                <div className="mt-1 pt-1 border-t border-border text-xs text-text-muted space-y-0.5">
-                  <p>A<sub>s</sub> = {sd.AsReq} mm²/m</p>
-                  <p>s<sub>máx</sub> = {sd.sMax} mm</p>
-                </div>
-              </div>
-            );
-          })()}
-          {edgeYL === "continuo" && (() => {
-            const sd = designSupportMoment(Math.abs(result.MnegAba), result.d, result.h, fc, fy, 1000, dBarY, result.MnegAba);
-            return (
-              <div className="bg-surface rounded-xl border border-border p-3">
-                <span className="text-xs text-text-muted">M<sub>neg</sub> Abajo</span>
-                <p className="text-sm font-bold text-primary">{result.MnegAba.toFixed(2)} kN·m/m</p>
-                <div className="mt-1 pt-1 border-t border-border text-xs text-text-muted space-y-0.5">
-                  <p>A<sub>s</sub> = {sd.AsReq} mm²/m</p>
-                  <p>s<sub>máx</sub> = {sd.sMax} mm</p>
-                </div>
-              </div>
-            );
-          })()}
+          {edgeX0 === "continuo" && (
+            <div className="bg-surface rounded-xl border border-border p-3">
+              <span className="text-xs text-text-muted">M<sub>neg</sub> Izquierdo</span>
+              <p className="text-sm font-bold text-primary">{result.MnegIzq.toFixed(2)} kN·m/m</p>
+            </div>
+          )}
+          {edgeXL === "continuo" && (
+            <div className="bg-surface rounded-xl border border-border p-3">
+              <span className="text-xs text-text-muted">M<sub>neg</sub> Derecho</span>
+              <p className="text-sm font-bold text-primary">{result.MnegDer.toFixed(2)} kN·m/m</p>
+            </div>
+          )}
+          {edgeY0 === "continuo" && (
+            <div className="bg-surface rounded-xl border border-border p-3">
+              <span className="text-xs text-text-muted">M<sub>neg</sub> Arriba</span>
+              <p className="text-sm font-bold text-primary">{result.MnegArr.toFixed(2)} kN·m/m</p>
+            </div>
+          )}
+          {edgeYL === "continuo" && (
+            <div className="bg-surface rounded-xl border border-border p-3">
+              <span className="text-xs text-text-muted">M<sub>neg</sub> Abajo</span>
+              <p className="text-sm font-bold text-primary">{result.MnegAba.toFixed(2)} kN·m/m</p>
+            </div>
+          )}
         </div>
       )}
 
