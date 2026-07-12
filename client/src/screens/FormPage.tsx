@@ -2,16 +2,11 @@ import { useMemo, useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router";
 import MainLayout from "../components/MainLayout";
 import SavedBeams from "../components/SavedBeams";
-import { saveBeam, saveLastFormState, loadLastFormState } from "../lib/storage";
+import { saveBeam, updateSave, saveLastFormState, loadLastFormState } from "../lib/storage";
 import { IPN_PROFILES } from "../lib/profiles";
 import { UPN_PROFILES } from "../lib/upn-profiles";
 import { calculateBeamDual, migrateLoads } from "../lib/beam-calculations";
-
-// Controlled decimal input: comma→period conversion
-function sanitizeDecimal(val: string): string {
-  // Replace comma (both regular and numpad) with dot
-  return val.replace(/,/g, ".");
-}
+import { DecimalInput } from "../hooks/useDecimalField";
 
 export default function FormPage() {
   const location = useLocation();
@@ -67,6 +62,11 @@ export default function FormPage() {
   const [loadPosition, setLoadPosition] = useState<
     "top" | "shear" | "bottom"
   >(state?.designParams?.loadPosition ?? (lastForm?.loadPosition as "top" | "shear" | "bottom") ?? "top");
+
+  // Id del elemento cargado (null = nuevo, sin guardar)
+  const [loadedSaveId, setLoadedSaveId] = useState<string | null>(null);
+  // Nombre del elemento cargado (para mostrar)
+  const [loadedSaveName, setLoadedSaveName] = useState<string | null>(null);
 
   // Auto-save form state to localStorage on every change
   useEffect(() => {
@@ -143,13 +143,11 @@ export default function FormPage() {
   }
 
   function handleSave() {
-    const name = prompt("Nombre para guardar esta viga:");
-    if (!name) return;
     const loadForSave = loads.map((l) => ({
       ...l,
       magnitude: (l.deadLoad ?? 0) + (l.liveLoad ?? 0),
     }));
-    saveBeam(name, "acero", {
+    const data = {
       spans: spanLengths,
       supportTypes,
       loads: loadForSave,
@@ -162,7 +160,22 @@ export default function FormPage() {
       Cb,
       deflectionLimit,
       loadPosition,
-    });
+    };
+
+    if (loadedSaveId) {
+      // Ya fue guardado antes: corregir sin cambiar el número/id
+      updateSave(loadedSaveId, data);
+      return;
+    }
+
+    const name = prompt("Nombre para guardar esta viga:");
+    if (!name) return;
+    try {
+      saveBeam(name, "acero", data);
+      setLoadedSaveName(name);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Error al guardar");
+    }
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -238,13 +251,17 @@ export default function FormPage() {
           <h1 className="text-xl font-semibold text-text">
             Calculadora de Vigas
           </h1>
-          <p className="text-sm text-text-muted">Definí la viga y sus cargas</p>
+          <p className="text-sm text-text-muted">
+            {loadedSaveName ? `Editando: ${loadedSaveName}` : "Definí la viga y sus cargas"}
+          </p>
         </div>
       </header>
 
       <SavedBeams
         type="acero"
-        onLoad={(data) => {
+        onLoad={(data, save) => {
+          setLoadedSaveId(save.id);
+          setLoadedSaveName(save.name);
           const d = data as Record<
             string,
             | number
@@ -320,15 +337,9 @@ export default function FormPage() {
                   <span className="text-xs text-text-muted font-medium">
                     Luz tramo {i + 1} (m)
                   </span>
-                  <input
-                    type="text"
-                    defaultValue={len ?? ""}
-                    key={`span-${i}-${spanLengths[i]}`}
-                    onChange={(e) => {
-                      const raw = sanitizeDecimal(e.target.value);
-                      const num = parseFloat(raw);
-                      setSpanLength(i, isNaN(num) ? 0 : num);
-                    }}
+                  <DecimalInput
+                    value={len}
+                    onChange={(n) => setSpanLength(i, n)}
                   />
                 </label>
               ))}
@@ -435,17 +446,9 @@ export default function FormPage() {
                   <span className="text-xs text-text-muted">
                     D (kN{load.type === "distributed" ? "/m" : ""})
                   </span>
-                  <input
-                    type="text"
-                    defaultValue={load.deadLoad ?? ""}
-                    key={`dead-${load.id}-${load.deadLoad}`}
-                    onChange={(e) => {
-                      const raw = sanitizeDecimal(e.target.value);
-                      const num = parseFloat(raw);
-                      updateLoad(load.id, {
-                        deadLoad: isNaN(num) ? 0 : num,
-                      });
-                    }}
+                  <DecimalInput
+                    value={load.deadLoad ?? 0}
+                    onChange={(n) => updateLoad(load.id, { deadLoad: n })}
                     className="w-28"
                   />
                 </label>
@@ -454,17 +457,9 @@ export default function FormPage() {
                   <span className="text-xs text-text-muted">
                     L (kN{load.type === "distributed" ? "/m" : ""})
                   </span>
-                  <input
-                    type="text"
-                    defaultValue={load.liveLoad ?? ""}
-                    key={`live-${load.id}-${load.liveLoad}`}
-                    onChange={(e) => {
-                      const raw = sanitizeDecimal(e.target.value);
-                      const num = parseFloat(raw);
-                      updateLoad(load.id, {
-                        liveLoad: isNaN(num) ? 0 : num,
-                      });
-                    }}
+                  <DecimalInput
+                    value={load.liveLoad ?? 0}
+                    onChange={(n) => updateLoad(load.id, { liveLoad: n })}
                     className="w-28"
                   />
                 </label>
@@ -474,17 +469,9 @@ export default function FormPage() {
                     <span className="text-xs text-text-muted">
                       Posición (m)
                     </span>
-                    <input
-                      type="text"
-                      defaultValue={load.position ?? ""}
-                      key={`pos-${load.id}-${load.position}`}
-                      onChange={(e) => {
-                        const raw = sanitizeDecimal(e.target.value);
-                        const num = parseFloat(raw);
-                        updateLoad(load.id, {
-                          position: isNaN(num) ? 0 : num,
-                        });
-                      }}
+                    <DecimalInput
+                      value={load.position ?? 0}
+                      onChange={(n) => updateLoad(load.id, { position: n })}
                       className="w-32"
                     />
                   </label>
@@ -494,33 +481,17 @@ export default function FormPage() {
                       <span className="text-xs text-text-muted">
                         Inicio (m)
                       </span>
-                      <input
-                        type="text"
-                        defaultValue={load.start ?? ""}
-                        key={`start-${load.id}-${load.start}`}
-                        onChange={(e) => {
-                          const raw = sanitizeDecimal(e.target.value);
-                          const num = parseFloat(raw);
-                          updateLoad(load.id, {
-                            start: isNaN(num) ? 0 : num,
-                          });
-                        }}
+                      <DecimalInput
+                        value={load.start ?? 0}
+                        onChange={(n) => updateLoad(load.id, { start: n })}
                         className="w-28"
                       />
                     </label>
                     <label className="flex flex-col gap-1">
                       <span className="text-xs text-text-muted">Fin (m)</span>
-                      <input
-                        type="text"
-                        defaultValue={load.end ?? ""}
-                        key={`end-${load.id}-${load.end}`}
-                        onChange={(e) => {
-                          const raw = sanitizeDecimal(e.target.value);
-                          const num = parseFloat(raw);
-                          updateLoad(load.id, {
-                            end: isNaN(num) ? 0 : num,
-                          });
-                        }}
+                      <DecimalInput
+                        value={load.end ?? 0}
+                        onChange={(n) => updateLoad(load.id, { end: n })}
                         className="w-28"
                       />
                     </label>
@@ -612,31 +583,13 @@ export default function FormPage() {
               <span className="text-xs text-text-muted">
                 L<sub>1</sub> (cm)
               </span>
-              <input
-                type="text"
-                defaultValue={Lb1 ?? ""}
-                key={`lb1-${Lb1}`}
-                onChange={(e) => {
-                  const raw = sanitizeDecimal(e.target.value);
-                  const num = parseFloat(raw);
-                  setLb1(isNaN(num) ? 0 : num);
-                }}
-              />
+              <DecimalInput value={Lb1} onChange={setLb1} />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
                 L<sub>2</sub> (cm)
               </span>
-              <input
-                type="text"
-                defaultValue={Lb2 ?? ""}
-                key={`lb2-${Lb2}`}
-                onChange={(e) => {
-                  const raw = sanitizeDecimal(e.target.value);
-                  const num = parseFloat(raw);
-                  setLb2(isNaN(num) ? 0 : num);
-                }}
-              />
+              <DecimalInput value={Lb2} onChange={setLb2} />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
@@ -648,31 +601,13 @@ export default function FormPage() {
                   ⓘ
                 </span>
               </span>
-              <input
-                type="text"
-                defaultValue={Cb ?? ""}
-                key={`cb-${Cb}`}
-                onChange={(e) => {
-                  const raw = sanitizeDecimal(e.target.value);
-                  const num = parseFloat(raw);
-                  setCb(isNaN(num) ? 0 : num);
-                }}
-              />
+              <DecimalInput value={Cb} onChange={setCb} />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
                 δ<sub>adm</sub> = L /
               </span>
-              <input
-                type="text"
-                defaultValue={deflectionLimit ?? ""}
-                key={`defl-${deflectionLimit}`}
-                onChange={(e) => {
-                  const raw = sanitizeDecimal(e.target.value);
-                  const num = parseFloat(raw);
-                  setDeflectionLimit(isNaN(num) ? 0 : num);
-                }}
-              />
+              <DecimalInput value={deflectionLimit} onChange={setDeflectionLimit} />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">Carga aplicada en</span>
@@ -705,7 +640,7 @@ export default function FormPage() {
             onClick={handleSave}
             className="bg-surface-alt border border-border text-text-muted font-semibold px-6 py-3 rounded-lg hover:bg-surface transition-colors"
           >
-            Guardar
+            {loadedSaveId ? "Guardar corrección" : "Guardar"}
           </button>
         </div>
       </form>

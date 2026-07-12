@@ -7,9 +7,11 @@ import { UPN_PROFILES } from "../lib/upn-profiles";
 import { TUBE_PROFILES } from "../lib/tube-profiles";
 import {
   saveBeam,
+  updateSave,
   saveLastColumnFormState,
   loadLastColumnFormState,
 } from "../lib/storage";
+import { DecimalInput } from "../hooks/useDecimalField";
 
 export interface ColumnState {
   profileType: "IPN" | "UPN" | "2UPN" | "TUBO" | "ARMADA_I" | "ARMADA_CAJON";
@@ -33,11 +35,6 @@ export interface ColumnState {
   Kx: number;
   Ky: number;
   Fy: number;
-}
-
-function sanitizeDecimal(val: string): string {
-  // Replace comma (both regular and numpad) with dot
-  return val.replace(/,/g, ".");
 }
 
 export default function ColumnForm() {
@@ -104,6 +101,11 @@ export default function ColumnForm() {
   const [Ky, setKy] = useState(state?.Ky ?? lastForm?.Ky ?? 1.0);
   const [Fy, setFy] = useState(state?.Fy ?? lastForm?.Fy ?? 235);
 
+  // Id del elemento cargado (null = nuevo, sin guardar)
+  const [loadedSaveId, setLoadedSaveId] = useState<string | null>(null);
+  // Nombre del elemento cargado (para mostrar)
+  const [loadedSaveName, setLoadedSaveName] = useState<string | null>(null);
+
   // Guard: skip first auto-save to avoid overwriting router state with defaults
   const mountedRef = useRef(false);
   useEffect(() => {
@@ -155,9 +157,7 @@ export default function ColumnForm() {
   ]);
 
   function handleSave() {
-    const name = prompt("Nombre para guardar esta columna:");
-    if (!name) return;
-    saveBeam(name, "columna", {
+    const data: Record<string, unknown> = {
       profileType,
       profileName,
       upnName,
@@ -177,10 +177,26 @@ export default function ColumnForm() {
       Kx,
       Ky,
       Fy,
-    });
+    };
+
+    if (loadedSaveId) {
+      updateSave(loadedSaveId, data);
+      return;
+    }
+
+    const name = prompt("Nombre para guardar esta columna:");
+    if (!name) return;
+    try {
+      saveBeam(name, "columna", data);
+      setLoadedSaveName(name);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Error al guardar");
+    }
   }
 
-  function handleLoad(data: Record<string, unknown>) {
+  function handleLoad(data: Record<string, unknown>, save: { id: string; name: string }) {
+    setLoadedSaveId(save.id);
+    setLoadedSaveName(save.name);
     const d = data as Record<string, unknown>;
     if (typeof d.profileType === "string") {
       setProfileType(d.profileType as typeof profileType);
@@ -254,7 +270,7 @@ export default function ColumnForm() {
             Calculadora de Columnas
           </h1>
           <p className="text-sm text-text-muted">
-            CIRSOC 301-05 &mdash; Capítulos E, F y H
+            {loadedSaveName ? `Editando: ${loadedSaveName}` : "CIRSOC 301-05 — Capítulos E, F y H"}
           </p>
         </div>
       </header>
@@ -337,16 +353,7 @@ export default function ColumnForm() {
                   <span className="text-xs text-text-muted">
                     Separación (mm)
                   </span>
-                  <input
-                    type="text"
-                    defaultValue={upnGap ?? ""}
-                    key={`col-gap-${upnGap}`}
-                    onChange={(e) => {
-                      const raw = sanitizeDecimal(e.target.value);
-                      const num = parseFloat(raw);
-                      setUpnGap(isNaN(num) ? 0 : num);
-                    }}
-                  />
+                  <DecimalInput value={upnGap} onChange={setUpnGap} />
                 </label>
               </>
             )}
@@ -380,61 +387,25 @@ export default function ColumnForm() {
                   <span className="text-xs text-text-muted">
                     b<sub>f</sub> ala (mm)
                   </span>
-                  <input
-                    type="text"
-                    defaultValue={armadaBf ?? ""}
-                    key={`col-armadaBf-${armadaBf}`}
-                    onChange={(e) => {
-                      const raw = sanitizeDecimal(e.target.value);
-                      const num = parseFloat(raw);
-                      setArmadaBf(isNaN(num) ? 0 : num);
-                    }}
-                  />
+                  <DecimalInput value={armadaBf} onChange={setArmadaBf} />
                 </label>
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-text-muted">
                     t<sub>f</sub> ala (mm)
                   </span>
-                  <input
-                    type="text"
-                    defaultValue={armadaTf ?? ""}
-                    key={`col-armadaTf-${armadaTf}`}
-                    onChange={(e) => {
-                      const raw = sanitizeDecimal(e.target.value);
-                      const num = parseFloat(raw);
-                      setArmadaTf(isNaN(num) ? 0 : num);
-                    }}
-                  />
+                  <DecimalInput value={armadaTf} onChange={setArmadaTf} />
                 </label>
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-text-muted">
                     h<sub>w</sub> alma (mm)
                   </span>
-                  <input
-                    type="text"
-                    defaultValue={armadaHw ?? ""}
-                    key={`col-armadaHw-${armadaHw}`}
-                    onChange={(e) => {
-                      const raw = sanitizeDecimal(e.target.value);
-                      const num = parseFloat(raw);
-                      setArmadaHw(isNaN(num) ? 0 : num);
-                    }}
-                  />
+                  <DecimalInput value={armadaHw} onChange={setArmadaHw} />
                 </label>
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-text-muted">
                     t<sub>w</sub> alma (mm)
                   </span>
-                  <input
-                    type="text"
-                    defaultValue={armadaTw ?? ""}
-                    key={`col-armadaTw-${armadaTw}`}
-                    onChange={(e) => {
-                      const raw = sanitizeDecimal(e.target.value);
-                      const num = parseFloat(raw);
-                      setArmadaTw(isNaN(num) ? 0 : num);
-                    }}
-                  />
+                  <DecimalInput value={armadaTw} onChange={setArmadaTw} />
                 </label>
               </>
             )}
@@ -442,44 +413,17 @@ export default function ColumnForm() {
               <>
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-text-muted">h altura (mm)</span>
-                  <input
-                    type="text"
-                    defaultValue={cajonH ?? ""}
-                    key={`col-cajonH-${cajonH}`}
-                    onChange={(e) => {
-                      const raw = sanitizeDecimal(e.target.value);
-                      const num = parseFloat(raw);
-                      setCajonH(isNaN(num) ? 0 : num);
-                    }}
-                  />
+                  <DecimalInput value={cajonH} onChange={setCajonH} />
                 </label>
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-text-muted">b ancho (mm)</span>
-                  <input
-                    type="text"
-                    defaultValue={cajonB ?? ""}
-                    key={`col-cajonB-${cajonB}`}
-                    onChange={(e) => {
-                      const raw = sanitizeDecimal(e.target.value);
-                      const num = parseFloat(raw);
-                      setCajonB(isNaN(num) ? 0 : num);
-                    }}
-                  />
+                  <DecimalInput value={cajonB} onChange={setCajonB} />
                 </label>
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-text-muted">
                     t espesor (mm)
                   </span>
-                  <input
-                    type="text"
-                    defaultValue={cajonT ?? ""}
-                    key={`col-cajonT-${cajonT}`}
-                    onChange={(e) => {
-                      const raw = sanitizeDecimal(e.target.value);
-                      const num = parseFloat(raw);
-                      setCajonT(isNaN(num) ? 0 : num);
-                    }}
-                  />
+                  <DecimalInput value={cajonT} onChange={setCajonT} />
                 </label>
               </>
             )}
@@ -509,46 +453,19 @@ export default function ColumnForm() {
               <span className="text-xs text-text-muted">
                 P<sub>u</sub> (kN)
               </span>
-              <input
-                type="text"
-                defaultValue={Pu ?? ""}
-                key={`col-pu-${Pu}`}
-                onChange={(e) => {
-                  const raw = sanitizeDecimal(e.target.value);
-                  const num = parseFloat(raw);
-                  setPu(isNaN(num) ? 0 : num);
-                }}
-              />
+              <DecimalInput value={Pu} onChange={setPu} />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
                 M<sub>u,x</sub> (kN·m)
               </span>
-              <input
-                type="text"
-                defaultValue={Mux ?? ""}
-                key={`col-mux-${Mux}`}
-                onChange={(e) => {
-                  const raw = sanitizeDecimal(e.target.value);
-                  const num = parseFloat(raw);
-                  setMux(isNaN(num) ? 0 : num);
-                }}
-              />
+              <DecimalInput value={Mux} onChange={setMux} />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
                 M<sub>u,y</sub> (kN·m)
               </span>
-              <input
-                type="text"
-                defaultValue={Muy ?? ""}
-                key={`col-muy-${Muy}`}
-                onChange={(e) => {
-                  const raw = sanitizeDecimal(e.target.value);
-                  const num = parseFloat(raw);
-                  setMuy(isNaN(num) ? 0 : num);
-                }}
-              />
+              <DecimalInput value={Muy} onChange={setMuy} />
             </label>
           </div>
         </section>
@@ -561,16 +478,7 @@ export default function ColumnForm() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">L (mm)</span>
-              <input
-                type="text"
-                defaultValue={L ?? ""}
-                key={`col-l-${L}`}
-                onChange={(e) => {
-                  const raw = sanitizeDecimal(e.target.value);
-                  const num = parseFloat(raw);
-                  setL(isNaN(num) ? 0 : num);
-                }}
-              />
+              <DecimalInput value={L} onChange={setL} />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
@@ -615,7 +523,7 @@ export default function ColumnForm() {
             onClick={handleSave}
             className="bg-surface-alt border border-border text-text-muted font-semibold px-6 py-3 rounded-lg hover:bg-surface transition-colors"
           >
-            Guardar
+            {loadedSaveId ? "Guardar corrección" : "Guardar"}
           </button>
         </div>
       </form>

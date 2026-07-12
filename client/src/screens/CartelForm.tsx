@@ -1,428 +1,796 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useLocation, useNavigate } from "react-router";
 import MainLayout from "../components/MainLayout";
-import { ANGLE_PROFILES, type AngleData } from "../lib/angle-profiles";
+import SavedBeams from "../components/SavedBeams";
+import { ANGLE_PROFILES } from "../lib/angle-profiles";
+import { IPN_PROFILES } from "../lib/profiles";
+import {
+  saveBeam,
+  updateSave,
+  saveLastCartelFormState,
+  loadLastCartelFormState,
+} from "../lib/storage";
+import { DecimalInput } from "../hooks/useDecimalField";
 
-// Simple angle verification per CIRSOC 301
-function checkAngleCompForce(angle: AngleData, Fy: number, L_mm: number, K: number, force_kN: number) {
-  const Ag = angle.A * 100;
-  const r = angle.rz * 10;
-  const KLr = (K * L_mm) / r;
-  const lambdaC = (KLr / Math.PI) * Math.sqrt(Fy / 200000);
-  const Fcr = lambdaC <= 1.5 ? Math.pow(0.658, lambdaC * lambdaC) * Fy : (0.877 / (lambdaC * lambdaC)) * Fy;
-  const Pn = (Fcr * Ag) / 1000; // kN
-  const phiPn = 0.90 * Pn;
-  return { phiPn, ratio: force_kN / phiPn, ok: force_kN <= phiPn, KLr, Fcr };
-}
-
-function handleCommaKey(e: React.KeyboardEvent<HTMLInputElement>) {
-  if (e.key === ",") {
-    e.preventDefault();
-    const t = e.currentTarget;
-    const s = t.selectionStart ?? 0, end = t.selectionEnd ?? 0;
-    t.value = t.value.substring(0, s) + "." + t.value.substring(end);
-    t.setSelectionRange(s + 1, s + 1);
-    t.dispatchEvent(new Event("input", { bubbles: true }));
-  }
+export interface CartelState {
+  // Geometry
+  anchoCartel: number;
+  altoCartel: number;
+  despegue: number;
+  sepColumnas: number;
+  sepCorreas: number;
+  // Column type
+  tipoColumna: number;
+  // Puntal
+  tienePuntal: boolean;
+  hPuntal: number;
+  dPuntal: number;
+  tipoPuntal: number;
+  // Wind
+  velocidadViento: number;
+  categoria: string;
+  exposicion: string;
+  // Column section
+  hCol: number;
+  aCol: number;
+  perfilCordon: string;
+  perfilDiagonal: string;
+  perfilMontante: string;
+  Fy: number;
+  perfilIPN?: string;
+  separacionCol?: number;
+  KGlobal?: number;
+  // Front view
+  cantColumnas?: number;
+  vueloLateral?: number;
 }
 
 export default function CartelForm() {
-  // Lateral view
-  const [hTerraza, setHTerraza] = useState(9.05);
-  const [hc, setHc] = useState(7.20);
-  const [d, setD] = useState(1.85);
-  const [a, setA] = useState(5.52);
-  const [b, setB] = useState(1.11);
-  // Frontal view
-  const [anchoCartel, setAnchoCartel] = useState(15.0);
-  const [sepColumnas, setSepColumnas] = useState(2.0);
-  const [sepCorreas, setSepCorreas] = useState(1.0);
-  // Wind
-  const [DLoad, setDLoad] = useState(15); // kg/m²
-  const [V, setV] = useState(45);     // m/s basic wind speed
-  const [categoria, setCategoria] = useState("II");
-  const [exposicion, setExposicion] = useState("B");
-  const [tipoColumna, setTipoColumna] = useState(2);
-  // Column reticulate
-  const [hCol, setHCol] = useState(0.40);  // m (column section width)
-  const [aCol, setACol] = useState(0.50);  // m (panel height)
-  const [perfilCordon, setPerfilCordon] = useState('L 2 1/2" x 1/4"');
-  const [perfilDiagonal, setPerfilDiagonal] = useState('L 1 1/2" x 3/16"');
-  const [perfilMontante, setPerfilMontante] = useState('L 1 1/4" x 1/8"');
-  const [FyCol, setFyCol] = useState(235);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const state = location.state as CartelState | null;
 
-  const ht = hc + d;
-  const consistente = ht === hc + d;
-  const lPuntal = Math.sqrt(a * a + b * b);
-  const alpha = Math.atan(a / b) * (180 / Math.PI);
+  const lastForm = !state ? loadLastCartelFormState() : null;
 
-  // Frontal calculations
-  const nColumnas = Math.round(anchoCartel / sepColumnas) + 1;
-  const nCorreas = Math.round(hc / sepCorreas) + 1;
-  const areaColumna = sepColumnas * hc;
-  const areaCorrea = sepCorreas * sepColumnas;
-
-  // Wind per CIRSOC 102
-  const Ivals: Record<string, number> = { "I": 0.87, "II": 1.00, "III": 1.15, "IV": 1.15 };
-  const expVals: Record<string, { alpha: number; zg: number }> = {
-    "A": { alpha: 5.0, zg: 457 }, "B": { alpha: 7.0, zg: 366 },
-    "C": { alpha: 9.5, zg: 274 }, "D": { alpha: 11.5, zg: 213 },
-  };
-  const I = Ivals[categoria] || 1.0;
-  const { alpha: expAlpha, zg: expZg } = expVals[exposicion] || expVals["B"];
-  const zMean = hTerraza + d + hc / 2; // mean height of sign
-  const zMin = 4.5; // minimum height for Kz
-  const z = Math.max(zMean, zMin);
-  const Kz = 2.01 * Math.pow(z / expZg, 2 / expAlpha);
-  const Kd = 0.85; // directionality
-  const Kzt = 1.0; // topographic
-  const qz = 0.613 * Kz * Kzt * Kd * V * V * I; // N/m²
-  const G = 0.85;  // gust factor
-  const Cp = 1.2;  // pressure coefficient for signs
-  const p = qz * G * Cp; // design wind pressure N/m²
-  const Fviento = p * (anchoCartel * hc) / 1000; // kN
-
-  // Column truss module
-  const dDiag = Math.sqrt(hCol * hCol + aCol * aCol); // diagonal length
-  const alturaColumna = ht; // total column height = hc + d
-  const nPaneles = Math.ceil(alturaColumna / aCol);
-  const longCordones = 2 * alturaColumna; // two chords
-  const longMontantes = (nPaneles + 1) * hCol; // one horizontal per node
-  const longDiagonales = nPaneles * dDiag;
-  const longTotal = longCordones + longMontantes + longDiagonales;
-
-  // Column forces & verification
-  const Fcol = Fviento / nColumnas; // kN per column
-  const Mbase = Fcol * zMean; // kN·m at base
-  const Nchord = Mbase / hCol; // kN chord force
-  const sinAlphaCol = hCol / dDiag;
-  const Ndiag = Fcol / sinAlphaCol; // kN diagonal force
-  const Nmont = Fcol; // kN (vertical from shear, simplified)
-
-  const angCordon = ANGLE_PROFILES.find(a => a.name === perfilCordon)!;
-  const angDiag = ANGLE_PROFILES.find(a => a.name === perfilDiagonal)!;
-  const angMont = ANGLE_PROFILES.find(a => a.name === perfilMontante)!;
-
-  const chkCordon = angCordon ? checkAngleCompForce(angCordon, FyCol, aCol * 1000, 1.0, Nchord) : null;
-  const chkDiag = angDiag ? checkAngleCompForce(angDiag, FyCol, dDiag * 1000, 1.0, Ndiag) : null;
-  const chkMont = angMont ? checkAngleCompForce(angMont, FyCol, hCol * 1000, 1.0, Nmont) : null;
-
-  // Column as unit: interaction ratio = max of component ratios
-  const ratioColumna = Math.max(
-    chkCordon?.ratio ?? 0,
-    chkDiag?.ratio ?? 0,
-    chkMont?.ratio ?? 0,
+  const [anchoCartel, setAnchoCartel] = useState(
+    state?.anchoCartel ?? lastForm?.anchoCartel ?? 12,
+  );
+  const [altoCartel, setAltoCartel] = useState(
+    state?.altoCartel ?? lastForm?.altoCartel ?? 4.8,
+  );
+  const [despegue, setDespegue] = useState(
+    state?.despegue ?? lastForm?.despegue ?? 3,
+  );
+  const [sepCorreas, setSepCorreas] = useState(
+    state?.sepCorreas ?? lastForm?.sepCorreas ?? 1,
+  );
+  const [tipoColumna, setTipoColumna] = useState(
+    state?.tipoColumna ?? lastForm?.tipoColumna ?? 2,
+  );
+  const [tienePuntal, setTienePuntal] = useState(
+    state?.tienePuntal ?? lastForm?.tienePuntal ?? true,
+  );
+  const [hPuntal, setHPuntal] = useState(
+    state?.hPuntal ?? lastForm?.hPuntal ?? 3.84,
+  );
+  const [dPuntal, setDPuntal] = useState(
+    state?.dPuntal ?? lastForm?.dPuntal ?? 3.44,
+  );
+  const [tipoPuntal, setTipoPuntal] = useState(
+    state?.tipoPuntal ?? lastForm?.tipoPuntal ?? 1,
+  );
+  const [velocidadViento, setVelocidadViento] = useState(
+    state?.velocidadViento ?? lastForm?.velocidadViento ?? 45,
+  );
+  const [categoria, setCategoria] = useState(
+    state?.categoria ?? lastForm?.categoria ?? "II",
+  );
+  const [exposicion, setExposicion] = useState(
+    state?.exposicion ?? lastForm?.exposicion ?? "B",
+  );
+  const [hCol, setHCol] = useState(
+    state?.hCol ?? lastForm?.hCol ?? 0.5,
+  );
+  const [aCol, setACol] = useState(
+    state?.aCol ?? lastForm?.aCol ?? 0.6,
+  );
+  const [perfilCordon, setPerfilCordon] = useState(
+    state?.perfilCordon ?? lastForm?.perfilCordon ?? 'L 2 1/2" x 1/4"',
+  );
+  const [perfilDiagonal, setPerfilDiagonal] = useState(
+    state?.perfilDiagonal ?? lastForm?.perfilDiagonal ?? 'L 1 1/2" x 3/16"',
+  );
+  const [perfilMontante, setPerfilMontante] = useState(
+    state?.perfilMontante ?? lastForm?.perfilMontante ?? 'L 1 1/4" x 1/8"',
+  );
+  const [Fy, setFy] = useState(state?.Fy ?? lastForm?.Fy ?? 235);
+  const [perfilIPN, setPerfilIPN] = useState(
+    state?.perfilIPN ?? lastForm?.perfilIPN ?? "IPN 200",
+  );
+  const [separacionCol, setSeparacionCol] = useState(
+    state?.separacionCol ?? lastForm?.separacionCol ?? 0.5,
+  );
+  const [cantColumnas, setCantColumnas] = useState(
+    state?.cantColumnas ?? lastForm?.cantColumnas ?? 3,
+  );
+  const [vueloLateral, setVueloLateral] = useState(
+    state?.vueloLateral ?? lastForm?.vueloLateral ?? 0,
+  );
+  const [KGlobal, setKGlobal] = useState(
+    state?.KGlobal ?? lastForm?.KGlobal ?? 1.0,
   );
 
-  // Column verification steps
-  const colSteps = [
-    `--- Solicitaciones en la columna ---`,
-    ``,
-    `F_viento total = ${Fviento.toFixed(1)} kN`,
-    `Columnas = ${nColumnas}`,
-    `F_col = F_viento / columnas = ${Fviento.toFixed(1)} / ${nColumnas} = ${Fcol.toFixed(2)} kN`,
-    ``,
-    `Altura media: z = h_terraza + d + hc/2 = ${hTerraza} + ${d} + ${hc}/2 = ${zMean.toFixed(2)} m`,
-    `Momento en base: M_base = F_col · z = ${Fcol.toFixed(2)} · ${zMean.toFixed(2)} = ${Mbase.toFixed(1)} kN·m`,
-    ``,
-    `Fuerza en cordón: N = M_base / h_col = ${Mbase.toFixed(1)} / ${hCol} = ${Nchord.toFixed(1)} kN`,
-    `  (compresión en un cordón, tracción en el otro)`,
-    ``,
-    `sin α = h_col / d_diag = ${hCol} / ${dDiag.toFixed(2)} = ${sinAlphaCol.toFixed(4)}`,
-    `Fuerza en diagonal: N = F_col / sin α = ${Fcol.toFixed(2)} / ${sinAlphaCol.toFixed(4)} = ${Ndiag.toFixed(1)} kN`,
-    ``,
-    `Fuerza en montante: N ≈ F_col = ${Nmont.toFixed(1)} kN (simplificado)`,
-    ``,
-    `--- Verificación de barras (CIRSOC 301, φ_c = 0.90) ---`,
-    ``,
-    `Cordón ${perfilCordon}: A=${angCordon?.A}cm², r_z=${angCordon?.rz}cm, L_pandeo=a_col=${aCol}m`,
-    `  KL/r = 1.0·${(aCol*1000).toFixed(0)} / ${(angCordon ? angCordon.rz*10 : 0).toFixed(0)} = ${chkCordon?.KLr.toFixed(0)}, λ_c = ${(chkCordon?.KLr??0 / Math.PI * Math.sqrt(235/200000)).toFixed(3)}`,
-    `  F_cr = ${chkCordon?.Fcr.toFixed(0)} MPa, φ·P_n = ${chkCordon?.phiPn.toFixed(1)} kN`,
-    `  Ratio = ${Nchord.toFixed(1)} / ${chkCordon?.phiPn.toFixed(1)} = ${chkCordon?.ratio.toFixed(2)} ${chkCordon?.ok ? "✓" : "✗"}`,
-    ``,
-    `Diagonal ${perfilDiagonal}: A=${angDiag?.A}cm², r_z=${angDiag?.rz}cm, L_pandeo=d_diag=${dDiag.toFixed(2)}m`,
-    `  KL/r = 1.0·${(dDiag*1000).toFixed(0)} / ${(angDiag ? angDiag.rz*10 : 0).toFixed(0)} = ${chkDiag?.KLr.toFixed(0)}`,
-    `  F_cr = ${chkDiag?.Fcr.toFixed(0)} MPa, φ·P_n = ${chkDiag?.phiPn.toFixed(1)} kN`,
-    `  Ratio = ${Ndiag.toFixed(1)} / ${chkDiag?.phiPn.toFixed(1)} = ${chkDiag?.ratio.toFixed(2)} ${chkDiag?.ok ? "✓" : "✗"}`,
-    ``,
-    `Montante ${perfilMontante}: A=${angMont?.A}cm², r_z=${angMont?.rz}cm, L_pandeo=h_col=${hCol}m`,
-    `  KL/r = 1.0·${(hCol*1000).toFixed(0)} / ${(angMont ? angMont.rz*10 : 0).toFixed(0)} = ${chkMont?.KLr.toFixed(0)}`,
-    `  F_cr = ${chkMont?.Fcr.toFixed(0)} MPa, φ·P_n = ${chkMont?.phiPn.toFixed(1)} kN`,
-    `  Ratio = ${Nmont.toFixed(1)} / ${chkMont?.phiPn.toFixed(1)} = ${chkMont?.ratio.toFixed(2)} ${chkMont?.ok ? "✓" : "✗"}`,
-    ``,
-    `--- Columna como unidad ---`,
-    `Ratio máximo = ${ratioColumna.toFixed(2)} ${ratioColumna <= 1 ? "✓ Verifica" : "✗ No verifica"}`,
-  ].join("\n");
+  const [loadedSaveId, setLoadedSaveId] = useState<string | null>(null);
+  const [loadedSaveName, setLoadedSaveName] = useState<string | null>(null);
 
-  // Wind calculation steps
-  const A_cartel = anchoCartel * hc;
-  const windSteps = [
-    `--- Cálculo de viento (CIRSOC 102) ---`,
-    ``,
-    `1. Factor de importancia I:`,
-    `   Categoría ${categoria} → I = ${I.toFixed(2)}`,
-    ``,
-    `2. Coeficiente de exposición K_z:`,
-    `   Exposición ${exposicion}: α = ${expAlpha}, z_g = ${expZg} m`,
-    `   z = h_terraza + d + hc/2 = ${hTerraza} + ${d} + ${hc}/2 = ${zMean.toFixed(2)} m`,
-    `   z ≥ 4.5 m → z = ${z.toFixed(2)} m`,
-    `   K_z = 2.01 · (z/z_g)^(2/α) = 2.01 · (${z.toFixed(2)}/${expZg})^(2/${expAlpha}) = ${Kz.toFixed(4)}`,
-    ``,
-    `3. Presión dinámica q_z:`,
-    `   q_z = 0.613 · K_z · K_{zt} · K_d · V² · I`,
-    `   q_z = 0.613 · ${Kz.toFixed(3)} · ${Kzt} · ${Kd} · ${V}² · ${I.toFixed(2)} = ${qz.toFixed(0)} N/m²`,
-    `   (K_{zt} = 1.0 topografía plana, K_d = 0.85 direccionalidad)`,
-    ``,
-    `4. Presión de diseño p:`,
-    `   p = q_z · G · C_p = ${qz.toFixed(0)} · ${G} · ${Cp} = ${p.toFixed(0)} N/m²`,
-    `   (G = 0.85 factor de ráfaga, C_p = 1.2 cartel abierto)`,
-    ``,
-    `5. Fuerza total de viento:`,
-    `   A_cartel = ancho · h_c = ${anchoCartel.toFixed(2)} · ${hc.toFixed(2)} = ${A_cartel.toFixed(2)} m²`,
-    `   F_viento = p · A_cartel = ${p.toFixed(0)} · ${A_cartel.toFixed(2)} = ${(p * A_cartel).toFixed(0)} N`,
-    `   F_viento = ${Fviento.toFixed(1)} kN`,
-  ].join("\n");
+  // Derive sepColumnas from cantColumnas + vueloLateral
+  const computedSepColumnas =
+    cantColumnas > 1
+      ? (anchoCartel - 2 * vueloLateral) / (cantColumnas - 1)
+      : anchoCartel;
 
-  // ===== SIDE VIEW DRAWING =====
-  const svgW = 350, svgH = 480, pad = 30;
-  const scale = (svgH - 2 * pad) / (hTerraza + ht);
-  const groundY = svgH - pad;
-  const terrazaY = groundY - hTerraza * scale;
-  const towerTop = terrazaY - ht * scale;
-  const startCargaY = terrazaY - d * scale;
-  const anchorY = startCargaY - a * scale;
-  const xCenter = svgW / 2;
-  const puntalBaseX = xCenter + b * scale;
+  // Guard: skip first auto-save to avoid overwriting router state with defaults
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    saveLastCartelFormState({
+      anchoCartel,
+      altoCartel,
+      despegue,
+      sepColumnas: computedSepColumnas,
+      sepCorreas,
+      tipoColumna,
+      tienePuntal,
+      hPuntal,
+      dPuntal,
+      velocidadViento,
+      categoria,
+      exposicion,
+      hCol,
+      aCol,
+      perfilCordon,
+      perfilDiagonal,
+      perfilMontante,
+      Fy,
+      perfilIPN,
+      separacionCol,
+      cantColumnas,
+      vueloLateral,
+      KGlobal,
+      tipoPuntal,
+    });
+  }, [
+    anchoCartel,
+    altoCartel,
+    despegue,
+    computedSepColumnas,
+    sepCorreas,
+    tipoColumna,
+    tienePuntal,
+    hPuntal,
+    dPuntal,
+    tipoPuntal,
+    velocidadViento,
+    categoria,
+    exposicion,
+    hCol,
+    aCol,
+    perfilCordon,
+    perfilDiagonal,
+    perfilMontante,
+    Fy,
+    perfilIPN,
+    separacionCol,
+    cantColumnas,
+    vueloLateral,
+    KGlobal,
+  ]);
 
-  // ===== FRONT VIEW DRAWING =====
-  const fW = 500, fH = 250, fPad = 30;
-  const fScale = (fW - 2 * fPad) / anchoCartel;
-  const fHeight = hc * fScale * 0.7; // compress height for drawing
-  const fy0 = fH - fPad;
+  function handleSave() {
+    const data: Record<string, unknown> = {
+      anchoCartel,
+      altoCartel,
+      despegue,
+      sepColumnas: computedSepColumnas,
+      sepCorreas,
+      tipoColumna,
+      tienePuntal,
+      hPuntal,
+      dPuntal,
+      velocidadViento,
+      categoria,
+      exposicion,
+      hCol,
+      aCol,
+      perfilCordon,
+      perfilDiagonal,
+      perfilMontante,
+      Fy,
+      perfilIPN,
+      separacionCol,
+      cantColumnas,
+      vueloLateral,
+      KGlobal,
+      tipoPuntal,
+    };
+
+    if (loadedSaveId) {
+      updateSave(loadedSaveId, data);
+      return;
+    }
+
+    const name = prompt("Nombre para guardar este cartel:");
+    if (!name) return;
+    try {
+      saveBeam(name, "cartel", data);
+      setLoadedSaveName(name);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Error al guardar");
+    }
+  }
+
+  function handleLoad(data: Record<string, unknown>, save: { id: string; name: string }) {
+    setLoadedSaveId(save.id);
+    setLoadedSaveName(save.name);
+    const d = data as Record<string, unknown>;
+    if (typeof d.anchoCartel === "number") setAnchoCartel(d.anchoCartel);
+    if (typeof d.altoCartel === "number") setAltoCartel(d.altoCartel);
+    if (typeof d.despegue === "number") setDespegue(d.despegue);
+    if (typeof d.sepCorreas === "number") setSepCorreas(d.sepCorreas);
+    if (typeof d.tipoColumna === "number") {
+      const t = d.tipoColumna;
+      setTipoColumna(t === 3 ? 2 : t); // remap T3 → T2
+    }
+    if (typeof d.tienePuntal === "boolean") setTienePuntal(d.tienePuntal);
+    if (typeof d.hPuntal === "number") setHPuntal(d.hPuntal);
+    if (typeof d.dPuntal === "number") setDPuntal(d.dPuntal);
+    if (typeof d.velocidadViento === "number") setVelocidadViento(d.velocidadViento);
+    if (typeof d.categoria === "string") setCategoria(d.categoria);
+    if (typeof d.exposicion === "string") setExposicion(d.exposicion);
+    if (typeof d.hCol === "number") setHCol(d.hCol);
+    if (typeof d.aCol === "number") setACol(d.aCol);
+    if (typeof d.perfilCordon === "string") setPerfilCordon(d.perfilCordon);
+    if (typeof d.perfilDiagonal === "string") setPerfilDiagonal(d.perfilDiagonal);
+    if (typeof d.perfilMontante === "string") setPerfilMontante(d.perfilMontante);
+    if (typeof d.Fy === "number") setFy(d.Fy);
+    if (typeof d.perfilIPN === "string") setPerfilIPN(d.perfilIPN);
+    if (typeof d.separacionCol === "number") setSeparacionCol(d.separacionCol);
+    if (typeof d.cantColumnas === "number") setCantColumnas(d.cantColumnas);
+    if (typeof d.vueloLateral === "number") setVueloLateral(d.vueloLateral);
+    if (typeof d.KGlobal === "number") setKGlobal(d.KGlobal); else setKGlobal(1.0);
+    if (typeof d.tipoPuntal === "number") setTipoPuntal(d.tipoPuntal); else setTipoPuntal(1);
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const cartelState: CartelState = {
+      anchoCartel,
+      altoCartel,
+      despegue,
+      sepColumnas: computedSepColumnas,
+      sepCorreas,
+      tipoColumna,
+      tienePuntal,
+      hPuntal,
+      dPuntal,
+      velocidadViento,
+      categoria,
+      exposicion,
+      hCol,
+      aCol,
+      perfilCordon,
+      perfilDiagonal,
+      perfilMontante,
+      Fy,
+      perfilIPN,
+      separacionCol,
+      cantColumnas,
+      vueloLateral,
+      KGlobal,
+      tipoPuntal,
+    };
+    navigate("/cartel-results", { state: cartelState });
+  }
 
   return (
     <MainLayout>
       <header className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
-          <svg className="w-5 h-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" /></svg>
+          <svg
+            className="w-5 h-5 text-primary"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"
+            />
+          </svg>
         </div>
-        <div><h1 className="text-xl font-semibold text-text">Cálculo de Carteles</h1><p className="text-sm text-text-muted">Geometría y áreas de influencia</p></div>
+        <div>
+          <h1 className="text-xl font-semibold text-text">
+            Cálculo de Carteles
+          </h1>
+          <p className="text-sm text-text-muted">
+            {loadedSaveName ? `Editando: ${loadedSaveName}` : "CIRSOC 102 — Viento y reticulado de columnas"}
+          </p>
+        </div>
       </header>
 
-      {/* Inputs */}
-      <section className="bg-surface rounded-xl border border-border p-5">
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">Vista lateral</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          <label className="flex flex-col gap-1"><span className="text-xs text-text-muted">h<sub>terraza</sub> (m)</span><input type="number" step="0.01" value={hTerraza||""} onKeyDown={handleCommaKey} onChange={e=>setHTerraza(Number(e.target.value))}/></label>
-          <label className="flex flex-col gap-1"><span className="text-xs text-text-muted">h<sub>c</sub> (m)</span><input type="number" step="0.01" value={hc||""} onKeyDown={handleCommaKey} onChange={e=>setHc(Number(e.target.value))}/></label>
-          <label className="flex flex-col gap-1"><span className="text-xs text-text-muted">d (m)</span><input type="number" step="0.01" value={d||""} onKeyDown={handleCommaKey} onChange={e=>setD(Number(e.target.value))}/></label>
-          <label className="flex flex-col gap-1"><span className="text-xs text-text-muted">a (m)</span><input type="number" step="0.01" value={a||""} onKeyDown={handleCommaKey} onChange={e=>setA(Number(e.target.value))}/></label>
-          <label className="flex flex-col gap-1"><span className="text-xs text-text-muted">b (m)</span><input type="number" step="0.01" value={b||""} onKeyDown={handleCommaKey} onChange={e=>setB(Number(e.target.value))}/></label>
-        </div>
-      </section>
+      <SavedBeams
+        type="cartel"
+        onLoad={handleLoad}
+        label="Carteles guardados"
+      />
 
-      <section className="bg-surface rounded-xl border border-border p-5">
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">Vista frontal</h2>
-        <div className="grid grid-cols-3 gap-3">
-          <label className="flex flex-col gap-1"><span className="text-xs text-text-muted">Ancho cartel (m)</span><input type="number" step="0.1" value={anchoCartel||""} onKeyDown={handleCommaKey} onChange={e=>setAnchoCartel(Number(e.target.value))}/></label>
-          <label className="flex flex-col gap-1"><span className="text-xs text-text-muted">Sep. columnas (m)</span><input type="number" step="0.1" value={sepColumnas||""} onKeyDown={handleCommaKey} onChange={e=>setSepColumnas(Number(e.target.value))}/></label>
-          <label className="flex flex-col gap-1"><span className="text-xs text-text-muted">Sep. correas (m)</span><input type="number" step="0.1" value={sepCorreas||""} onKeyDown={handleCommaKey} onChange={e=>setSepCorreas(Number(e.target.value))}/></label>
-          <label className="flex flex-col gap-1"><span className="text-xs text-text-muted">Tipo columna</span><select value={tipoColumna} onChange={e=>setTipoColumna(Number(e.target.value))}>
-            <option value={1}>Tipo 1 — Simple</option>
-            <option value={2}>Tipo 2 — Doble con celosía</option>
-            <option value={3}>Tipo 3 — Cajón</option>
-            <option value={4}>Tipo 4 — Celosía completa</option>
-          </select></label>
-        </div>
-      </section>
-
-      <section className="bg-surface rounded-xl border border-border p-5">
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">Columna — Reticulado interno (Tipo {tipoColumna})</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-          <label className="flex flex-col gap-1"><span className="text-xs text-text-muted">h<sub>col</sub> — Ancho sección (m)</span><input type="number" step="0.01" value={hCol||""} onKeyDown={handleCommaKey} onChange={e=>setHCol(Number(e.target.value))}/></label>
-          <label className="flex flex-col gap-1"><span className="text-xs text-text-muted">a<sub>col</sub> — Alto panel (m)</span><input type="number" step="0.01" value={aCol||""} onKeyDown={handleCommaKey} onChange={e=>setACol(Number(e.target.value))}/></label>
-          <label className="flex flex-col gap-1"><span className="text-xs text-text-muted">F<sub>y</sub> (MPa)</span><select value={FyCol} onChange={e=>setFyCol(Number(e.target.value))}>
-            <option value={235}>235</option><option value={275}>275</option><option value={355}>355</option>
-          </select></label>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-          <label className="flex flex-col gap-1"><span className="text-xs text-text-muted">Perfil cordones</span><select value={perfilCordon} onChange={e=>setPerfilCordon(e.target.value)}>{ANGLE_PROFILES.map(a=><option key={a.name} value={a.name}>{a.name}</option>)}</select></label>
-          <label className="flex flex-col gap-1"><span className="text-xs text-text-muted">Perfil diagonales</span><select value={perfilDiagonal} onChange={e=>setPerfilDiagonal(e.target.value)}>{ANGLE_PROFILES.map(a=><option key={a.name} value={a.name}>{a.name}</option>)}</select></label>
-          <label className="flex flex-col gap-1"><span className="text-xs text-text-muted">Perfil montantes</span><select value={perfilMontante} onChange={e=>setPerfilMontante(e.target.value)}>{ANGLE_PROFILES.map(a=><option key={a.name} value={a.name}>{a.name}</option>)}</select></label>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          <div className="bg-surface-alt rounded-lg p-3"><span className="text-xs text-text-muted">d<sub>diag</sub> = √(h²+a²)</span><p className="text-lg font-bold text-primary">{dDiag.toFixed(2)} m</p></div>
-          <div className="bg-surface-alt rounded-lg p-3"><span className="text-xs text-text-muted">Paneles</span><p className="text-lg font-bold text-primary">{nPaneles}</p><span className="text-xs text-text-muted">h={alturaColumna.toFixed(2)}m</span></div>
-          <div className="bg-surface-alt rounded-lg p-3"><span className="text-xs text-text-muted">L cordones</span><p className="text-lg font-bold text-primary">{longCordones.toFixed(1)} m</p></div>
-          <div className="bg-surface-alt rounded-lg p-3"><span className="text-xs text-text-muted">L montantes</span><p className="text-lg font-bold text-primary">{longMontantes.toFixed(1)} m</p></div>
-          <div className="bg-surface-alt rounded-lg p-3"><span className="text-xs text-text-muted">L diagonales</span><p className="text-lg font-bold text-primary">{longDiagonales.toFixed(1)} m</p></div>
-          <div className="bg-surface-alt rounded-lg p-3"><span className="text-xs text-text-muted">Longitud total de acero</span><p className="text-lg font-bold text-primary">{longTotal.toFixed(1)} m</p><span className="text-xs text-text-muted">Por columna × {nColumnas} = {(longTotal*nColumnas).toFixed(1)} m total</span></div>
-        </div>
-        {/* Forces and verification */}
-        <div className="border-t border-border mt-4 pt-4">
-          <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">Solicitaciones y verificación</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-3">
-            <div className="bg-surface-alt rounded-lg p-3"><span className="text-xs text-text-muted">F<sub>col</sub></span><p className="text-sm font-bold">{Fcol.toFixed(1)} kN</p></div>
-            <div className="bg-surface-alt rounded-lg p-3"><span className="text-xs text-text-muted">M<sub>base</sub></span><p className="text-sm font-bold">{Mbase.toFixed(1)} kN·m</p></div>
-            <div className="bg-surface-alt rounded-lg p-3"><span className="text-xs text-text-muted">N<sub>cordón</sub> = M/h</span><p className="text-sm font-bold">{Nchord.toFixed(1)} kN</p></div>
-            <div className="bg-surface-alt rounded-lg p-3"><span className="text-xs text-text-muted">N<sub>diag</sub> = V/sin α</span><p className="text-sm font-bold">{Ndiag.toFixed(1)} kN</p></div>
-            <div className="bg-surface-alt rounded-lg p-3"><span className="text-xs text-text-muted">N<sub>mont</sub></span><p className="text-sm font-bold">{Nmont.toFixed(1)} kN</p></div>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+        {/* Vista lateral */}
+        <section className="bg-surface rounded-xl border border-border p-5">
+          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
+            Vista lateral
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-text-muted">
+                Ancho cartel (m)
+              </span>
+              <DecimalInput value={anchoCartel} onChange={setAnchoCartel} />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-text-muted">
+                Alto cartel — h<sub>c</sub> (m)
+              </span>
+              <DecimalInput value={altoCartel} onChange={setAltoCartel} />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-text-muted">
+                Despegue (m)
+              </span>
+              <DecimalInput value={despegue} onChange={setDespegue} />
+            </label>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {chkCordon && (<div className="bg-surface-alt rounded-lg p-3"><span className="text-xs text-text-muted">Cordón ({perfilCordon})</span><p className="text-sm">KL/r={chkCordon.KLr.toFixed(0)} F<sub>cr</sub>={chkCordon.Fcr.toFixed(0)} MPa</p><span className={`text-sm font-bold ${chkCordon.ok ? "text-success" : "text-danger"}`}>{chkCordon.ok ? "✓" : "✗"} Ratio {chkCordon.ratio.toFixed(2)}</span></div>)}
-            {chkDiag && (<div className="bg-surface-alt rounded-lg p-3"><span className="text-xs text-text-muted">Diagonal ({perfilDiagonal})</span><p className="text-sm">KL/r={chkDiag.KLr.toFixed(0)} F<sub>cr</sub>={chkDiag.Fcr.toFixed(0)} MPa</p><span className={`text-sm font-bold ${chkDiag.ok ? "text-success" : "text-danger"}`}>{chkDiag.ok ? "✓" : "✗"} Ratio {chkDiag.ratio.toFixed(2)}</span></div>)}
-            {chkMont && (<div className="bg-surface-alt rounded-lg p-3"><span className="text-xs text-text-muted">Montante ({perfilMontante})</span><p className="text-sm">KL/r={chkMont.KLr.toFixed(0)} F<sub>cr</sub>={chkMont.Fcr.toFixed(0)} MPa</p><span className={`text-sm font-bold ${chkMont.ok ? "text-success" : "text-danger"}`}>{chkMont.ok ? "✓" : "✗"} Ratio {chkMont.ratio.toFixed(2)}</span></div>)}
+
+          <div className="border-t border-border mt-4 pt-4">
+            <label className="flex items-center gap-2 mb-3">
+              <input
+                type="checkbox"
+                checked={tienePuntal}
+                onChange={(e) => setTienePuntal(e.target.checked)}
+                className="rounded"
+              />
+              <span className="text-sm font-semibold text-text">Incluir puntal</span>
+            </label>
+
+            {tienePuntal && (
+              <div className="grid grid-cols-2 sm:grid-cols-2 gap-3 ml-6">
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">
+                    h<sub>puntal</sub> — Altura anclaje (m)
+                  </span>
+                      <DecimalInput value={hPuntal} onChange={setHPuntal} />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">
+                    d<sub>puntal</sub> — Distancia horiz. (m)
+                  </span>
+                      <DecimalInput value={dPuntal} onChange={setDPuntal} />
+                </label>
+              </div>
+            )}
+
+            {tienePuntal && (
+              <div className="mt-4 pt-3 border-t border-border">
+                <span className="text-xs text-text-muted uppercase tracking-wider font-semibold block mb-3">
+                  Tipo de puntal
+                </span>
+                <div className="grid grid-cols-3 gap-2">
+                  {/* Tipo 1 — Cruz */}
+                  <button
+                    type="button"
+                    onClick={() => setTipoPuntal(1)}
+                    className={`flex flex-col items-center gap-1.5 p-2 rounded-lg transition-all text-left ${
+                      tipoPuntal === 1
+                        ? "bg-primary/15 ring-2 ring-primary shadow-md shadow-primary/20 scale-[1.02]"
+                        : "bg-surface-alt ring-1 ring-transparent hover:bg-surface hover:ring-border"
+                    }`}
+                  >
+                    <svg width="60" height="40" viewBox="0 0 60 40" className="pointer-events-none">
+                      <line x1="10" y1="10" x2="50" y2="30" stroke="#fbbf24" strokeWidth="2.5" />
+                      <line x1="50" y1="10" x2="10" y2="30" stroke="#fbbf24" strokeWidth="2.5" />
+                    </svg>
+                    <div className="text-center">
+                      <p className={`text-[11px] font-semibold ${tipoPuntal === 1 ? "text-primary" : "text-text"}`}>
+                        Tipo 1 — Cruz
+                      </p>
+                      <p className="text-[9px] text-text-muted">2× L 2″×3/16″</p>
+                    </div>
+                  </button>
+
+                  {/* Tipo 2 — Plano */}
+                  <button
+                    type="button"
+                    onClick={() => setTipoPuntal(2)}
+                    className={`flex flex-col items-center gap-1.5 p-2 rounded-lg transition-all text-left ${
+                      tipoPuntal === 2
+                        ? "bg-primary/15 ring-2 ring-primary shadow-md shadow-primary/20 scale-[1.02]"
+                        : "bg-surface-alt ring-1 ring-transparent hover:bg-surface hover:ring-border"
+                    }`}
+                  >
+                    <svg width="60" height="40" viewBox="0 0 60 40" className="pointer-events-none">
+                      <line x1="15" y1="5" x2="15" y2="35" stroke="#fbbf24" strokeWidth="2" />
+                      <line x1="45" y1="5" x2="45" y2="35" stroke="#fbbf24" strokeWidth="2" />
+                      <line x1="15" y1="5" x2="45" y2="20" stroke="#f87171" strokeWidth="1" />
+                      <line x1="45" y1="20" x2="15" y2="35" stroke="#f87171" strokeWidth="1" />
+                      <line x1="15" y1="20" x2="45" y2="20" stroke="#4ade80" strokeWidth="1" />
+                    </svg>
+                    <div className="text-center">
+                      <p className={`text-[11px] font-semibold ${tipoPuntal === 2 ? "text-primary" : "text-text"}`}>
+                        Tipo 2 — Plano
+                      </p>
+                      <p className="text-[9px] text-text-muted">25 cm — reticulado</p>
+                    </div>
+                  </button>
+
+                  {/* Tipo 3 — Cuadrado */}
+                  <button
+                    type="button"
+                    onClick={() => setTipoPuntal(3)}
+                    className={`flex flex-col items-center gap-1.5 p-2 rounded-lg transition-all text-left ${
+                      tipoPuntal === 3
+                        ? "bg-primary/15 ring-2 ring-primary shadow-md shadow-primary/20 scale-[1.02]"
+                        : "bg-surface-alt ring-1 ring-transparent hover:bg-surface hover:ring-border"
+                    }`}
+                  >
+                    <svg width="60" height="40" viewBox="0 0 60 40" className="pointer-events-none">
+                      <rect x="10" y="8" width="40" height="24" rx="1" fill="none" stroke="#9090b0" strokeWidth="1" />
+                      <circle cx="14" cy="20" r="1.5" fill="#fbbf24" />
+                      <circle cx="30" cy="20" r="1.5" fill="#fbbf24" />
+                      <circle cx="46" cy="20" r="1.5" fill="#fbbf24" />
+                      <line x1="14" y1="12" x2="30" y2="20" stroke="#f87171" strokeWidth="0.8" />
+                      <line x1="46" y1="12" x2="30" y2="20" stroke="#f87171" strokeWidth="0.8" />
+                      <line x1="14" y1="28" x2="30" y2="20" stroke="#f87171" strokeWidth="0.8" />
+                      <line x1="46" y1="28" x2="30" y2="20" stroke="#f87171" strokeWidth="0.8" />
+                    </svg>
+                    <div className="text-center">
+                      <p className={`text-[11px] font-semibold ${tipoPuntal === 3 ? "text-primary" : "text-text"}`}>
+                        Tipo 3 — Cuadrado
+                      </p>
+                      <p className="text-[9px] text-text-muted">20×20 cm — cajón</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-          <div className={`mt-3 p-3 rounded-lg text-sm font-bold text-center ${ratioColumna <= 1 ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}>
-            Columna como unidad: Ratio máx = {ratioColumna.toFixed(2)} {ratioColumna <= 1 ? "✓ Verifica" : "✗ No verifica"}
-          </div>
-        </div>
-
-        <details className="mt-3">
-          <summary className="cursor-pointer text-xs text-text-muted font-semibold uppercase tracking-wider">Ver cuentas de columna</summary>
-          <pre className="mt-2 p-3 bg-surface-alt rounded-lg text-xs text-text-muted font-mono whitespace-pre-wrap overflow-x-auto">{colSteps}</pre>
-        </details>
-      </section>
-
-      {/* Reticulado drawing */}
-      {tipoColumna === 2 && (
-        <section className="bg-surface rounded-xl border border-border p-4 flex flex-col items-center">
-          <span className="text-xs text-text-muted uppercase tracking-wider font-semibold mb-2">Reticulado interno — Columna Tipo 2</span>
-          {(() => {
-            const rW = 280, rH = 320, rPad = 30;
-            const nShow = Math.min(nPaneles, 5);
-            const panelH = (rH - 2 * rPad) / nShow;
-            const colW = 80;
-            const x0 = (rW - colW) / 2;
-            const x1 = x0 + colW;
-            const lines: React.ReactNode[] = [];
-            // Chords
-            lines.push(<line key="ch-l" x1={x0} y1={rPad} x2={x0} y2={rPad + nShow * panelH} stroke="#fbbf24" strokeWidth={3} />);
-            lines.push(<line key="ch-r" x1={x1} y1={rPad} x2={x1} y2={rPad + nShow * panelH} stroke="#fbbf24" strokeWidth={3} />);
-            for (let i = 0; i <= nShow; i++) {
-              const y = rPad + i * panelH;
-              // Horizontal
-              lines.push(<line key={`h-${i}`} x1={x0} y1={y} x2={x1} y2={y} stroke="#4ade80" strokeWidth={2} />);
-              // Diagonal (ascending left-low to right-high) — skip last row
-              if (i < nShow) {
-                lines.push(<line key={`d-${i}`} x1={x0} y1={y + panelH} x2={x1} y2={y} stroke="#f87171" strokeWidth={2} />);
-              }
-            }
-            // Dimensions
-            lines.push(<line key="dim-h" x1={x0} y1={rPad + nShow * panelH + 12} x2={x1} y2={rPad + nShow * panelH + 12} stroke="#9090b0" strokeWidth={1} strokeDasharray="3,2" />);
-            lines.push(<line key="dim-h-t1" x1={x0} y1={rPad + nShow * panelH + 8} x2={x0} y2={rPad + nShow * panelH + 16} stroke="#9090b0" strokeWidth={1} />);
-            lines.push(<line key="dim-h-t2" x1={x1} y1={rPad + nShow * panelH + 8} x2={x1} y2={rPad + nShow * panelH + 16} stroke="#9090b0" strokeWidth={1} />);
-            lines.push(<text key="dim-h-txt" x={(x0 + x1) / 2} y={rPad + nShow * panelH + 24} fill="#9090b0" fontSize={9} textAnchor="middle">h_col = {hCol}m</text>);
-            lines.push(<line key="dim-a" x1={x0 - 10} y1={rPad} x2={x0 - 10} y2={rPad + panelH} stroke="#9090b0" strokeWidth={1} strokeDasharray="3,2" />);
-            lines.push(<text key="dim-a-txt" x={x0 - 14} y={rPad + panelH / 2 + 3} fill="#9090b0" fontSize={9} textAnchor="end">a={aCol}m</text>);
-            // Diagonal label
-            lines.push(<text key="diag-label" x={(x0 + x1) / 2 + 5} y={rPad + panelH / 2 + 4} fill="#f87171" fontSize={9}>d={dDiag.toFixed(2)}</text>);
-            // Legend
-            lines.push(<text key="lg-c" x={rW / 2} y={rH - 6} fill="#fbbf24" fontSize={9} textAnchor="middle">Cordones — Montantes — Diagonales</text>);
-            return <svg width={rW} height={rH} viewBox={`0 0 ${rW} ${rH}`}>{lines}</svg>;
-          })()}
-        </section>
-      )}
-
-      <section className="bg-surface rounded-xl border border-border p-5">
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">Viento (CIRSOC 102)</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <label className="flex flex-col gap-1"><span className="text-xs text-text-muted">D (kg/m²)</span><input type="number" step="1" value={DLoad||""} onKeyDown={handleCommaKey} onChange={e=>setDLoad(Number(e.target.value))}/></label>
-          <label className="flex flex-col gap-1"><span className="text-xs text-text-muted">V (m/s)</span><input type="number" step="1" value={V||""} onKeyDown={handleCommaKey} onChange={e=>setV(Number(e.target.value))}/></label>
-          <label className="flex flex-col gap-1"><span className="text-xs text-text-muted">Categoría</span><select value={categoria} onChange={e=>setCategoria(e.target.value)}>
-            <option value="I">I</option><option value="II">II</option><option value="III">III</option><option value="IV">IV</option>
-          </select></label>
-          <label className="flex flex-col gap-1"><span className="text-xs text-text-muted">Exposición</span><select value={exposicion} onChange={e=>setExposicion(e.target.value)}>
-            <option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option>
-          </select></label>
-        </div>
-      </section>
-
-      {/* Wind results */}
-      <section className="bg-surface rounded-xl border border-border p-5">
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">Resultados</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="bg-surface-alt rounded-lg p-3"><span className="text-xs text-text-muted">h<sub>t</sub></span><p className="text-lg font-bold text-primary">{ht.toFixed(2)} m</p><span className={`text-xs ${consistente ? "text-success" : "text-danger"}`}>{consistente ? "✓" : "✗ hc+d"}</span></div>
-          <div className="bg-surface-alt rounded-lg p-3"><span className="text-xs text-text-muted">L<sub>puntal</sub></span><p className="text-lg font-bold text-primary">{lPuntal.toFixed(2)} m</p></div>
-          <div className="bg-surface-alt rounded-lg p-3"><span className="text-xs text-text-muted">α</span><p className="text-lg font-bold text-primary">{alpha.toFixed(2)}°</p></div>
-          <div className="bg-surface-alt rounded-lg p-3"><span className="text-xs text-text-muted">Columnas</span><p className="text-lg font-bold text-primary">{nColumnas}</p><span className="text-xs text-text-muted">A<sub>inf</sub> = {areaColumna.toFixed(1)} m²</span></div>
-          <div className="bg-surface-alt rounded-lg p-3"><span className="text-xs text-text-muted">Correas</span><p className="text-lg font-bold text-primary">{nCorreas} líneas</p><span className="text-xs text-text-muted">A<sub>inf</sub> = {areaCorrea.toFixed(1)} m²</span></div>
-          <div className="bg-surface-alt rounded-lg p-3"><span className="text-xs text-text-muted">I (importancia)</span><p className="text-lg font-bold text-primary">{I.toFixed(2)}</p></div>
-          <div className="bg-surface-alt rounded-lg p-3"><span className="text-xs text-text-muted">K<sub>z</sub></span><p className="text-lg font-bold text-primary">{Kz.toFixed(3)}</p><span className="text-xs text-text-muted">z = {z.toFixed(1)} m</span></div>
-          <div className="bg-surface-alt rounded-lg p-3"><span className="text-xs text-text-muted">q<sub>z</sub> (N/m²)</span><p className="text-lg font-bold text-primary">{qz.toFixed(0)}</p></div>
-          <div className="bg-surface-alt rounded-lg p-3"><span className="text-xs text-text-muted">p (N/m²)</span><p className="text-lg font-bold text-primary">{p.toFixed(0)}</p></div>
-          <div className="bg-surface-alt rounded-lg p-3"><span className="text-xs text-text-muted">F<sub>viento</sub></span><p className="text-lg font-bold text-primary">{Fviento.toFixed(1)} kN</p><span className="text-xs text-text-muted">Fuerza total cartel</span></div>
-        </div>
-      </section>
-
-      <details className="bg-surface rounded-xl border border-border p-5">
-        <summary className="cursor-pointer text-sm font-semibold text-text-muted uppercase tracking-wider">Ver cuentas de viento</summary>
-        <pre className="mt-3 p-3 bg-surface-alt rounded-lg text-xs text-text-muted font-mono whitespace-pre-wrap overflow-x-auto">{windSteps}</pre>
-      </details>
-
-      {/* Drawings */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        {/* Side view */}
-        <section className="bg-surface rounded-xl border border-border p-4 flex flex-col items-center">
-          <span className="text-xs text-text-muted uppercase tracking-wider font-semibold mb-2">Vista lateral</span>
-          <svg width={svgW} height={svgH} viewBox={`0 0 ${svgW} ${svgH}`}>
-            <line x1={pad} y1={groundY} x2={svgW-pad} y2={groundY} stroke="#6b7280" strokeWidth={2}/>
-            <text x={pad} y={groundY+15} fill="#6b7280" fontSize={10}>Suelo</text>
-            <rect x={pad} y={terrazaY} width={svgW-2*pad} height={hTerraza*scale} fill="#1a1a2e" stroke="#9090b0" strokeWidth={1}/>
-            <line x1={pad} y1={terrazaY} x2={svgW-pad} y2={terrazaY} stroke="#7c8aff" strokeWidth={2} strokeDasharray="8,4"/>
-            <text x={pad+5} y={terrazaY-5} fill="#7c8aff" fontSize={9}>Terraza</text>
-            <line x1={xCenter} y1={terrazaY} x2={xCenter} y2={towerTop} stroke="#fbbf24" strokeWidth={4}/>
-            <line x1={xCenter-15} y1={terrazaY} x2={xCenter-15} y2={startCargaY} stroke="#fbbf24" strokeWidth={1} strokeDasharray="3,2"/>
-            <text x={xCenter-20} y={(terrazaY+startCargaY)/2+4} fill="#fbbf24" fontSize={9} textAnchor="end">d={d}m</text>
-            <line x1={xCenter+15} y1={startCargaY} x2={xCenter+15} y2={towerTop} stroke="#fbbf24" strokeWidth={1} strokeDasharray="3,2"/>
-            <text x={xCenter+18} y={(startCargaY+towerTop)/2+4} fill="#fbbf24" fontSize={9}>hc={hc}m</text>
-            <line x1={xCenter} y1={anchorY} x2={puntalBaseX} y2={terrazaY} stroke="#4ade80" strokeWidth={3}/>
-            <line x1={xCenter-25} y1={startCargaY} x2={xCenter-25} y2={anchorY} stroke="#4ade80" strokeWidth={1} strokeDasharray="3,2"/>
-            <text x={xCenter-28} y={(startCargaY+anchorY)/2+4} fill="#4ade80" fontSize={9} textAnchor="end">a={a}m</text>
-            <line x1={xCenter} y1={terrazaY+10} x2={puntalBaseX} y2={terrazaY+10} stroke="#4ade80" strokeWidth={1} strokeDasharray="3,2"/>
-            <text x={(xCenter+puntalBaseX)/2} y={terrazaY+22} fill="#4ade80" fontSize={9} textAnchor="middle">b={b}m</text>
-            <text x={xCenter+10} y={terrazaY-8} fill="#4ade80" fontSize={9}>α={alpha.toFixed(1)}°</text>
-            <circle cx={xCenter} cy={anchorY} r={3} fill="#4ade80"/><circle cx={puntalBaseX} cy={terrazaY} r={3} fill="#4ade80"/><circle cx={xCenter} cy={terrazaY} r={3} fill="#fbbf24"/>
-          </svg>
         </section>
 
-        {/* Front view */}
-        <section className="bg-surface rounded-xl border border-border p-4 flex flex-col items-center">
-          <span className="text-xs text-text-muted uppercase tracking-wider font-semibold mb-2">Vista frontal</span>
-          <svg width={fW} height={fH} viewBox={`0 0 ${fW} ${fH}`}>
-            {/* Cartel area */}
-            <rect x={fPad} y={fy0-fHeight} width={anchoCartel*fScale} height={fHeight} fill="#1a1a2e" stroke="#fbbf24" strokeWidth={1}/>
-            {/* Columns */}
-            {Array.from({length: nColumnas}, (_, i) => {
-              const cx = fPad + i * sepColumnas * fScale;
-              return <line key={i} x1={cx} y1={fy0-fHeight} x2={cx} y2={fy0} stroke="#7c8aff" strokeWidth={2}/>;
-            })}
-            {/* Correas */}
-            {Array.from({length: nCorreas}, (_, i) => {
-              const cy = fy0 - fHeight + (i * sepCorreas * fScale * 0.7) / hc * fHeight;
-              return <line key={i} x1={fPad} y1={cy} x2={fPad+anchoCartel*fScale} y2={cy} stroke="#4ade80" strokeWidth={1.5}/>;
-            })}
-            {/* Sep columnas */}
-            {nColumnas >= 2 && <>
-              <line x1={fPad} y1={fy0+10} x2={fPad+sepColumnas*fScale} y2={fy0+10} stroke="#7c8aff" strokeWidth={1} strokeDasharray="3,2"/>
-              <text x={fPad + sepColumnas*fScale/2} y={fy0+22} fill="#7c8aff" fontSize={9} textAnchor="middle">s<sub>c</sub>={sepColumnas}m</text>
-            </>}
-            {/* Sep correas */}
-            {nCorreas >= 2 && <>
-              <line x1={fPad-8} y1={fy0-fHeight} x2={fPad-8} y2={fy0-fHeight+sepCorreas*fHeight/hc*0.7} stroke="#4ade80" strokeWidth={1} strokeDasharray="3,2"/>
-              <text x={fPad-12} y={fy0-fHeight+sepCorreas*fHeight/hc*0.35+4} fill="#4ade80" fontSize={9} textAnchor="end">s<sub>r</sub>={sepCorreas}m</text>
-            </>}
-            {/* Ancho */}
-            <line x1={fPad} y1={fy0+30} x2={fPad+anchoCartel*fScale} y2={fy0+30} stroke="#fbbf24" strokeWidth={1} strokeDasharray="3,2"/>
-            <text x={fPad+anchoCartel*fScale/2} y={fy0+42} fill="#fbbf24" fontSize={9} textAnchor="middle">{anchoCartel} m</text>
-            {/* Height */}
-            <line x1={fPad+anchoCartel*fScale+10} y1={fy0-fHeight} x2={fPad+anchoCartel*fScale+10} y2={fy0} stroke="#fbbf24" strokeWidth={1} strokeDasharray="3,2"/>
-            <text x={fPad+anchoCartel*fScale+18} y={fy0-fHeight/2+4} fill="#fbbf24" fontSize={9}>h<sub>c</sub>={hc}m</text>
-            {/* Legend */}
-            <text x={fPad} y={fy0+58} fill="#7c8aff" fontSize={9}>Columnas ({nColumnas}) — Área inf. col: {areaColumna.toFixed(1)} m²</text>
-            <text x={fPad} y={fy0+70} fill="#4ade80" fontSize={9}>Correas ({nCorreas} líneas) — Área inf. correa: {areaCorrea.toFixed(1)} m²</text>
-          </svg>
+        {/* Tipo de columna */}
+        <section className="bg-surface rounded-xl border border-border p-5">
+          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
+            Tipo de columna
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {/* Tipo 1 — Simple (IPN) */}
+            <button
+              type="button"
+              onClick={() => setTipoColumna(1)}
+              className={`flex flex-col items-center gap-2 p-3 rounded-lg transition-all text-left ${
+                tipoColumna === 1
+                  ? "bg-primary/15 ring-2 ring-primary shadow-md shadow-primary/20 scale-[1.02]"
+                  : "bg-surface-alt ring-1 ring-transparent hover:bg-surface hover:ring-border"
+              }`}
+            >
+              <svg width="80" height="80" viewBox="0 0 80 80" className="pointer-events-none">
+                <rect x="25" y="6" width="30" height="8" rx="1" fill="none" stroke="#fbbf24" strokeWidth="2.5" />
+                <rect x="34" y="14" width="12" height="52" rx="1" fill="none" stroke="#fbbf24" strokeWidth="2" />
+                <rect x="25" y="66" width="30" height="8" rx="1" fill="none" stroke="#fbbf24" strokeWidth="2.5" />
+                <text x="40" y="40" fill="#9090b0" fontSize="8" textAnchor="middle">IPN</text>
+              </svg>
+              <div className="text-center">
+                <p className={`text-xs font-semibold ${tipoColumna === 1 ? "text-primary" : "text-text"}`}>
+                  Tipo 1 — Simple
+                </p>
+                <p className="text-[10px] text-text-muted">Perfil IPN / doble T</p>
+              </div>
+            </button>
+
+            {/* Tipo 2 — Doble con celosía */}
+            <button
+              type="button"
+              onClick={() => setTipoColumna(2)}
+              className={`flex flex-col items-center gap-2 p-3 rounded-lg transition-all text-left ${
+                tipoColumna === 2
+                  ? "bg-primary/15 ring-2 ring-primary shadow-md shadow-primary/20 scale-[1.02]"
+                  : "bg-surface-alt ring-1 ring-transparent hover:bg-surface hover:ring-border"
+              }`}
+            >
+              <svg width="80" height="80" viewBox="0 0 80 80" className="pointer-events-none">
+                <line x1="20" y1="8" x2="20" y2="72" stroke="#fbbf24" strokeWidth="3" />
+                <line x1="60" y1="8" x2="60" y2="72" stroke="#fbbf24" strokeWidth="3" />
+                <line x1="20" y1="8" x2="60" y2="28" stroke="#f87171" strokeWidth="1.5" />
+                <line x1="60" y1="28" x2="20" y2="48" stroke="#f87171" strokeWidth="1.5" />
+                <line x1="20" y1="48" x2="60" y2="68" stroke="#f87171" strokeWidth="1.5" />
+                <line x1="20" y1="72" x2="60" y2="72" stroke="#f87171" strokeWidth="1.5" />
+                <line x1="20" y1="28" x2="60" y2="28" stroke="#4ade80" strokeWidth="1" />
+                <line x1="20" y1="48" x2="60" y2="48" stroke="#4ade80" strokeWidth="1" />
+              </svg>
+              <div className="text-center">
+                <p className={`text-xs font-semibold ${tipoColumna === 2 ? "text-primary" : "text-text"}`}>
+                  Tipo 2 — Celosía
+                </p>
+                <p className="text-[10px] text-text-muted">Dos cordones c/diagonales</p>
+              </div>
+            </button>
+
+            {/* Tipo 3 removed — old saves with tipoColumna=3 silently remap to 2 */}
+
+            {/* Tipo 4 — Celosía completa */}
+            <button
+              type="button"
+              onClick={() => setTipoColumna(4)}
+              className={`flex flex-col items-center gap-2 p-3 rounded-lg transition-all text-left ${
+                tipoColumna === 4
+                  ? "bg-primary/15 ring-2 ring-primary shadow-md shadow-primary/20 scale-[1.02]"
+                  : "bg-surface-alt ring-1 ring-transparent hover:bg-surface hover:ring-border"
+              }`}
+            >
+              <svg width="80" height="80" viewBox="0 0 80 80" className="pointer-events-none">
+                {/* Plan view: 4 chords in a square */}
+                <rect x="20" y="4" width="40" height="14" rx="1" fill="none" stroke="#9090b0" strokeWidth="1" />
+                <circle cx="26" cy="11" r="2" fill="#fbbf24" />
+                <circle cx="40" cy="11" r="2" fill="#fbbf24" />
+                <circle cx="54" cy="11" r="2" fill="#fbbf24" />
+                {/* Front elevation: 3 visible chords */}
+                <line x1="26" y1="20" x2="26" y2="72" stroke="#fbbf24" strokeWidth="2" />
+                <line x1="40" y1="20" x2="40" y2="72" stroke="#fbbf24" strokeWidth="2" />
+                <line x1="54" y1="20" x2="54" y2="72" stroke="#fbbf24" strokeWidth="2" />
+                {/* Diagonals */}
+                <line x1="26" y1="20" x2="40" y2="38" stroke="#f87171" strokeWidth="1" />
+                <line x1="40" y1="38" x2="26" y2="56" stroke="#f87171" strokeWidth="1" />
+                <line x1="26" y1="56" x2="40" y2="72" stroke="#f87171" strokeWidth="1" />
+                <line x1="40" y1="20" x2="54" y2="38" stroke="#f87171" strokeWidth="1" />
+                <line x1="54" y1="38" x2="40" y2="56" stroke="#f87171" strokeWidth="1" />
+                <line x1="40" y1="56" x2="54" y2="72" stroke="#f87171" strokeWidth="1" />
+                {/* Montantes */}
+                <line x1="26" y1="38" x2="54" y2="38" stroke="#4ade80" strokeWidth="1" />
+                <line x1="26" y1="56" x2="54" y2="56" stroke="#4ade80" strokeWidth="1" />
+              </svg>
+              <div className="text-center">
+                <p className={`text-xs font-semibold ${tipoColumna === 4 ? "text-primary" : "text-text"}`}>
+                  Tipo 4 — Cel. completa
+                </p>
+                <p className="text-[10px] text-text-muted">4 cordones, reticulado 3D</p>
+              </div>
+            </button>
+          </div>
         </section>
-      </div>
+
+        {/* Vista frontal */}
+        <section className="bg-surface rounded-xl border border-border p-5">
+          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
+            Vista frontal
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-text-muted">Cantidad de columnas</span>
+              <DecimalInput value={cantColumnas} onChange={(v) => setCantColumnas(Math.round(v))} />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-text-muted">Vuelo lateral (m)</span>
+              <DecimalInput value={vueloLateral} onChange={setVueloLateral} />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-text-muted">Sep. correas (m)</span>
+              <DecimalInput value={sepCorreas} onChange={setSepCorreas} />
+            </label>
+          </div>
+          {cantColumnas > 1 && (
+            <p className="text-xs text-text-muted mt-3">
+              Sep. columnas = {computedSepColumnas.toFixed(2)} m
+              {vueloLateral > 0 && ` (vuelo ${vueloLateral.toFixed(2)} m en cada extremo)`}
+            </p>
+          )}
+        </section>
+
+        {/* Columna — dinámico según tipo */}
+        <section className="bg-surface rounded-xl border border-border p-5">
+          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
+            Columna —{" "}
+            {tipoColumna === 1
+              ? "Simple IPN"
+              : tipoColumna === 2
+                ? "Celosía"
+                : tipoColumna === 4
+                  ? "Celosía completa"
+                  : "Reticulado"}
+          </h2>
+
+          {tipoColumna === 1 && (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">Perfil IPN</span>
+                  <select
+                    value={perfilIPN}
+                    onChange={(e) => setPerfilIPN(e.target.value)}
+                  >
+                    {IPN_PROFILES.map((p) => (
+                      <option key={p.name} value={p.name}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">
+                    F<sub>y</sub> (MPa)
+                  </span>
+                  <select
+                    value={Fy}
+                    onChange={(e) => setFy(Number(e.target.value))}
+                  >
+                    <option value={235}>235 (F-24)</option>
+                    <option value={275}>275 (F-28)</option>
+                    <option value={355}>355 (F-36)</option>
+                  </select>
+                </label>
+              </div>
+              <p className="text-xs text-text-muted">
+                El perfil IPN se verifica a flexocompresión con el momento de
+                vuelco M<sub>base</sub>. La longitud de pandeo fuerte se toma
+                {tienePuntal ? " desde el puntal (h_puntal)" : " como 2× altura (voladizo)"}
+                ; la débil según separación de correas.
+              </p>
+            </>
+          )}
+
+          {tipoColumna !== 1 && (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">
+                    h<sub>col</sub> — Ancho sección (m)
+                  </span>
+                  <DecimalInput value={hCol} onChange={setHCol} />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">
+                    a<sub>col</sub> — Alto panel (m)
+                  </span>
+                  <DecimalInput value={aCol} onChange={setACol} />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">
+                    F<sub>y</sub> (MPa)
+                  </span>
+                  <select
+                    value={Fy}
+                    onChange={(e) => setFy(Number(e.target.value))}
+                  >
+                    <option value={235}>235 (F-24)</option>
+                    <option value={275}>275 (F-28)</option>
+                    <option value={355}>355 (F-36)</option>
+                  </select>
+                </label>
+                {(tipoColumna === 2 || tipoColumna === 4) && (
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs text-text-muted">K pandeo global</span>
+                    <DecimalInput value={KGlobal} onChange={setKGlobal} />
+                  </label>
+                )}
+                {tipoColumna === 4 && (
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs text-text-muted">
+                      sep<sub>col</sub> — Profundidad (m)
+                    </span>
+                    <DecimalInput value={separacionCol} onChange={setSeparacionCol} />
+                  </label>
+                )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">Perfil cordones</span>
+                  <select
+                    value={perfilCordon}
+                    onChange={(e) => setPerfilCordon(e.target.value)}
+                  >
+                    {ANGLE_PROFILES.map((a) => (
+                      <option key={a.name} value={a.name}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">Perfil diagonales</span>
+                  <select
+                    value={perfilDiagonal}
+                    onChange={(e) => setPerfilDiagonal(e.target.value)}
+                  >
+                    {ANGLE_PROFILES.map((a) => (
+                      <option key={a.name} value={a.name}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">Perfil montantes</span>
+                  <select
+                    value={perfilMontante}
+                    onChange={(e) => setPerfilMontante(e.target.value)}
+                  >
+                    {ANGLE_PROFILES.map((a) => (
+                      <option key={a.name} value={a.name}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </>
+          )}
+        </section>
+
+        {/* Viento */}
+        <section className="bg-surface rounded-xl border border-border p-5">
+          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
+            Viento (CIRSOC 102)
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-text-muted">V (m/s)</span>
+              <DecimalInput value={velocidadViento} onChange={setVelocidadViento} />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-text-muted">Categoría</span>
+              <select
+                value={categoria}
+                onChange={(e) => setCategoria(e.target.value)}
+              >
+                <option value="I">I</option>
+                <option value="II">II</option>
+                <option value="III">III</option>
+                <option value="IV">IV</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-text-muted">Exposición</span>
+              <select
+                value={exposicion}
+                onChange={(e) => setExposicion(e.target.value)}
+              >
+                <option value="A">A</option>
+                <option value="B">B</option>
+                <option value="C">C</option>
+                <option value="D">D</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <div className="self-center flex gap-3">
+          <button
+            type="submit"
+            className="bg-primary text-white font-semibold px-8 py-3 rounded-lg hover:bg-primary-hover transition-colors"
+          >
+            Calcular
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            className="bg-surface-alt border border-border text-text-muted font-semibold px-6 py-3 rounded-lg hover:bg-surface transition-colors"
+          >
+            {loadedSaveId ? "Guardar corrección" : "Guardar"}
+          </button>
+        </div>
+      </form>
     </MainLayout>
   );
 }

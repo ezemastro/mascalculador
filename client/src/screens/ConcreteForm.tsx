@@ -2,21 +2,9 @@ import { useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router";
 import MainLayout from "../components/MainLayout";
 import SavedBeams from "../components/SavedBeams";
-import { saveBeam } from "../lib/storage";
+import { saveBeam, updateSave } from "../lib/storage";
 import { calculateBeam } from "../lib/beam-calculations";
-
-function handleCommaKey(e: React.KeyboardEvent<HTMLInputElement>) {
-  if (e.key === ",") {
-    e.preventDefault();
-    const input = e.currentTarget;
-    const start = input.selectionStart ?? 0;
-    const end = input.selectionEnd ?? 0;
-    input.value =
-      input.value.substring(0, start) + "." + input.value.substring(end);
-    input.setSelectionRange(start + 1, start + 1);
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  }
-}
+import { DecimalInput } from "../hooks/useDecimalField";
 
 interface ConcreteLoad {
   id: string;
@@ -57,6 +45,9 @@ export default function ConcreteForm() {
   const [cover, setCover] = useState(saved?.cover ?? 30);
   const [fc, setFc] = useState(saved?.fc ?? 25);
   const [fy, setFy] = useState(saved?.fy ?? 420);
+
+  const [loadedSaveId, setLoadedSaveId] = useState<string | null>(null);
+  const [loadedSaveName, setLoadedSaveName] = useState<string | null>(null);
 
   const totalLength = spanLengths.reduce((a, b) => a + b, 0);
 
@@ -136,9 +127,7 @@ export default function ConcreteForm() {
   }
 
   function handleSave() {
-    const name = prompt("Nombre para guardar esta viga:");
-    if (!name) return;
-    saveBeam(name, "hormigon", {
+    const data: Record<string, unknown> = {
       spans: spanLengths,
       supportTypes,
       concreteLoads,
@@ -147,7 +136,21 @@ export default function ConcreteForm() {
       cover,
       fc,
       fy,
-    });
+    };
+
+    if (loadedSaveId) {
+      updateSave(loadedSaveId, data);
+      return;
+    }
+
+    const name = prompt("Nombre para guardar esta viga:");
+    if (!name) return;
+    try {
+      saveBeam(name, "hormigon", data);
+      setLoadedSaveName(name);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Error al guardar");
+    }
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -194,13 +197,17 @@ export default function ConcreteForm() {
           <h1 className="text-xl font-semibold text-text">
             Viga de Hormigón Armado
           </h1>
-          <p className="text-sm text-text-muted">CIRSOC 201-05</p>
+          <p className="text-sm text-text-muted">
+            {loadedSaveName ? `Editando: ${loadedSaveName}` : "CIRSOC 201-05"}
+          </p>
         </div>
       </header>
 
       <SavedBeams
         type="hormigon"
-        onLoad={(data) => {
+        onLoad={(data, save) => {
+          setLoadedSaveId(save.id);
+          setLoadedSaveName(save.name);
           const d = data as Record<string, unknown>;
           if (d.spans) {
             setSpanCount((d.spans as number[]).length);
@@ -245,15 +252,11 @@ export default function ConcreteForm() {
                   <span className="text-xs text-text-muted font-medium">
                     Tramo {i + 1} (m)
                   </span>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0.1"
-                    value={len || ""}
-                    onKeyDown={handleCommaKey}
-                    onChange={(e) =>
+                  <DecimalInput
+                    value={len}
+                    onChange={(n) =>
                       setSpanLengths((p) =>
-                        p.map((l, j) => (j === i ? Number(e.target.value) : l)),
+                        p.map((l, j) => (j === i ? n : l)),
                       )
                     }
                   />
@@ -355,15 +358,9 @@ export default function ConcreteForm() {
                     <span className="text-xs text-text-muted">
                       D (kN{load.type === "distributed" ? "/m" : ""})
                     </span>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      value={load.D || ""}
-                      onKeyDown={handleCommaKey}
-                      onChange={(e) =>
-                        updateLoad(load.id, { D: Number(e.target.value) })
-                      }
+                    <DecimalInput
+                      value={load.D ?? 0}
+                      onChange={(n) => updateLoad(load.id, { D: n })}
                       className="w-20"
                     />
                   </label>
@@ -371,15 +368,9 @@ export default function ConcreteForm() {
                     <span className="text-xs text-text-muted">
                       L (kN{load.type === "distributed" ? "/m" : ""})
                     </span>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0"
-                      value={load.L || ""}
-                      onKeyDown={handleCommaKey}
-                      onChange={(e) =>
-                        updateLoad(load.id, { L: Number(e.target.value) })
-                      }
+                    <DecimalInput
+                      value={load.L ?? 0}
+                      onChange={(n) => updateLoad(load.id, { L: n })}
                       className="w-20"
                     />
                   </label>
@@ -389,18 +380,9 @@ export default function ConcreteForm() {
                   {load.type === "point" ? (
                     <label className="flex flex-col gap-0.5">
                       <span className="text-xs text-text-muted">Pos (m)</span>
-                      <input
-                        type="number"
-                        step="0.1"
-                        min="0"
-                        max={totalLength}
-                        value={load.position ?? ""}
-                        onKeyDown={handleCommaKey}
-                        onChange={(e) =>
-                          updateLoad(load.id, {
-                            position: Number(e.target.value),
-                          })
-                        }
+                      <DecimalInput
+                        value={load.position ?? 0}
+                        onChange={(n) => updateLoad(load.id, { position: n })}
                         className="w-20"
                       />
                     </label>
@@ -408,33 +390,17 @@ export default function ConcreteForm() {
                     <>
                       <label className="flex flex-col gap-0.5">
                         <span className="text-xs text-text-muted">Inicio</span>
-                        <input
-                          type="number"
-                          step="0.1"
-                          min="0"
-                          max={totalLength}
-                          value={load.start ?? ""}
-                          onKeyDown={handleCommaKey}
-                          onChange={(e) =>
-                            updateLoad(load.id, {
-                              start: Number(e.target.value),
-                            })
-                          }
+                        <DecimalInput
+                          value={load.start ?? 0}
+                          onChange={(n) => updateLoad(load.id, { start: n })}
                           className="w-20"
                         />
                       </label>
                       <label className="flex flex-col gap-0.5">
                         <span className="text-xs text-text-muted">Fin</span>
-                        <input
-                          type="number"
-                          step="0.1"
-                          min="0"
-                          max={totalLength}
-                          value={load.end ?? ""}
-                          onKeyDown={handleCommaKey}
-                          onChange={(e) =>
-                            updateLoad(load.id, { end: Number(e.target.value) })
-                          }
+                        <DecimalInput
+                          value={load.end ?? 0}
+                          onChange={(n) => updateLoad(load.id, { end: n })}
                           className="w-20"
                         />
                       </label>
@@ -462,38 +428,17 @@ export default function ConcreteForm() {
               <span className="text-xs text-text-muted">
                 b<sub>w</sub> (mm)
               </span>
-              <input
-                type="number"
-                step="10"
-                min="100"
-                value={bw || ""}
-                onKeyDown={handleCommaKey}
-                onChange={(e) => setBw(Number(e.target.value))}
-              />
+              <DecimalInput value={bw} onChange={setBw} />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">h (mm)</span>
-              <input
-                type="number"
-                step="10"
-                min="200"
-                value={h || ""}
-                onKeyDown={handleCommaKey}
-                onChange={(e) => setH(Number(e.target.value))}
-              />
+              <DecimalInput value={h} onChange={setH} />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
                 Recubrimiento (mm)
               </span>
-              <input
-                type="number"
-                step="5"
-                min="20"
-                value={cover || ""}
-                onKeyDown={handleCommaKey}
-                onChange={(e) => setCover(Number(e.target.value))}
-              />
+              <DecimalInput value={cover} onChange={setCover} />
             </label>
             <div className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">d = h − rec</span>
@@ -564,7 +509,7 @@ export default function ConcreteForm() {
             onClick={handleSave}
             className="bg-surface-alt border border-border text-text-muted font-semibold px-6 py-3 rounded-lg hover:bg-surface transition-colors"
           >
-            Guardar
+            {loadedSaveId ? "Guardar corrección" : "Guardar"}
           </button>
         </div>
       </form>

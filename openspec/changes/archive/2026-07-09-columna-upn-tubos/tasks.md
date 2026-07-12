@@ -39,5 +39,5 @@ Chain strategy: size-exception
 ## Phase 4: Build Verification
 
 - [x] 4.1 Run `npm run build` — `tsc -b` must pass with zero errors; confirm no `column-calc.ts` changes
-- [ ] 4.2 Manual smoke: UPN 200, Fy=235, L=3000, Pu=100 → verify φPn renders
-- [ ] 4.3 Manual smoke: □ 100×100×4, same params → verify tube name displays and ratio shows
+- [x] 4.2 Manual smoke: UPN 200, Fy=235, L=3000, Pu=100 → verify φPn renders
+- [x] 4.3 Manual smoke: □ 100×100×4, same params → verify tube name displays and ratio shows
