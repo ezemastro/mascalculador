@@ -1,8 +1,9 @@
-import { useState } from "react";
-import { useNavigate } from "react-router";
+import { useState, useEffect, useRef } from "react";
+import { useLocation, useNavigate } from "react-router";
 import MainLayout from "../components/MainLayout";
 import SavedBeams from "../components/SavedBeams";
 import type { EdgeCondition, SlabInput } from "../lib/slab-calc";
+import { saveLastSlabFormState, loadLastSlabFormState, saveSlabInput, updateSlabInput } from "../lib/storage";
 import { DecimalInput } from "../hooks/useDecimalField";
 
 export interface SlabState {
@@ -26,29 +27,69 @@ export interface SlabState {
 }
 
 const EDGE_OPTIONS: { value: EdgeCondition; label: string }[] = [
-  { value: "simple", label: "Apoyado" },
+  { value: "simple", label: "Articulado" },
   { value: "continuo", label: "Continuo" },
+  { value: "free", label: "Libre" },
 ];
 
 export default function SlabForm() {
+  const location = useLocation();
   const navigate = useNavigate();
-  const [lx, setLx] = useState(4);
-  const [ly, setLy] = useState(5);
-  const [edgeX0, setEdgeX0] = useState<EdgeCondition>("simple");
-  const [edgeXL, setEdgeXL] = useState<EdgeCondition>("simple");
-  const [edgeY0, setEdgeY0] = useState<EdgeCondition>("simple");
-  const [edgeYL, setEdgeYL] = useState<EdgeCondition>("simple");
-  const [D, setD] = useState(1.5);
-  const [L, setL] = useState(2.0);
-  const [fc, setFc] = useState(25);
-  const [fy, setFy] = useState(420);
-  const [cover, setCover] = useState(20);
-  const [h, setH] = useState(0);
-  const [dBarX, setDBarX] = useState(10);
-  const [dBarY, setDBarY] = useState(10);
+  const state = location.state as SlabState | null;
+
+  // Init hierarchy: state > lastForm > defaults
+  const lastForm = !state ? loadLastSlabFormState() : null;
+
+  const [lx, setLx] = useState(state?.lx ?? lastForm?.lx ?? 4);
+  const [ly, setLy] = useState(state?.ly ?? lastForm?.ly ?? 5);
+  const [edgeX0, setEdgeX0] = useState<EdgeCondition>(
+    (state?.edgeX0 as EdgeCondition) ?? (lastForm?.edgeX0 as EdgeCondition) ?? "simple",
+  );
+  const [edgeXL, setEdgeXL] = useState<EdgeCondition>(
+    (state?.edgeXL as EdgeCondition) ?? (lastForm?.edgeXL as EdgeCondition) ?? "simple",
+  );
+  const [edgeY0, setEdgeY0] = useState<EdgeCondition>(
+    (state?.edgeY0 as EdgeCondition) ?? (lastForm?.edgeY0 as EdgeCondition) ?? "simple",
+  );
+  const [edgeYL, setEdgeYL] = useState<EdgeCondition>(
+    (state?.edgeYL as EdgeCondition) ?? (lastForm?.edgeYL as EdgeCondition) ?? "simple",
+  );
+  const [D, setD] = useState(state?.D ?? lastForm?.D ?? 1.5);
+  const [L, setL] = useState(state?.L ?? lastForm?.L ?? 2.0);
+  const [fc, setFc] = useState(state?.fc ?? lastForm?.fc ?? 25);
+  const [fy, setFy] = useState(state?.fy ?? lastForm?.fy ?? 420);
+  const [cover, setCover] = useState(state?.cover ?? lastForm?.cover ?? 20);
+  const [h, setH] = useState(state?.h ?? lastForm?.h ?? 0);
+  const [dBarX, setDBarX] = useState(state?.dBarX ?? lastForm?.dBarX ?? 10);
+  const [dBarY, setDBarY] = useState(state?.dBarY ?? lastForm?.dBarY ?? 10);
 
   const [loadedSaveId, setLoadedSaveId] = useState<string | null>(null);
   const [loadedSaveName, setLoadedSaveName] = useState<string | null>(null);
+
+  // Guard: skip first auto-save to avoid overwriting valid state with defaults
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    saveLastSlabFormState({
+      lx,
+      ly,
+      edgeX0,
+      edgeXL,
+      edgeY0,
+      edgeYL,
+      D,
+      L,
+      fc,
+      fy,
+      cover,
+      h,
+      dBarX,
+      dBarY,
+    });
+  }, [lx, ly, edgeX0, edgeXL, edgeY0, edgeYL, D, L, fc, fy, cover, h, dBarX, dBarY]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -74,6 +115,23 @@ export default function SlabForm() {
     });
   }
 
+  function handleSaveData() {
+    const slabInput = { lx, ly, edges: [edgeX0, edgeXL, edgeY0, edgeYL] as [EdgeCondition, EdgeCondition, EdgeCondition, EdgeCondition], D, L, fc, fy, cover, h, dBarX, dBarY };
+    if (loadedSaveId) {
+      updateSlabInput(loadedSaveId, slabInput);
+      return;
+    }
+    const name = prompt("Nombre para guardar los datos:");
+    if (!name) return;
+    try {
+      const saved = saveSlabInput(name, slabInput);
+      setLoadedSaveId(saved.id);
+      setLoadedSaveName(name);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Error al guardar");
+    }
+  }
+
   return (
     <MainLayout>
       <header className="flex items-center gap-3">
@@ -92,12 +150,46 @@ export default function SlabForm() {
             />
           </svg>
         </div>
-        <div>
-          <h1 className="text-xl font-semibold text-text">Losa de H° A°</h1>
-          <p className="text-sm text-text-muted">
-            {loadedSaveName ? `Editando: ${loadedSaveName}` : "CIRSOC 201-05"}
-          </p>
+        <div className="flex-1">
+          <h1 className="text-xl font-semibold text-text flex items-center gap-3">
+            Losa de H° A°
+            {loadedSaveName ? (
+              <span className="text-sm font-normal text-text-muted bg-surface-alt border border-border px-2.5 py-0.5 rounded-full">
+                {loadedSaveName}
+              </span>
+            ) : (
+              <span className="text-sm font-normal text-warning bg-warning/10 border border-warning/30 px-2.5 py-0.5 rounded-full">
+                Sin guardar
+              </span>
+            )}
+          </h1>
+          <p className="text-sm text-text-muted">CIRSOC 201-05</p>
         </div>
+        <button
+          type="button"
+          onClick={handleSaveData}
+          className="text-sm bg-primary/10 text-primary border border-primary/20 px-3 py-1.5 rounded-lg hover:bg-primary/20 transition-colors"
+        >
+          Guardar datos
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setLx(4); setLy(5);
+            setEdgeX0("simple"); setEdgeXL("simple");
+            setEdgeY0("simple"); setEdgeYL("simple");
+            setD(1.5); setL(2.0);
+            setFc(25); setFy(420);
+            setCover(20); setH(0);
+            setDBarX(10); setDBarY(10);
+            setLoadedSaveId(null);
+            setLoadedSaveName(null);
+            localStorage.removeItem("mascalculador_last_slab_form");
+          }}
+          className="text-sm bg-surface-alt border border-border text-text-muted px-3 py-1.5 rounded-lg hover:bg-surface hover:text-text transition-colors"
+        >
+          + Nueva
+        </button>
       </header>
 
       <SavedBeams
@@ -135,27 +227,27 @@ export default function SlabForm() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
-                Luz menor l<sub>x</sub> (m)
+                L<sub>x</sub> (m)
               </span>
               <DecimalInput value={lx} onChange={setLx} />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
-                Luz mayor l<sub>y</sub> (m)
+                L<sub>y</sub> (m)
               </span>
               <DecimalInput value={ly} onChange={setLy} />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
-                h (mm, 0 = calcular)
+                h (cm, 0 = calcular)
               </span>
-              <DecimalInput value={h} onChange={setH} />
+              <DecimalInput value={h / 10} onChange={(v) => setH(v * 10)} />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
-                Recubrimiento (mm)
+                Recubrimiento (cm)
               </span>
-              <DecimalInput value={cover} onChange={setCover} />
+              <DecimalInput value={cover / 10} onChange={(v) => setCover(v * 10)} />
             </label>
           </div>
         </section>
@@ -194,7 +286,10 @@ export default function SlabForm() {
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">D (kN/m²)</span>
+              <span className="text-xs text-text-muted">
+                D (kN/m²){" "}
+                <span className="text-text-muted/60">— peso propio incluido</span>
+              </span>
               <DecimalInput value={D} onChange={setD} />
             </label>
             <label className="flex flex-col gap-1">
@@ -228,34 +323,7 @@ export default function SlabForm() {
               </select>
             </label>
           </div>
-          <div className="grid grid-cols-2 gap-3 mt-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">Ø barra X (mm)</span>
-              <select
-                value={dBarX}
-                onChange={(e) => setDBarX(Number(e.target.value))}
-              >
-                {[6, 8, 10, 12, 16].map((d) => (
-                  <option key={d} value={d}>
-                    Ø{d}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">Ø barra Y (mm)</span>
-              <select
-                value={dBarY}
-                onChange={(e) => setDBarY(Number(e.target.value))}
-              >
-                {[6, 8, 10, 12, 16].map((d) => (
-                  <option key={d} value={d}>
-                    Ø{d}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+
         </section>
 
         <button

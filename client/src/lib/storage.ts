@@ -244,6 +244,45 @@ export function loadLastCartelFormState(): CartelFormState | null {
   }
 }
 
+// ---- Slab last form persistence ----
+
+const LAST_SLAB_FORM_KEY = "mascalculador_last_slab_form";
+
+export interface SlabLastFormState {
+  lx: number;
+  ly: number;
+  edgeX0: string;
+  edgeXL: string;
+  edgeY0: string;
+  edgeYL: string;
+  D: number;
+  L: number;
+  fc: number;
+  fy: number;
+  cover: number;
+  h: number;
+  dBarX: number;
+  dBarY: number;
+}
+
+export function saveLastSlabFormState(state: SlabLastFormState) {
+  try {
+    localStorage.setItem(LAST_SLAB_FORM_KEY, JSON.stringify(state));
+  } catch {
+    /* quota exceeded, ignore */
+  }
+}
+
+export function loadLastSlabFormState(): SlabLastFormState | null {
+  try {
+    const raw = localStorage.getItem(LAST_SLAB_FORM_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as SlabLastFormState;
+  } catch {
+    return null;
+  }
+}
+
 // ---- Slab persistence ----
 
 export interface SavedSlabData {
@@ -262,6 +301,18 @@ export function saveSlab(name: string, input: SlabInput, result: SlabResult): Sa
 
 export function updateSlab(id: string, input: SlabInput, result: SlabResult): SavedBeam | null {
   const data: SavedSlabData = { input, result };
+  return updateSave(id, data as unknown as Record<string, unknown>);
+}
+
+/** Save only the input data (no results yet). */
+export function saveSlabInput(name: string, input: SlabInput): SavedBeam {
+  const data = { input };
+  return saveBeam(name, "losa", data as unknown as Record<string, unknown>);
+}
+
+/** Update only the input data for an existing save. */
+export function updateSlabInput(id: string, input: SlabInput): SavedBeam | null {
+  const data = { input };
   return updateSave(id, data as unknown as Record<string, unknown>);
 }
 
