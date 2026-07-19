@@ -64,6 +64,14 @@ export interface SlabResult {
   adoptedAsX?: number;
   /** Adopted span reinforcement in Y direction (user-selected), mm²/m — 0 if not adopted. */
   adoptedAsY?: number;
+  /** Support reinforcement design at edge 0 (Izquierdo), if continuous. */
+  supportX0?: DirectionResult;
+  /** Support reinforcement design at edge 1 (Derecho), if continuous. */
+  supportXL?: DirectionResult;
+  /** Support reinforcement design at edge 2 (Arriba), if continuous. */
+  supportY0?: DirectionResult;
+  /** Support reinforcement design at edge 3 (Abajo), if continuous. */
+  supportYL?: DirectionResult;
   steps: string[];
 }
 
@@ -2010,7 +2018,7 @@ function calcUnidirectionalMoments(
       Mx = (qu * L * L) / 24;
       MnegX = (qu * L * L) / 12;
     } else {
-      Mx = (qu * L * L) / 10;
+      Mx = (qu * L * L) / 14.22;
       MnegX = (qu * L * L) / 8;
     }
   } else if (ySupported >= 2) {
@@ -2027,17 +2035,19 @@ function calcUnidirectionalMoments(
       My = (qu * L * L) / 24;
       MnegY = (qu * L * L) / 12;
     } else {
-      My = (qu * L * L) / 10;
+      My = (qu * L * L) / 14.22;
       MnegY = (qu * L * L) / 8;
     }
   } else if (xSupported === 1) {
-    // Cantilever in X: M = qu·L² / 2 at support
+    // Cantilever in X: M = qu·L² / 2 at support — this IS the design moment for X
     const L = lx;
-    MnegX = (qu * L * L) / 2;
+    Mx = (qu * L * L) / 2;
+    MnegX = Mx;
   } else if (ySupported === 1) {
-    // Cantilever in Y: M = qu·L² / 2 at support
+    // Cantilever in Y: M = qu·L² / 2 at support — this IS the design moment for Y
     const L = ly;
-    MnegY = (qu * L * L) / 2;
+    My = (qu * L * L) / 2;
+    MnegY = My;
   }
 
   return { Mx, My, MnegX, MnegY };
@@ -2192,6 +2202,10 @@ export function designSlab(input: SlabInput): SlabResult {
   const isY0Fixed = edges[2] === "continuo";
   const isYLFixed = edges[3] === "continuo";
 
+  // Supported edge counts per direction (excludes free edges)
+  const xSupported = [edges[0], edges[1]].filter((e) => e !== "free").length;
+  const ySupported = [edges[2], edges[3]].filter((e) => e !== "free").length;
+
   if (!isCrossed) {
     // ---- Unidirectional: beam-strip coefficients ----
     const ud = calcUnidirectionalMoments(lx, ly, edges, qu);
@@ -2208,24 +2222,53 @@ export function designSlab(input: SlabInput): SlabResult {
     st.push("");
 
     // Unidirectional reactions (per supported edge)
-    const xSupported = [edges[0], edges[1]].filter((e) => e !== "free").length;
-    const ySupported = [edges[2], edges[3]].filter((e) => e !== "free").length;
+    // Mixed supports (one continuous + one simple): use asymmetric reactions
+    //   continuous edge → 5/8·qu·L, simple edge → 3/8·qu·L
+    // Both simple or both continuous: symmetric qu·L/2
     if (xSupported >= 2) {
-      Rx = (qu * lx) / 2;
-      RxIzq = RxDer = Rx;
+      const xHasCont = edges[0] === "continuo";
+      const xHasSimp = edges[0] === "simple";
+      const xLCont = edges[1] === "continuo";
+      const xLSimp = edges[1] === "simple";
+      const xMixed = (xHasCont && xLSimp) || (xHasSimp && xLCont);
+
+      if (xMixed) {
+        RxIzq = xHasCont ? (5 * qu * lx) / 8 : (3 * qu * lx) / 8;
+        RxDer = xLCont ? (5 * qu * lx) / 8 : (3 * qu * lx) / 8;
+        Rx = qu * lx / 2; // total reaction check
+      } else {
+        Rx = (qu * lx) / 2;
+        RxIzq = RxDer = Rx;
+      }
       RyArr = RyAba = 0;
     } else if (ySupported >= 2) {
-      Ry = (qu * ly) / 2;
+      const yHasCont = edges[2] === "continuo";
+      const yHasSimp = edges[2] === "simple";
+      const yLCont = edges[3] === "continuo";
+      const yLSimp = edges[3] === "simple";
+      const yMixed = (yHasCont && yLSimp) || (yHasSimp && yLCont);
+
+      if (yMixed) {
+        RyArr = yHasCont ? (5 * qu * ly) / 8 : (3 * qu * ly) / 8;
+        RyAba = yLCont ? (5 * qu * ly) / 8 : (3 * qu * ly) / 8;
+        Ry = qu * ly / 2; // total reaction check
+      } else {
+        Ry = (qu * ly) / 2;
+        RyArr = RyAba = Ry;
+      }
       RxIzq = RxDer = 0;
-      RyArr = RyAba = Ry;
     } else if (xSupported === 1) {
-      Rx = (qu * lx) / 2;
-      RxIzq = RxDer = Rx;
+      // Voladizo o losa con un solo apoyo en X: toda la carga va a ese borde
+      Rx = qu * lx;
+      RxIzq = edges[0] !== "free" ? Rx : 0;
+      RxDer = edges[1] !== "free" ? Rx : 0;
       RyArr = RyAba = 0;
     } else if (ySupported === 1) {
-      Ry = (qu * ly) / 2;
+      // Voladizo o losa con un solo apoyo en Y: toda la carga va a ese borde
+      Ry = qu * ly;
       RxIzq = RxDer = 0;
-      RyArr = RyAba = Ry;
+      RyArr = edges[2] !== "free" ? Ry : 0;
+      RyAba = edges[3] !== "free" ? Ry : 0;
     }
     st.push(
       `Reacciones: R_xIzq = ${RxIzq.toFixed(2)} kN/m, R_xDer = ${RxDer.toFixed(2)} kN/m, R_yArr = ${RyArr.toFixed(2)} kN/m, R_yAba = ${RyAba.toFixed(2)} kN/m`,
@@ -2466,14 +2509,30 @@ export function designSlab(input: SlabInput): SlabResult {
   }
 
   // Step 5-8: Design each direction
-  function designDir(Mu: number, _dir: string, dB: number, Mneg?: number): DirectionResult {
-    return designSupportMoment(Mu, d, h, fc, fy, bw, dB, Mneg);
+  // For crossed slabs, reinforcement in one direction sits on top of the other.
+  // The direction with the smaller span moment uses d - 10 mm (1 cm less depth).
+  let d_x = d;
+  let d_y = d;
+  if (isCrossed) {
+    if (Mx < My) {
+      d_x = d - 10;
+    } else if (My < Mx) {
+      d_y = d - 10;
+    }
+    // if equal, both keep full d
   }
 
-  const dirX = designDir(Mx, "X", dBarX, MnegX || undefined);
-  const dirY = designDir(My, "Y", dBarY, MnegY || undefined);
+  function designDir(Mu: number, _dir: string, dB: number, d_eff: number, Mneg?: number): DirectionResult {
+    return designSupportMoment(Mu, d_eff, h, fc, fy, bw, dB, Mneg);
+  }
+
+  const dirX = designDir(Mx, "X", dBarX, d_x, MnegX || undefined);
+  const dirY = designDir(My, "Y", dBarY, d_y, MnegY || undefined);
 
   st.push(`5-8. Dimensionamiento X:`);
+  if (isCrossed && d_x < d) {
+    st.push(`   d_eff = ${d_x} mm (d - 10 mm, lado con M_x < M_y)`);
+  }
   st.push(
     `   K_a = ${dirX.Ka.toFixed(4)}, K_a min = ${dirX.KaMin.toFixed(4)}, K_a max = ${dirX.KaMax.toFixed(4)}`,
   );
@@ -2484,6 +2543,9 @@ export function designSlab(input: SlabInput): SlabResult {
   st.push(`   s_máx = ${dirX.sMax} mm, s_mín = 80 mm`);
   st.push("");
   st.push(`5-8. Dimensionamiento Y:`);
+  if (isCrossed && d_y < d) {
+    st.push(`   d_eff = ${d_y} mm (d - 10 mm, lado con M_y < M_x)`);
+  }
   st.push(
     `   K_a = ${dirY.Ka.toFixed(4)}, K_a min = ${dirY.KaMin.toFixed(4)}, K_a max = ${dirY.KaMax.toFixed(4)}`,
   );
@@ -2509,13 +2571,63 @@ export function designSlab(input: SlabInput): SlabResult {
     st.push(`   Y: ${distY.AsReq} mm²/m (s ≤ ${distY.sMax} mm)`);
   }
 
-  // Per-edge support moments (only non-zero for continuous edges)
-  MnegIzq = isX0Fixed ? MnegX : 0;
-  MnegDer = isXLFixed ? MnegX : 0;
-  MnegArr = isY0Fixed ? MnegY : 0;
-  MnegAba = isYLFixed ? MnegY : 0;
+  // Per-edge support moments: continuous edges always get Mneg, and for cantilevers
+  // the single supported edge (articulated or continuous) carries the full negative moment.
+  const isCantileverX = xSupported === 1;
+  const isCantileverY = ySupported === 1;
+  MnegIzq = (isX0Fixed || (isCantileverX && edges[0] !== "free")) ? MnegX : 0;
+  MnegDer = (isXLFixed || (isCantileverX && edges[1] !== "free")) ? MnegX : 0;
+  MnegArr = (isY0Fixed || (isCantileverY && edges[2] !== "free")) ? MnegY : 0;
+  MnegAba = (isYLFixed || (isCantileverY && edges[3] !== "free")) ? MnegY : 0;
 
-  return { d, h, qu, x: dirX, y: dirY, distX, distY, Rx, Ry, RxIzq, RxDer, RyArr, RyAba, MnegIzq, MnegDer, MnegArr, MnegAba, steps: st };
+  // Support reinforcement design for each supported edge that carries negative moment
+  let supportX0: DirectionResult | undefined;
+  let supportXL: DirectionResult | undefined;
+  let supportY0: DirectionResult | undefined;
+  let supportYL: DirectionResult | undefined;
+
+  if (MnegIzq !== 0) {
+    supportX0 = designSupportMoment(MnegIzq, d, h, fc, fy, bw, dBarX, MnegIzq);
+    st.push("");
+    st.push(`Apoyo Izquierdo (${edges[0] === "continuo" ? "continuo" : "articulado"}):`);
+    st.push(`   M_u = ${MnegIzq.toFixed(2)} kN·m/m`);
+    st.push(`   K_a = ${supportX0.Ka.toFixed(4)}, K_a min = ${supportX0.KaMin.toFixed(4)}, K_a max = ${supportX0.KaMax.toFixed(4)}`);
+    st.push(`   ${supportX0.caseLabel}`);
+    st.push(`   A_s = ${supportX0.AsReq} mm²/m (mín: ${supportX0.AsMin}, temp: ${supportX0.AsTemp})`);
+    st.push(`   s_máx = ${supportX0.sMax} mm`);
+  }
+  if (MnegDer !== 0) {
+    supportXL = designSupportMoment(MnegDer, d, h, fc, fy, bw, dBarX, MnegDer);
+    st.push("");
+    st.push(`Apoyo Derecho (${edges[1] === "continuo" ? "continuo" : "articulado"}):`);
+    st.push(`   M_u = ${MnegDer.toFixed(2)} kN·m/m`);
+    st.push(`   K_a = ${supportXL.Ka.toFixed(4)}, K_a min = ${supportXL.KaMin.toFixed(4)}, K_a max = ${supportXL.KaMax.toFixed(4)}`);
+    st.push(`   ${supportXL.caseLabel}`);
+    st.push(`   A_s = ${supportXL.AsReq} mm²/m (mín: ${supportXL.AsMin}, temp: ${supportXL.AsTemp})`);
+    st.push(`   s_máx = ${supportXL.sMax} mm`);
+  }
+  if (MnegArr !== 0) {
+    supportY0 = designSupportMoment(MnegArr, d, h, fc, fy, bw, dBarY, MnegArr);
+    st.push("");
+    st.push(`Apoyo Arriba (${edges[2] === "continuo" ? "continuo" : "articulado"}):`);
+    st.push(`   M_u = ${MnegArr.toFixed(2)} kN·m/m`);
+    st.push(`   K_a = ${supportY0.Ka.toFixed(4)}, K_a min = ${supportY0.KaMin.toFixed(4)}, K_a max = ${supportY0.KaMax.toFixed(4)}`);
+    st.push(`   ${supportY0.caseLabel}`);
+    st.push(`   A_s = ${supportY0.AsReq} mm²/m (mín: ${supportY0.AsMin}, temp: ${supportY0.AsTemp})`);
+    st.push(`   s_máx = ${supportY0.sMax} mm`);
+  }
+  if (MnegAba !== 0) {
+    supportYL = designSupportMoment(MnegAba, d, h, fc, fy, bw, dBarY, MnegAba);
+    st.push("");
+    st.push(`Apoyo Abajo (${edges[3] === "continuo" ? "continuo" : "articulado"}):`);
+    st.push(`   M_u = ${MnegAba.toFixed(2)} kN·m/m`);
+    st.push(`   K_a = ${supportYL.Ka.toFixed(4)}, K_a min = ${supportYL.KaMin.toFixed(4)}, K_a max = ${supportYL.KaMax.toFixed(4)}`);
+    st.push(`   ${supportYL.caseLabel}`);
+    st.push(`   A_s = ${supportYL.AsReq} mm²/m (mín: ${supportYL.AsMin}, temp: ${supportYL.AsTemp})`);
+    st.push(`   s_máx = ${supportYL.sMax} mm`);
+  }
+
+  return { d, h, qu, x: dirX, y: dirY, distX, distY, Rx, Ry, RxIzq, RxDer, RyArr, RyAba, MnegIzq, MnegDer, MnegArr, MnegAba, supportX0, supportXL, supportY0, supportYL, steps: st };
 }
 
 // ---- Slab Compatibilization ----
