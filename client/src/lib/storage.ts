@@ -4,6 +4,7 @@ const KEY = "mascalculador_beam_saves";
 const LAST_FORM_KEY = "mascalculador_last_form";
 const LAST_COLUMN_FORM_KEY = "mascalculador_last_column_form";
 const LAST_CARTEL_FORM_KEY = "mascalculador_last_cartel_form";
+const LAST_RCCOLUMN_FORM_KEY = "mascalculador_last_rccolumn_form";
 
 export interface LastFormState {
   spanCount: number;
@@ -82,7 +83,7 @@ export function loadLastColumnFormState(): ColumnFormState | null {
 export interface SavedBeam {
   id: string;
   name: string;
-  type: "acero" | "hormigon" | "columna" | "cartel" | "losa";
+  type: "acero" | "hormigon" | "columna" | "rc-columna" | "cartel" | "losa" | "bases";
   date: string;
   data: Record<string, unknown>;
 }
@@ -104,7 +105,7 @@ function writeSaves(saves: SavedBeam[]) {
 /** Crea un nuevo guardado. Lanza error si ya existe uno con el mismo nombre. */
 export function saveBeam(
   name: string,
-  type: "acero" | "hormigon" | "columna" | "cartel" | "losa",
+  type: "acero" | "hormigon" | "columna" | "rc-columna" | "cartel" | "losa" | "bases",
   data: Record<string, unknown>,
 ): SavedBeam {
   const saves = listSaves();
@@ -184,6 +185,64 @@ export interface CartelFormState {
   tipoPuntal?: number;
 }
 
+export interface ContributedColumnData {
+  id: string;
+  name: string;
+  PD: number;
+  PL: number;
+}
+
+export interface ContributedBeamData {
+  id: string;
+  name: string;
+  supportIdx: number;
+  rD: number;
+  rL: number;
+  rU: number;
+}
+
+export interface RCColumnFormState {
+  fc: number;
+  fy: number;
+  PD: number;
+  PL: number;
+  lu: number;
+  MxSup: number;
+  MxInf: number;
+  MySup: number;
+  MyInf: number;
+  Cx?: number;
+  Cy?: number;
+  betaD: number;
+  includeSelfWeight?: boolean;
+  contributedColumns?: ContributedColumnData[];
+  contributedBeams?: ContributedBeamData[];
+  nEsquinas?: number;
+  nCarasX?: number;
+  nCarasY?: number;
+  dbEsquinas?: number;
+  dbCarasX?: number;
+  dbCarasY?: number;
+}
+
+export function saveLastRCColumnFormState(state: RCColumnFormState) {
+  try {
+    localStorage.setItem(LAST_RCCOLUMN_FORM_KEY, JSON.stringify(state));
+  } catch {
+    /* quota exceeded, ignore */
+  }
+}
+
+export function loadLastRCColumnFormState(): RCColumnFormState | null {
+  try {
+    const raw = localStorage.getItem(LAST_RCCOLUMN_FORM_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as RCColumnFormState;
+  } catch {
+    return null;
+  }
+}
+
 export function saveLastCartelFormState(state: CartelFormState) {
   try {
     localStorage.setItem(LAST_CARTEL_FORM_KEY, JSON.stringify(state));
@@ -221,6 +280,7 @@ export interface SlabLastFormState {
   h: number;
   dBarX: number;
   dBarY: number;
+  includeSelfWeight?: boolean;
 }
 
 export function saveLastSlabFormState(state: SlabLastFormState) {
@@ -248,7 +308,7 @@ export interface SavedSlabData {
   result: SlabResult;
 }
 
-export function getSavedBeams(type: "acero" | "hormigon" | "columna" | "cartel" | "losa"): SavedBeam[] {
+export function getSavedBeams(type: "acero" | "hormigon" | "columna" | "rc-columna" | "cartel" | "losa" | "bases"): SavedBeam[] {
   return listSaves().filter((s) => s.type === type);
 }
 
@@ -301,6 +361,8 @@ export interface SavedCompatData {
   edgeA: EdgeIndex;
   edgeB: EdgeIndex;
   result: CompatResult;
+  diam?: number;
+  sep?: number;
 }
 
 export function saveCompat(
@@ -310,6 +372,8 @@ export function saveCompat(
   edgeA: EdgeIndex,
   edgeB: EdgeIndex,
   result: CompatResult,
+  diam?: number,
+  sep?: number,
 ): void {
   const saved: SavedCompatData[] = JSON.parse(localStorage.getItem(COMPAT_KEY) || "[]");
   // Prevent duplicates by name
@@ -324,6 +388,8 @@ export function saveCompat(
     edgeA,
     edgeB,
     result,
+    ...(diam !== undefined ? { diam } : {}),
+    ...(sep !== undefined ? { sep } : {}),
   });
   localStorage.setItem(COMPAT_KEY, JSON.stringify(saved));
 }
@@ -335,4 +401,49 @@ export function getSavedCompats(): SavedCompatData[] {
 export function deleteCompat(name: string): void {
   const saved: SavedCompatData[] = JSON.parse(localStorage.getItem(COMPAT_KEY) || "[]");
   localStorage.setItem(COMPAT_KEY, JSON.stringify(saved.filter((c) => c.name !== name)));
+}
+
+// ---- Bases form persistence ----
+
+const LAST_BASES_FORM_KEY = "mascalculador_last_bases_form";
+
+export interface BasesFormState {
+  qa: number;
+  Df: number;
+  PD: number;
+  PL: number;
+  cx: number;
+  cy: number;
+  fc: number;
+  fy: number;
+  type: "centrada" | "medianera";
+  subType?: "viga-de-fundacion" | "tensor";
+  B?: number;
+  L?: number;
+  h?: number;
+  Lcol?: number;
+  H?: number;
+  mu?: number;
+  cover: number;
+  rebD: number;
+  columnId?: string;
+  columnName?: string;
+}
+
+export function saveLastBasesFormState(state: BasesFormState) {
+  try {
+    localStorage.setItem(LAST_BASES_FORM_KEY, JSON.stringify(state));
+  } catch {
+    /* quota exceeded, ignore */
+  }
+}
+
+export function loadLastBasesFormState(): BasesFormState | null {
+  try {
+    const raw = localStorage.getItem(LAST_BASES_FORM_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as BasesFormState;
+  } catch {
+    return null;
+  }
 }
