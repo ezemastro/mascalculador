@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { listSaves, deleteSave, type SavedBeam } from "../lib/storage";
 
 interface Props {
-  type: "acero" | "hormigon" | "columna" | "cartel" | "losa";
+  type: "acero" | "hormigon" | "columna" | "rc-columna" | "cartel" | "losa" | "bases";
   onLoad: (data: Record<string, unknown>, save: SavedBeam) => void;
   onDelete?: (id: string) => void;
   label?: string;
