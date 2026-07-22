@@ -543,3 +543,138 @@ function designVigaFundacion(input: BaseInput): BaseResult {
     errors: er,
   };
 }
+
+
+// ---------------------------------------------------------------------------
+// Función de diseño — medianera tensor (6 pasos)
+// ---------------------------------------------------------------------------
+
+function designTensor(input: BaseInput): BaseResult {
+  const cover = input.cover ?? 5;
+  const rebD = input.rebD ?? 12;
+  const mu = input.mu ?? 0.4;
+  const st: string[] = [];
+  const wr: string[] = [];
+  const er: string[] = [];
+
+  if (input.H === undefined || input.H <= 0) {
+    throw new Error("Para tensor, se requiere la altura H del centro del tensor al fondo de zapata.");
+  }
+
+  const dims = step1_Dimensions(input);
+  const B = input.B ?? dims.B;
+  const L = input.L ?? dims.L;
+
+  st.push("=== BASE MEDIANERA — TENSOR — CIRSOC 201 ===");
+  st.push("");
+
+  const Pu = step2_Pu(input.PD, input.PL);
+  const e = medExcentricidad(B, input.cx);
+  const Mu = Pu * e;
+  st.push(`T1. Pu = ${f1(Pu)} kN | e = (${B}−${input.cx})/2 = ${f1(e)} cm`);
+  st.push(`    Mu = ${f1(Pu)} · ${f1(e)} = ${f1(Mu)} kN·cm`);
+
+  const H = input.H!;
+  st.push(`T2. Altura del tensor H = ${H} cm (dato)`);
+
+  const Tu = Mu / H;
+  st.push(`T3. Tu = Mu / H = ${f1(Mu)} / ${H} = ${f1(Tu)} kN`);
+
+  const Rf = input.PD * mu;
+  const FrictionOK = Rf >= Tu;
+  st.push(`T4. Rozamiento: PD·μ = ${f1(input.PD)}·${mu} = ${f1(Rf)} kN`);
+  st.push(`    Tu = ${f1(Tu)} kN → ${FrictionOK ? "✓ Rozamiento ≥ Tu" : "✗ Rozamiento < Tu — ADVERTENCIA"}`);
+  if (!FrictionOK) wr.push("La fuerza de rozamiento es menor que la tracción en el tensor. Aumentar PD o μ.");
+
+  const fy_kNcm2 = input.fy * 0.1;
+  const As_tensor = Tu / (0.90 * fy_kNcm2);
+  st.push(`T5. As_tensor = Tu / (0.90·fy) = ${f1(Tu)} / (0.90·${fmt(fy_kNcm2, 1)}) = ${f2(As_tensor)} cm²`);
+
+  const h_tensor = Math.max(B / 5, 20);
+  st.push(`T6. Tensor: sección sugerida ${Math.round(h_tensor)}×${Math.round(h_tensor)} cm con recubrimiento ${cover} cm`);
+  st.push(`    Verificar que ${f2(As_tensor)} cm² de armadura cabe en la sección.`);
+
+  st.push("");
+  st.push(`=== RESUMEN TENSOR ===`);
+  st.push(`Base: ${B}×${L} cm | e = ${f1(e)} cm | Mu = ${f1(Mu)} kN·cm`);
+  st.push(`Tu = ${f1(Tu)} kN | As_tensor = ${f2(As_tensor)} cm²`);
+
+  return {
+    Areq: dims.Areq, Ap: B * L, B, L, h: h_tensor, d: h_tensor - cover,
+    kx: (B - input.cx) / 2, ky: (L - input.cy) / 2,
+    Pu, qu: Pu / (B * L),
+    Mux: 0, Muy: 0, Mnx: 0, Mny: 0,
+    Vu_punch: 0, phiVc_punch: 0, punchOK: true,
+    Vux: 0, Vuy: 0, phiVc_beam: 0, beamShearOK: true,
+    mnx: 0, mny: 0, kax: 0, kay: 0, kamin: 0,
+    Asx: 0, Asy: 0, AsMin: 0,
+    db: rebD, nb_x: 0, nb_y: 0,
+    sep_x: 0, sep_y: 0, sepCheckOK: true,
+    heel: 0, heelOK: true,
+    e, Mu, Ru: 0, Mnv: 0, As_sup: 0, As_inf: 0, mn_med: 0, ka_med: 0,
+    Tu, FrictionOK, As_tensor, h_tensor,
+    steps: st,
+    warnings: wr,
+    errors: er,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// API pública
+// ---------------------------------------------------------------------------
+
+/**
+ * Diseña una base de hormigón armado según CIRSOC 201.
+ *
+ * @throws Error si los datos de entrada son inválidos (qa ≤ 0, cargas nulas, etc.)
+ * @returns BaseResult con dimensiones, armadura, verificaciones y traza de cálculo.
+ */
+export function designBase(input: BaseInput): BaseResult {
+  if (input.qa <= 0) {
+    throw new Error("La tensión admisible del suelo (qa) debe ser mayor que cero.");
+  }
+  if (input.PD + input.PL <= 0) {
+    throw new Error("La carga total (PD + PL) debe ser mayor que cero.");
+  }
+  if (input.cx <= 0 || input.cy <= 0) {
+    throw new Error("Las dimensiones de la columna (cx, cy) deben ser mayores que cero.");
+  }
+  if (input.fc <= 0 || input.fy <= 0) {
+    throw new Error("Las resistencias de materiales (fc, fy) deben ser mayores que cero.");
+  }
+
+  if (input.type === "centrada") {
+    return designCentrada(input);
+  }
+
+  if (input.type === "medianera") {
+    if (!input.subType) {
+      throw new Error("Para base medianera, seleccione viga de fundación o tensor (subType).");
+    }
+    if (input.subType === "viga-de-fundacion") {
+      return designVigaFundacion(input);
+    }
+    if (input.subType === "tensor") {
+      return designTensor(input);
+    }
+    throw new Error(`Subtipo de medianera no reconocido: ${input.subType}`);
+  }
+
+  throw new Error(`Tipo de base no reconocido: ${input.type}`);
+}
+
+/**
+ * Envoltorio seguro: nunca lanza excepciones.
+ * Devuelve { result, errors } — si hay errores, result es null.
+ */
+export function tryDesignBase(
+  input: BaseInput,
+): { result: BaseResult | null; errors: string[] } {
+  try {
+    const result = designBase(input);
+    return { result, errors: result.errors };
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : String(e);
+    return { result: null, errors: [message] };
+  }
+}
