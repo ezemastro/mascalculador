@@ -40,12 +40,12 @@ Chain strategy: stacked-to-main
 
 ## Phase 3: BasesForm
 
-- [ ] **3.1** Skeleton: `useState` for all `BasesFormState` fields, `useEffect` auto-save (mountedRef guard), init: router→loadLast→defaults. ~60 LOC.
-- [ ] **3.2** Suelo (qa,Df), Materiales (fc,fy selects), Cargas (PD,PL) with `<DecimalInput>`. ~50 LOC.
-- [ ] **3.3** Columna: cx,cy + "Cargar columna guardada" dropdown via `listSaves().filter(s=>s.type==="rc-columna")` with defensive typeof. ~60 LOC.
-- [ ] **3.4** Tipo: Centrada/Medianera + conditional sub-selector (Viga/Tensor) + Lcol/H/μ. Geometría: auto-predim `useMemo(step1_Dimensions)` with override inputs. ~70 LOC.
-- [ ] **3.5** Armado (cover,rebD). `<SavedBeams type="bases">`. "Guardar datos" → `saveBeam()`. Submit: validate→navigate to results with `{state:{input,name,saveId}}`. ~100 LOC.
-- [ ] **3.6** Smoke: fill form, auto-save persists on reload, submit navigates. ~0 LOC.
+- [x] **3.1** Skeleton: `useState` for all `BasesFormState` fields, `useEffect` auto-save (mountedRef guard), init: router→loadLast→defaults. ~60 LOC.
+- [x] **3.2** Suelo (qa,Df), Materiales (fc,fy selects), Cargas (PD,PL) with `<DecimalInput>`. ~50 LOC.
+- [x] **3.3** Columna: cx,cy + "Cargar columna guardada" dropdown via `listSaves().filter(s=>s.type==="rc-columna")` with defensive typeof. ~60 LOC.
+- [x] **3.4** Tipo: Centrada/Medianera + conditional sub-selector (Viga/Tensor) + Lcol/H/μ. Geometría: auto-predim `useMemo(step1_Dimensions)` with override inputs. ~70 LOC.
+- [x] **3.5** Armado (cover,rebD). `<SavedBeams type="bases">`. "Guardar datos" → `saveBeam()`. Submit: validate→navigate to results with `{state:{input,name,saveId}}`. ~100 LOC.
+- [x] **3.6** Smoke: fill form, auto-save persists on reload, submit navigates. ~0 LOC.
 
 ## Phase 4: BasesResults + Polish
 
