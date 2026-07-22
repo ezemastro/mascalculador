@@ -12,6 +12,8 @@ import PrintPage from "./screens/PrintPage.tsx";
 import SlabForm from "./screens/SlabForm.tsx";
 import SlabResults from "./screens/SlabResults.tsx";
 import CartelForm from "./screens/CartelForm.tsx";
+import BasesForm from "./screens/BasesForm.tsx";
+import BasesResults from "./screens/BasesResults.tsx";
 
 function NavBar() {
   return (
@@ -22,6 +24,7 @@ function NavBar() {
       <Link to="/print" className="text-sm text-text-muted hover:text-text">Imprimir</Link>
       <Link to="/slab" className="text-sm text-text-muted hover:text-text">Losas</Link>
       <Link to="/cartel" className="text-sm text-text-muted hover:text-text">Carteles</Link>
+      <Link to="/bases" className="text-sm text-text-muted hover:text-text">Bases</Link>
     </div>
   );
 }
@@ -51,6 +54,8 @@ const router = createBrowserRouter([
       { path: "/slab", Component: SlabForm },
       { path: "/slab-results", Component: SlabResults },
       { path: "/cartel", Component: CartelForm },
+      { path: "/bases", Component: BasesForm },
+      { path: "/bases-results", Component: BasesResults },
     ],
   },
 ]);

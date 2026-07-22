@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { listSaves, deleteSave, type SavedBeam } from "../lib/storage";
 
 interface Props {
-  type: "acero" | "hormigon";
+  type: "acero" | "hormigon" | "bases";
   onLoad: (data: Record<string, unknown>) => void;
 }
 
