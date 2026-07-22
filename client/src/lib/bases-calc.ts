@@ -276,6 +276,142 @@ function step13_Spacing(
   return { db, nb_x, nb_y, sep_x, sep_y, OK };
 }
 
+// ---------------------------------------------------------------------------
+// Helpers — medianera
+// ---------------------------------------------------------------------------
+
+/** Excentricidad de la carga en base medianera */
+function medExcentricidad(B: number, cx: number): number {
+  return (B - cx) / 2;
+}
+
+// ---------------------------------------------------------------------------
+// Función de diseño — centrada (13 pasos)
+// ---------------------------------------------------------------------------
+
+function designCentrada(input: BaseInput): BaseResult {
+  const cover = input.cover ?? 5;
+  const rebD = input.rebD ?? 12;
+  const st: string[] = [];
+  const wr: string[] = [];
+  const er: string[] = [];
+
+  st.push("=== BASE CENTRADA AISLADA — CIRSOC 201 ===");
+  st.push("");
+
+  // Paso 1 — dimensiones
+  const dims = step1_Dimensions(input);
+  const B = input.B ?? dims.B;
+  const L = input.L ?? dims.L;
+  const Ap = B * L;
+  st.push(`1. Área requerida A_base = (${f1(input.PD)}+${f1(input.PL)})·1.10 / ${f4(input.qa)} = ${f1(dims.Areq)} cm²`);
+  st.push(`   Base adoptada: Lx = ${B} cm, Ly = ${L} cm → Ap = ${Ap} cm²`);
+
+  // Paso 2 — Pu
+  const Pu = step2_Pu(input.PD, input.PL);
+  st.push(`2. Pu = max(1.4·${f1(input.PD)} ; 1.2·${f1(input.PD)}+1.6·${f1(input.PL)}) = ${f1(Pu)} kN`);
+
+  // Paso 3 — kamin
+  const kamin = step3_Kamin(input.fc);
+  st.push(`3. kamin = 2.8 / (0.85·${input.fc}) = ${f4(kamin)}`);
+
+  // Paso 4 — qu
+  const qu = step4_Qu(Pu, B, L);
+  st.push(`4. qu = ${f1(Pu)} / (${B}·${L}) = ${fmt(qu, 6)} kN/cm²`);
+
+  // Paso 5 — bending
+  const { kx, ky, Mux, Muy } = step5_Bending(qu, B, L, input.cx, input.cy);
+  st.push(`5. kx = (${B}−${input.cx})/2 = ${f1(kx)} cm, ky = (${L}−${input.cy})/2 = ${f1(ky)} cm`);
+  st.push(`   Mux = ${fmt(qu, 6)}·${L}·${f1(kx)}²/2 = ${f1(Mux)} kN·cm`);
+  st.push(`   Muy = ${fmt(qu, 6)}·${B}·${f1(ky)}²/2 = ${f1(Muy)} kN·cm`);
+
+  // Paso 6 — nominal
+  const { Mnx, Mny } = step6_Nominal(Mux, Muy);
+  st.push(`6. Mnx = ${f1(Mux)} / 0.90 = ${f1(Mnx)} kN·cm`);
+  st.push(`   Mny = ${f1(Muy)} / 0.90 = ${f1(Mny)} kN·cm`);
+
+  // Paso 7 — altura útil
+  const { d, method } = step7_EffectiveDepth(B, L, input.cx, input.cy, Mnx, Mny, input.fc);
+  const d_rig = Math.max((B - input.cx) / 3, (L - input.cy) / 3);
+  const dx_flex = Math.sqrt((6.5 * Mnx) / (L * input.fc));
+  const dy_flex = Math.sqrt((6.5 * Mny) / (B * input.fc));
+  st.push(`7. Predim rigidez: d ≥ max((${B}−${input.cx})/3, (${L}−${input.cy})/3) = ${f1(d_rig)} cm`);
+  st.push(`   Predim flexión: dx = √(6.5·${f1(Mnx)}/(${L}·${input.fc})) = ${f1(dx_flex)} cm, dy = ${f1(dy_flex)} cm`);
+  st.push(`   d adoptado = ${f1(d)} cm (controla ${method})`);
+
+  // Paso 8 — punzonado
+  const punch = step8_Punching(Pu, qu, input.cx, input.cy, d, input.fc);
+  st.push(`8. Punzonado: b0 = 2·(${input.cx}+${f1(d)})+2·(${input.cy}+${f1(d)}) = ${f1(2*(input.cx+d)+2*(input.cy+d))} cm`);
+  st.push(`   Vu = ${f1(Pu)} − ${fmt(qu, 6)}·${f1((input.cx+d)*(input.cy+d))} = ${f1(punch.Vu)} kN`);
+  st.push(`   φVc = 0.75·b0·${f1(d)}·√${input.fc}/12 = ${f1(punch.phiVc)} kN`);
+  st.push(`   ${punch.OK ? "✓ Vu ≤ φVc" : "✗ Vu > φVc — NO VERIFICA"}`);
+  if (!punch.OK) wr.push("Punzonado: Vu > φVc — aumentar altura o dimensiones de la base.");
+
+  // Paso 9 — corte
+  const shear = step9_BeamShear(qu, B, L, input.cx, input.cy, d, input.fc);
+  st.push(`9. Corte unidireccional:`);
+  st.push(`   Vux = ${fmt(qu, 6)}·${L}·max(${f1(kx)}−${f1(d)},0) = ${f1(shear.Vux)} kN`);
+  st.push(`   Vuy = ${fmt(qu, 6)}·${B}·max(${f1(ky)}−${f1(d)},0) = ${f1(shear.Vuy)} kN`);
+  st.push(`   φVc = 0.75·bw·${f1(d)}·√${input.fc}/6 = ${f1(shear.phiVc)} kN`);
+  st.push(`   ${shear.OK ? "✓ Verifica corte unidireccional" : "✗ NO VERIFICA corte"}`);
+  if (!shear.OK) wr.push("Corte unidireccional no verifica — aumentar altura útil.");
+
+  // Paso 10 — armadura
+  const steel = step10_Steel(Mnx, Mny, B, L, d, input.fc, input.fy, kamin);
+  const fc_kNcm2 = input.fc * 0.1;
+  st.push(`10. Flexión:`);
+  st.push(`    mnx = ${f1(Mnx)}/(0.85·${L}·${f1(d)}²·${fmt(fc_kNcm2, 3)}) = ${f4(steel.mnx)}`);
+  st.push(`    mny = ${f1(Mny)}/(0.85·${B}·${f1(d)}²·${fmt(fc_kNcm2, 3)}) = ${f4(steel.mny)}`);
+  st.push(`    kax = max(ka(mnx), ${f4(kamin)}) = ${f4(steel.kax)}`);
+  st.push(`    kay = max(ka(mny), ${f4(kamin)}) = ${f4(steel.kay)}`);
+  st.push(`    Asx = ${f4(steel.kax)}·0.85·${f1(d)}·${L}·${input.fc}/${input.fy} = ${f2(steel.Asx)} cm²`);
+  st.push(`    Asy = ${f4(steel.kay)}·0.85·${f1(d)}·${B}·${input.fc}/${input.fy} = ${f2(steel.Asy)} cm²`);
+  st.push(`    AsMín (0.0018·b·h) ≈ ${f2(steel.AsMin)} cm²`);
+
+  // Paso 11 — altura total
+  const h = step11_TotalHeight(input.h, d, cover);
+  if (input.h !== undefined && input.h > 0) {
+    st.push(`11. Altura total: h = ${h} cm (manual override)`);
+  } else {
+    st.push(`11. Altura total: h = d + cover = ${f1(d)} + ${cover} = ${f1(d + cover)} cm → adoptado ${h} cm (mín 30 cm)`);
+  }
+
+  // Paso 12 — talón
+  const heel = step12_Heel(h, kx, ky);
+  st.push(`12. Talón: h − h_borde = ${h} − 20 = ${f1(heel.heel)} cm ≥ 25 cm? ${heel.OK ? "✓" : "✗"}`);
+  if (!heel.OK) wr.push(`Talón insuficiente (${f1(heel.heel)} cm < 25 cm) — aumentar altura.`);
+
+  // Paso 13 — separación
+  const barDisp = step13_Spacing(steel.Asx, steel.Asy, B, L, rebD);
+  const sepMax = Math.min(25 * (rebD / 10), 30);
+  st.push(`13. Armado: Ø${rebD} mm c/${f1(barDisp.sep_x)} cm (X, ${barDisp.nb_x} barras) — Ø${rebD} mm c/${f1(barDisp.sep_y)} cm (Y, ${barDisp.nb_y} barras)`);
+  st.push(`    sep ≤ min(25·${rebD/10}, 30) = ${f1(sepMax)} cm → ${barDisp.OK ? "✓" : "✗"}`);
+  if (!barDisp.OK) wr.push("Separación excede el máximo normativo — aumentar diámetro o número de barras.");
+
+  st.push("");
+  st.push(`=== RESUMEN: ${er.length === 0 ? "✓ DISEÑO COMPLETO" : "✗ ERRORES"} ===`);
+
+  return {
+    Areq: dims.Areq, Ap, B, L, h, d, kx, ky,
+    Pu, qu,
+    Mux, Muy, Mnx, Mny,
+    Vu_punch: punch.Vu, phiVc_punch: punch.phiVc, punchOK: punch.OK,
+    Vux: shear.Vux, Vuy: shear.Vuy, phiVc_beam: shear.phiVc, beamShearOK: shear.OK,
+    mnx: steel.mnx, mny: steel.mny,
+    kax: steel.kax, kay: steel.kay, kamin,
+    Asx: steel.Asx, Asy: steel.Asy, AsMin: steel.AsMin,
+    db: barDisp.db, nb_x: barDisp.nb_x, nb_y: barDisp.nb_y,
+    sep_x: barDisp.sep_x, sep_y: barDisp.sep_y, sepCheckOK: barDisp.OK,
+    heel: heel.heel, heelOK: heel.OK,
+    // Medianera fields — not used
+    e: 0, Mu: 0, Ru: 0, Mnv: 0, As_sup: 0, As_inf: 0, mn_med: 0, ka_med: 0,
+    Tu: 0, FrictionOK: true, As_tensor: 0, h_tensor: 0,
+    steps: st,
+    warnings: wr,
+    errors: er,
+  };
+}
+
 export interface BaseResult {
   // Geometría
   Areq: number; Ap: number; B: number; L: number; h: number; d: number;
