@@ -56,6 +56,47 @@ export interface BaseInput {
   rebD?: number;                      // mm — diámetro de barra (default 12)
 }
 
+export interface BaseResult {
+  // Geometría
+  Areq: number; Ap: number; B: number; L: number; h: number; d: number;
+  kx: number; ky: number;
+  // Cargas
+  Pu: number; qu: number;
+  // Centrada — flexión
+  Mux: number; Muy: number; Mnx: number; Mny: number;
+  // Punzonado
+  Vu_punch: number; phiVc_punch: number; punchOK: boolean;
+  // Corte unidireccional
+  Vux: number; Vuy: number; phiVc_beam: number; beamShearOK: boolean;
+  // Armadura
+  mnx: number; mny: number;
+  kax: number; kay: number; kamin: number;
+  Asx: number; Asy: number; AsMin: number;
+  // Barras
+  db: number; nb_x: number; nb_y: number;
+  sep_x: number; sep_y: number; sepCheckOK: boolean;
+  // Talón
+  heel: number; heelOK: boolean;
+  // Medianera — viga de fundación
+  e: number;                          // cm — excentricidad
+  Mu: number;                         // kN·cm — momento volcador
+  Ru: number;                         // kN — reacción de viga
+  Mnv: number;                        // kN·cm — momento nominal viga
+  As_sup: number;                     // cm² — armadura superior viga
+  As_inf: number;                     // cm² — armadura inferior viga
+  mn_med: number;                     // mn viga
+  ka_med: number;                     // ka viga
+  // Medianera — tensor
+  Tu: number;                         // kN — tracción en tensor
+  FrictionOK: boolean;               // verificación rozamiento
+  As_tensor: number;                  // cm² — armadura tensor
+  h_tensor: number;                   // cm — altura bloque tensor
+  // Traza
+  steps: string[];                   // registro paso a paso
+  warnings: string[];                // advertencias no bloqueantes
+  errors: string[];                  // errores de validación
+}
+
 // ---------------------------------------------------------------------------
 // Utilidades
 // ---------------------------------------------------------------------------
@@ -412,43 +453,93 @@ function designCentrada(input: BaseInput): BaseResult {
   };
 }
 
-export interface BaseResult {
-  // Geometría
-  Areq: number; Ap: number; B: number; L: number; h: number; d: number;
-  kx: number; ky: number;
-  // Cargas
-  Pu: number; qu: number;
-  // Centrada — flexión
-  Mux: number; Muy: number; Mnx: number; Mny: number;
-  // Punzonado
-  Vu_punch: number; phiVc_punch: number; punchOK: boolean;
-  // Corte unidireccional
-  Vux: number; Vuy: number; phiVc_beam: number; beamShearOK: boolean;
-  // Armadura
-  mnx: number; mny: number;
-  kax: number; kay: number; kamin: number;
-  Asx: number; Asy: number; AsMin: number;
-  // Barras
-  db: number; nb_x: number; nb_y: number;
-  sep_x: number; sep_y: number; sepCheckOK: boolean;
-  // Talón
-  heel: number; heelOK: boolean;
-  // Medianera — viga de fundación
-  e: number;                          // cm — excentricidad
-  Mu: number;                         // kN·cm — momento volcador
-  Ru: number;                         // kN — reacción de viga
-  Mnv: number;                        // kN·cm — momento nominal viga
-  As_sup: number;                     // cm² — armadura superior viga
-  As_inf: number;                     // cm² — armadura inferior viga
-  mn_med: number;                     // mn viga
-  ka_med: number;                     // ka viga
-  // Medianera — tensor
-  Tu: number;                         // kN — tracción en tensor
-  FrictionOK: boolean;               // verificación rozamiento
-  As_tensor: number;                  // cm² — armadura tensor
-  h_tensor: number;                   // cm — altura bloque tensor
-  // Traza
-  steps: string[];                   // registro paso a paso
-  warnings: string[];                // advertencias no bloqueantes
-  errors: string[];                  // errores de validación
+// ---------------------------------------------------------------------------
+// Función de diseño — medianera viga de fundación (7 pasos)
+// ---------------------------------------------------------------------------
+
+function designVigaFundacion(input: BaseInput): BaseResult {
+  const cover = input.cover ?? 5;
+  const rebD = input.rebD ?? 12;
+  const st: string[] = [];
+  const wr: string[] = [];
+  const er: string[] = [];
+
+  if (input.Lcol === undefined || input.Lcol <= 0) {
+    throw new Error("Para viga de fundación, se requiere la luz entre columnas (Lcol).");
+  }
+
+  // Dimensiones de base: auto-predim si no se dieron
+  const dims = step1_Dimensions(input);
+  const B = input.B ?? dims.B;
+  const L = input.L ?? dims.L;
+
+  st.push("=== BASE MEDIANERA — VIGA DE FUNDACIÓN — CIRSOC 201 ===");
+  st.push("");
+
+  // Paso V1 — Pu
+  const Pu = step2_Pu(input.PD, input.PL);
+  st.push(`V1. Pu = max(1.4·${f1(input.PD)} ; 1.2·${f1(input.PD)}+1.6·${f1(input.PL)}) = ${f1(Pu)} kN`);
+
+  // Paso V2 — excentricidad y momento
+  const e = medExcentricidad(B, input.cx);
+  const Mu = Pu * e;
+  st.push(`V2. e = (${B} − ${input.cx}) / 2 = ${f1(e)} cm`);
+  st.push(`    Mu = ${f1(Pu)} · ${f1(e)} = ${f1(Mu)} kN·cm`);
+
+  // Paso V3 — reacción Ru = Mu / Lcol
+  const Lcol = input.Lcol!;
+  const Ru = Mu / Lcol;
+  st.push(`V3. Ru = Mu / Lcol = ${f1(Mu)} / ${Lcol} = ${f1(Ru)} kN`);
+
+  // Paso V4 — momento nominal
+  const Mnv = Mu / 0.90;
+  st.push(`V4. Mn = Mu / 0.90 = ${f1(Mu)} / 0.90 = ${f1(Mnv)} kN·cm`);
+
+  // Paso V5 — dimensionado de viga
+  const b_viga = Math.max(input.cy, 20);
+  const fc_kNcm2 = input.fc * 0.1;
+  const d_viga = Math.sqrt((6.5 * Mnv) / (b_viga * fc_kNcm2));
+  const h_viga = d_viga + cover;
+  st.push(`V5. Viga: b = máx(cy,20) = ${b_viga} cm (adoptado)`);
+  st.push(`    d = √(6.5·${f1(Mnv)}/(${b_viga}·${fmt(fc_kNcm2, 3)})) = ${f1(d_viga)} cm`);
+  st.push(`    h_viga = d + cover = ${f1(d_viga)} + ${cover} = ${f1(h_viga)} cm`);
+
+  // Paso V6 — armadura superior
+  const mn_med = Mnv / (0.85 * b_viga * d_viga * d_viga * fc_kNcm2);
+  const kamin = step3_Kamin(input.fc);
+  const ka_med = Math.max(getKaFromMn(mn_med), kamin);
+  const As_sup = ka_med * 0.85 * d_viga * b_viga * input.fc / input.fy;
+  st.push(`V6. mn_viga = ${f1(Mnv)}/(0.85·${b_viga}·${f1(d_viga)}²·${fmt(fc_kNcm2, 3)}) = ${f4(mn_med)}`);
+  st.push(`    ka = max(${f4(getKaFromMn(mn_med))}, ${f4(kamin)}) = ${f4(ka_med)}`);
+  st.push(`    As_sup = ${f4(ka_med)}·0.85·${f1(d_viga)}·${b_viga}·${input.fc}/${input.fy} = ${f2(As_sup)} cm²`);
+
+  // Paso V7 — armadura inferior y estribos
+  const As_inf = Math.max(As_sup / 3, 2 * aBar(12));
+  const Vu_med = Ru;
+  st.push(`V7. As_inf = máx(As_sup/3, 2Ø12) = máx(${f2(As_sup / 3)}, ${f2(2 * aBar(12))}) = ${f2(As_inf)} cm²`);
+  st.push(`    Estribos para Vu = Ru = ${f1(Vu_med)} kN (verificar en detalle)`);
+
+  st.push("");
+  st.push(`=== RESUMEN VIGA DE FUNDACIÓN ===`);
+  st.push(`Base: ${B}×${L} cm | e = ${f1(e)} cm | Mu = ${f1(Mu)} kN·cm`);
+  st.push(`Viga: ${b_viga}×${f1(h_viga)} cm | As_sup = ${f2(As_sup)} cm² | As_inf = ${f2(As_inf)} cm²`);
+
+  return {
+    Areq: dims.Areq, Ap: B * L, B, L, h: h_viga, d: d_viga,
+    kx: (B - input.cx) / 2, ky: (L - input.cy) / 2,
+    Pu, qu: Pu / (B * L),
+    Mux: 0, Muy: 0, Mnx: 0, Mny: 0,
+    Vu_punch: 0, phiVc_punch: 0, punchOK: true,
+    Vux: 0, Vuy: 0, phiVc_beam: 0, beamShearOK: true,
+    mnx: 0, mny: 0, kax: 0, kay: 0, kamin,
+    Asx: 0, Asy: 0, AsMin: 0.0018 * b_viga * h_viga,
+    db: rebD, nb_x: 0, nb_y: 0,
+    sep_x: 0, sep_y: 0, sepCheckOK: true,
+    heel: 0, heelOK: true,
+    e, Mu, Ru, Mnv, As_sup, As_inf, mn_med, ka_med,
+    Tu: 0, FrictionOK: true, As_tensor: 0, h_tensor: 0,
+    steps: st,
+    warnings: wr,
+    errors: er,
+  };
 }
