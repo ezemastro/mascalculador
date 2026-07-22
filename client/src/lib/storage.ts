@@ -22,7 +22,11 @@ function writeSaves(saves: SavedBeam[]) {
   localStorage.setItem(KEY, JSON.stringify(saves));
 }
 
-export function saveBeam(name: string, type: "acero" | "hormigon", data: Record<string, unknown>): SavedBeam {
+export function saveBeam(
+  name: string,
+  type: "acero" | "hormigon" | "bases",
+  data: Record<string, unknown>,
+): SavedBeam {
   const saves = listSaves();
   const beam: SavedBeam = {
     id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
