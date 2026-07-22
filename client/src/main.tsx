@@ -18,10 +18,13 @@ import CartelResults from "./screens/CartelResults.tsx";
 import CartelPrintPage from "./screens/CartelPrintPage.tsx";
 import SlabForm from "./screens/SlabForm.tsx";
 import SlabResults from "./screens/SlabResults.tsx";
-import SlabCompat from "./screens/SlabCompat.tsx";
 import CompatList from "./screens/CompatList.tsx";
 import ConcreteForm from "./screens/ConcreteForm.tsx";
 import ConcreteResults from "./screens/ConcreteResults.tsx";
+import RCColumnForm from "./screens/RCColumnForm.tsx";
+import RCColumnResults from "./screens/RCColumnResults.tsx";
+import BasesForm from "./screens/BasesForm.tsx";
+import BasesResults from "./screens/BasesResults.tsx";
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
@@ -53,13 +56,13 @@ function NavBar() {
         Viga Acero
       </Link>
       <Link to="/columns" className="text-sm text-text-muted hover:text-text">
-        Columnas
+        Columnas de Acero
+      </Link>
+      <Link to="/rc-column" className="text-sm text-text-muted hover:text-text">
+        Columna H°
       </Link>
       <Link to="/slab" className="text-sm text-text-muted hover:text-text">
         Losas H°
-      </Link>
-      <Link to="/slab-compat" className="text-sm text-text-muted hover:text-text">
-        Compat. Losas
       </Link>
       <Link to="/slab-compats" className="text-sm text-text-muted hover:text-text">
         Apoyos
@@ -69,6 +72,9 @@ function NavBar() {
       </Link>
       <Link to="/cartel" className="text-sm text-text-muted hover:text-text">
         Carteles
+      </Link>
+      <Link to="/bases" className="text-sm text-text-muted hover:text-text">
+        Bases
       </Link>
 
     </div>
@@ -101,10 +107,13 @@ const router = createBrowserRouter([
       { path: "/cartel-print", Component: CartelPrintPage },
       { path: "/slab", Component: SlabForm },
       { path: "/slab-results", Component: SlabResults },
-      { path: "/slab-compat", Component: SlabCompat },
       { path: "/slab-compats", Component: CompatList },
       { path: "/concrete", Component: ConcreteForm },
       { path: "/concrete-results", Component: ConcreteResults },
+      { path: "/rc-column", Component: RCColumnForm },
+      { path: "/rc-column-results", Component: RCColumnResults },
+      { path: "/bases", Component: BasesForm },
+      { path: "/bases-results", Component: BasesResults },
     ],
   },
 ]);
