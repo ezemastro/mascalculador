@@ -49,7 +49,7 @@ Chain strategy: stacked-to-main
 
 ## Phase 4: BasesResults + Polish
 
-- [ ] **4.1** Skeleton: read `location.state`, missing→instructional message. `useMemo(designBase)`, try/catch→error card. ~50 LOC.
-- [ ] **4.2** Resumen (B×L×h,Pu,qu,d), Verificación badges (punchOK,beamShearOK,sepOK,heelOK), Armadura (AsX/Y,AsMin,db,nb,sep). ~90 LOC.
-- [ ] **4.3** Medianera conditional (e,Mu,Tu/Ru,As_sup,h_viga,FrictionOK). "Ver cuentas" collapsible. Warnings/errors cards. Buttons: guardar/editar. ~100 LOC.
-- [ ] **4.4** `npm run lint` fix new issues. `npm run build` 0 errors. Smoke: centrada 13 steps, medianera-viga, medianera-tensor, column dropdown, save/reload. ~0 LOC.
+- [x] **4.1** Skeleton: read `location.state`, missing→instructional message. `useMemo(designBase)`, try/catch→error card. ~50 LOC.
+- [x] **4.2** Resumen (B×L×h,Pu,qu,d), Verificación badges (punchOK,beamShearOK,sepOK,heelOK), Armadura (AsX/Y,AsMin,db,nb,sep). ~90 LOC.
+- [x] **4.3** Medianera conditional (e,Mu,Tu/Ru,As_sup,h_viga,FrictionOK). "Ver cuentas" collapsible. Warnings/errors cards. Buttons: guardar/editar. ~100 LOC.
+- [x] **4.4** `npm run lint` fix new issues. `npm run build` 0 errors. Smoke: centrada 13 steps, medianera-viga, medianera-tensor, column dropdown, save/reload. ~0 LOC.
