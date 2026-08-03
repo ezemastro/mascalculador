@@ -52,6 +52,22 @@ export interface SlabResult {
   RyArr: number;
   /** Per-edge reaction at edge[3] (Abajo) in kN/m. */
   RyAba: number;
+  /** Per-edge unfactored dead reaction at edge[0] (Izquierdo) in kN/m. */
+  RD_izq?: number;
+  /** Per-edge unfactored live reaction at edge[0] (Izquierdo) in kN/m. */
+  RL_izq?: number;
+  /** Per-edge unfactored dead reaction at edge[1] (Derecho) in kN/m. */
+  RD_der?: number;
+  /** Per-edge unfactored live reaction at edge[1] (Derecho) in kN/m. */
+  RL_der?: number;
+  /** Per-edge unfactored dead reaction at edge[2] (Arriba) in kN/m. */
+  RD_arr?: number;
+  /** Per-edge unfactored live reaction at edge[2] (Arriba) in kN/m. */
+  RL_arr?: number;
+  /** Per-edge unfactored dead reaction at edge[3] (Abajo) in kN/m. */
+  RD_aba?: number;
+  /** Per-edge unfactored live reaction at edge[3] (Abajo) in kN/m. */
+  RL_aba?: number;
   /** Support negative moment at edge[0] (Izquierdo) in kN·m/m — 0 if not continuous. */
   MnegIzq: number;
   /** Support negative moment at edge[1] (Derecho) in kN·m/m — 0 if not continuous. */
@@ -2713,7 +2729,8 @@ export function compatibilizeSlabs(
   const ratio = Math.min(MnegA, MnegB) / Math.max(MnegA, MnegB);
 
   // Slab parameters for support reinforcement design (use slabA as reference)
-  const { d, h, fc, fy } = slabA.result;
+  const { d, h } = slabA.result;
+  const { fc, fy } = slabA.input;
   const dB = edgeA <= 1 ? slabA.input.dBarX : slabA.input.dBarY;
   const bw = 1000; // per-meter strip
 
