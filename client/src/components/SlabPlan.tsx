@@ -70,7 +70,7 @@ export default function SlabPlan({ lx, ly, edges, slabType }: Props) {
         />
       );
     }
-    if (edge === "empotrado" || edge === "continuo") {
+    if (edge === "continuo") {
       return (
         <g>
           <line

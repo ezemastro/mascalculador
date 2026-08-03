@@ -1,4 +1,4 @@
-import { listSaves, type SavedBeam } from "./storage";
+import { listSaves } from "./storage";
 import { calculateBeamDual } from "./beam-calculations";
 import { CONCRETE_DENSITY } from "./constants";
 

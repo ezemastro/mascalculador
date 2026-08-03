@@ -14,9 +14,8 @@ const EDGE_LABELS: Record<number, string> = {
   3: "Abajo",
 };
 
-function CompatCard({ data, supportMoment, supportDesign, onDelete }: {
+function CompatCard({ data, supportDesign, onDelete }: {
   data: SavedCompatData;
-  supportMoment: number;
   supportDesign: DirectionResult | null;
   onDelete: (name: string) => void;
 }) {
@@ -165,10 +164,6 @@ export default function CompatList() {
       : (supportEdge === 2 ? slab.result.MnegArr : slab.result.MnegAba))
     : 0;
 
-  // Span AsReq in the direction of the edge (available from saved result)
-  const spanAsReq = slab
-    ? (supportEdge <= 1 ? slab.result.x.AsReq : slab.result.y.AsReq)
-    : 0;
   const adoptedSpanAs = slab
     ? (supportEdge <= 1 ? (slab.result.adoptedAsX ?? 0) : (slab.result.adoptedAsY ?? 0))
     : 0;
@@ -369,7 +364,6 @@ export default function CompatList() {
                 <CompatCard
                   key={c.name}
                   data={c}
-                  supportMoment={supportMoment}
                   supportDesign={supportDesign}
                   onDelete={handleDelete}
                 />
