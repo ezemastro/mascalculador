@@ -461,7 +461,6 @@ export default function RCColumnResults() {
           <ArmadoLayoutSVG
             Cx={result.Cx}
             Cy={result.Cy}
-            nEsquinas={nEsquinas}
             nCarasX={nCarasX}
             nCarasY={nCarasY}
             dbEsquinas={dbEsquinas}

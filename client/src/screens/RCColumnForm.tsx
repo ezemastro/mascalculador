@@ -59,14 +59,13 @@ interface ContributedBeam {
   supportIdx: number;
   rD: number;
   rL: number;
-  rU: number;
+  rU?: number;
 }
 
 /** SVG layout of the column cross section with manual bar positions */
 export function ArmadoLayoutSVG({
   Cx,
   Cy,
-  nEsquinas,
   nCarasX,
   nCarasY,
   dbEsquinas,
@@ -75,7 +74,6 @@ export function ArmadoLayoutSVG({
 }: {
   Cx: number;
   Cy: number;
-  nEsquinas: number;
   nCarasX: number;
   nCarasY: number;
   dbEsquinas: number;

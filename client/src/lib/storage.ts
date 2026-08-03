@@ -5,6 +5,7 @@ const LAST_FORM_KEY = "mascalculador_last_form";
 const LAST_COLUMN_FORM_KEY = "mascalculador_last_column_form";
 const LAST_CARTEL_FORM_KEY = "mascalculador_last_cartel_form";
 const LAST_BASES_FORM_KEY = "mascalculador_last_bases_form";
+const LAST_RC_COLUMN_FORM_KEY = "mascalculador_last_rc_column_form";
 
 export interface LastFormState {
   spanCount: number;
@@ -83,7 +84,7 @@ export function loadLastColumnFormState(): ColumnFormState | null {
 export interface SavedBeam {
   id: string;
   name: string;
-  type: "acero" | "hormigon" | "bases" | "columna" | "cartel" | "losa";
+  type: "acero" | "hormigon" | "bases" | "columna" | "cartel" | "losa" | "rc-columna";
   date: string;
   data: Record<string, unknown>;
 }
@@ -105,7 +106,7 @@ function writeSaves(saves: SavedBeam[]) {
 /** Crea un nuevo guardado. Lanza error si ya existe uno con el mismo nombre. */
 export function saveBeam(
   name: string,
-  type: "acero" | "hormigon" | "bases" | "columna" | "cartel" | "losa",
+  type: "acero" | "hormigon" | "bases" | "columna" | "cartel" | "losa" | "rc-columna",
   data: Record<string, unknown>,
 ): SavedBeam {
   const saves = listSaves();
@@ -244,6 +245,52 @@ export function loadLastCartelFormState(): CartelFormState | null {
   }
 }
 
+// ---- RC Column last form persistence ----
+
+export interface RCColumnFormState {
+  fc: number;
+  fy: number;
+  PD: number;
+  PL: number;
+  lu: number;
+  MxSup: number;
+  MxInf: number;
+  MySup: number;
+  MyInf: number;
+  Cx?: number;
+  Cy?: number;
+  betaD?: number;
+  PD_direct?: number;
+  PL_direct?: number;
+  includeSelfWeight?: boolean;
+  contributedColumns?: { id: string; name: string; PD: number; PL: number }[];
+  contributedBeams?: { id: string; name: string; supportIdx: number; rD: number; rL: number }[];
+  nEsquinas?: number;
+  nCarasX?: number;
+  nCarasY?: number;
+  dbEsquinas?: number;
+  dbCarasX?: number;
+  dbCarasY?: number;
+}
+
+export function saveLastRCColumnFormState(state: RCColumnFormState) {
+  try {
+    localStorage.setItem(LAST_RC_COLUMN_FORM_KEY, JSON.stringify(state));
+  } catch {
+    /* quota exceeded, ignore */
+  }
+}
+
+export function loadLastRCColumnFormState(): RCColumnFormState | null {
+  try {
+    const raw = localStorage.getItem(LAST_RC_COLUMN_FORM_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as RCColumnFormState;
+  } catch {
+    return null;
+  }
+}
+
 // ---- Slab last form persistence ----
 
 const LAST_SLAB_FORM_KEY = "mascalculador_last_slab_form";
@@ -290,7 +337,7 @@ export interface SavedSlabData {
   result: SlabResult;
 }
 
-export function getSavedBeams(type: "acero" | "hormigon" | "bases" | "columna" | "cartel" | "losa"): SavedBeam[] {
+export function getSavedBeams(type: "acero" | "hormigon" | "bases" | "columna" | "cartel" | "losa" | "rc-columna"): SavedBeam[] {
   return listSaves().filter((s) => s.type === type);
 }
 

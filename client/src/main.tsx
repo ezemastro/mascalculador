@@ -24,6 +24,8 @@ import SlabCompat from "./screens/SlabCompat.tsx";
 import CompatList from "./screens/CompatList.tsx";
 import ConcreteForm from "./screens/ConcreteForm.tsx";
 import ConcreteResults from "./screens/ConcreteResults.tsx";
+import RCColumnForm from "./screens/RCColumnForm.tsx";
+import RCColumnResults from "./screens/RCColumnResults.tsx";
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null as Error | null };
@@ -75,6 +77,9 @@ function NavBar() {
       <Link to="/cartel" className="text-sm text-text-muted hover:text-text">
         Carteles
       </Link>
+      <Link to="/rc-column" className="text-sm text-text-muted hover:text-text">
+        Columna H°
+      </Link>
     </div>
   );
 }
@@ -111,6 +116,8 @@ const router = createBrowserRouter([
       { path: "/slab-compats", Component: CompatList },
       { path: "/concrete", Component: ConcreteForm },
       { path: "/concrete-results", Component: ConcreteResults },
+      { path: "/rc-column", Component: RCColumnForm },
+      { path: "/rc-column-results", Component: RCColumnResults },
     ],
   },
 ]);
