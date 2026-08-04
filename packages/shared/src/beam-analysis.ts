@@ -1,3 +1,4 @@
+import type { BeamConfig, Load, BeamResults, BeamResultsDual } from "./types";
 export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
   const { spans, supportTypes } = config;
   const n = supportTypes.length;
@@ -409,50 +410,4 @@ export function calculateBeamDual(
     maxShearU,
     criticalPointsU,
   };
-}
-
-/**
- * Detects legacy loads that only have `magnitude` (no `deadLoad`/`liveLoad`).
- * Patches them to: deadLoad = magnitude, liveLoad = 0 (conservative default).
- * Returns the migrated loads and a flag indicating whether any were patched.
- */
-export function migrateLoads(rawLoads: Record<string, unknown>[]): {
-  loads: Load[];
-  migrated: boolean;
-} {
-  let migrated = false;
-  const loads: Load[] = rawLoads.map((l) => {
-    if (
-      typeof (l as unknown as Load).deadLoad === "number" &&
-      typeof (l as unknown as Load).liveLoad === "number"
-    ) {
-      return l as unknown as Load;
-    }
-    migrated = true;
-    const mag = typeof l.magnitude === "number" ? l.magnitude : 0;
-    return {
-      id: (l.id as string) || Math.random().toString(36).slice(2),
-      type: (l.type as Load["type"]) || "distributed",
-      deadLoad: mag,
-      liveLoad: 0,
-      magnitude: mag,
-      position: typeof l.position === "number" ? l.position : undefined,
-      start: typeof l.start === "number" ? l.start : undefined,
-      end: typeof l.end === "number" ? l.end : undefined,
-    };
-  });
-  return { loads, migrated };
-}
-
-export function formatForce(value: number): string {
-  return `${value.toFixed(2)} kN`;
-}
-
-export function formatMoment(value: number): string {
-  return `${value.toFixed(2)} kN·m`;
-}
-
-export function formatLength(value: number): string {
-  if (value >= 1) return `${value.toFixed(2)} m`;
-  return `${(value * 1000).toFixed(0)} mm`;
 }

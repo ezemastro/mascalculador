@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import { SavedBeams } from "@mascalculador/shared";
 import { saveBeam, updateSave } from "../lib/storage";
-import { calculateBeam } from "../lib/beam-calculations";
+import { calculateBeam } from "@mascalculador/shared";
 import { DecimalInput } from "@mascalculador/shared";
 
 interface ConcreteLoad {

@@ -1,5 +1,5 @@
 import { listSaves } from "./storage";
-import { calculateBeamDual } from "./beam-calculations";
+import { calculateBeamDual } from "@mascalculador/shared";
 import { CONCRETE_DENSITY } from "./constants";
 
 export interface BeamReactionResult {
