@@ -1,2 +1,5 @@
 # SDD artifacts
 .atl/
+
+# Dependencies
+node_modules/
