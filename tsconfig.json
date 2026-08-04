@@ -1,6 +1,7 @@
 {
   "files": [],
   "references": [
-    { "path": "./apps/steel" }
+    { "path": "./apps/steel" },
+    { "path": "./apps/concrete" }
   ]
 }
