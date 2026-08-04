@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "react-router";
-import MainLayout from "../components/MainLayout";
+import { MainLayout } from "@mascalculador/shared";
 import { calculateCartel } from "../lib/cartel-calc";
 import type { CartelState } from "./CartelForm";
 

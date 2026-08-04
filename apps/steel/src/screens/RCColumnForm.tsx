@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router";
-import MainLayout from "../components/MainLayout";
-import SavedBeams from "../components/SavedBeams";
+import { MainLayout } from "@mascalculador/shared";
+import { SavedBeams } from "@mascalculador/shared";
 import {
   saveBeam,
   updateSave,
   loadLastRCColumnFormState,
   saveLastRCColumnFormState,
 } from "../lib/storage";
-import { DecimalInput } from "../hooks/useDecimalField";
+import { DecimalInput } from "@mascalculador/shared";
 import { CONCRETE_DENSITY } from "../lib/constants";
 import {
   getBeamReactions,
@@ -573,6 +573,7 @@ export default function RCColumnForm() {
       </header>
 
       <SavedBeams
+        app="concrete"
         type="rc-columna"
         onLoad={handleLoad}
         label="Columnas guardadas"

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
-import MainLayout from "../components/MainLayout";
-import SavedBeams from "../components/SavedBeams";
+import { MainLayout } from "@mascalculador/shared";
+import { SavedBeams } from "@mascalculador/shared";
 import { ANGLE_PROFILES } from "../lib/angle-profiles";
 import { IPN_PROFILES } from "../lib/profiles";
 import {
@@ -10,7 +10,7 @@ import {
   saveLastCartelFormState,
   loadLastCartelFormState,
 } from "../lib/storage";
-import { DecimalInput } from "../hooks/useDecimalField";
+import { DecimalInput } from "@mascalculador/shared";
 
 export interface CartelState {
   // Geometry
@@ -324,6 +324,7 @@ export default function CartelForm() {
       </header>
 
       <SavedBeams
+        app="steel"
         type="cartel"
         onLoad={handleLoad}
         label="Carteles guardados"

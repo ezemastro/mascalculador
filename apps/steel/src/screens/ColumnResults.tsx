@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from "react-router";
-import MainLayout from "../components/MainLayout";
+import { MainLayout } from "@mascalculador/shared";
 import { IPN_PROFILES } from "../lib/profiles";
 import { UPN_PROFILES, getDoubleUPN } from "../lib/upn-profiles";
 import { TUBE_PROFILES } from "../lib/tube-profiles";

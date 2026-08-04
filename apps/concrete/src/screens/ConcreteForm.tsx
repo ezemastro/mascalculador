@@ -1,10 +1,10 @@
 import { useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router";
-import MainLayout from "../components/MainLayout";
-import SavedBeams from "../components/SavedBeams";
+import { MainLayout } from "@mascalculador/shared";
+import { SavedBeams } from "@mascalculador/shared";
 import { saveBeam, updateSave } from "../lib/storage";
 import { calculateBeam } from "../lib/beam-calculations";
-import { DecimalInput } from "../hooks/useDecimalField";
+import { DecimalInput } from "@mascalculador/shared";
 
 interface ConcreteLoad {
   id: string;
@@ -204,6 +204,7 @@ export default function ConcreteForm() {
       </header>
 
       <SavedBeams
+        app="concrete"
         type="hormigon"
         onLoad={(data, save) => {
           setLoadedSaveId(save.id);

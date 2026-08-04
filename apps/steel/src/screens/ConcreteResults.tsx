@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { Coordinates, Mafs, Plot, Text } from "mafs";
-import MainLayout from "../components/MainLayout";
+import { MainLayout } from "@mascalculador/shared";
 import { calculateBeam, formatForce } from "../lib/beam-calculations";
 import { designConcreteDetailed } from "../lib/concrete-design";
 import type { ConcreteState } from "./ConcreteForm";

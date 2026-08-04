@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
-import MainLayout from "../components/MainLayout";
-import SavedBeams from "../components/SavedBeams";
+import { MainLayout } from "@mascalculador/shared";
+import { SavedBeams } from "@mascalculador/shared";
 import {
   saveBeam,
   listSaves,
@@ -238,7 +238,7 @@ export default function BasesForm() {
       </header>
 
       {/* Load saved bases */}
-      <SavedBeams type="bases" onLoad={handleLoadBases} />
+      <SavedBeams app="concrete" type="bases" onLoad={handleLoadBases} />
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-6">
         {/* ── 1. Suelo ──────────────────────────────────────── */}

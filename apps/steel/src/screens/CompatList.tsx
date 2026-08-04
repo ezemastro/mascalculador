@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router";
-import MainLayout from "../components/MainLayout";
+import { MainLayout } from "@mascalculador/shared";
 import { getSavedCompats, getSavedSlabs, loadSlab, deleteCompat, type SavedCompatData } from "../lib/storage";
 import { designSupportMoment, type DirectionResult, type EdgeIndex } from "../lib/slab-calc";
 

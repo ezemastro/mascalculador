@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
-import MainLayout from "../components/MainLayout";
-import SavedBeams from "../components/SavedBeams";
+import { MainLayout } from "@mascalculador/shared";
+import { SavedBeams } from "@mascalculador/shared";
 import { IPN_PROFILES } from "../lib/profiles";
 import { UPN_PROFILES } from "../lib/upn-profiles";
 import { TUBE_PROFILES } from "../lib/tube-profiles";
@@ -11,7 +11,7 @@ import {
   saveLastColumnFormState,
   loadLastColumnFormState,
 } from "../lib/storage";
-import { DecimalInput } from "../hooks/useDecimalField";
+import { DecimalInput } from "@mascalculador/shared";
 
 export interface ColumnState {
   profileType: "IPN" | "UPN" | "2UPN" | "TUBO" | "ARMADA_I" | "ARMADA_CAJON";
@@ -276,6 +276,7 @@ export default function ColumnForm() {
       </header>
 
       <SavedBeams
+        app="steel"
         type="columna"
         onLoad={handleLoad}
         label="Columnas guardadas"

@@ -1,12 +1,12 @@
 import { useMemo, useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router";
-import MainLayout from "../components/MainLayout";
-import SavedBeams from "../components/SavedBeams";
+import { MainLayout } from "@mascalculador/shared";
+import { SavedBeams } from "@mascalculador/shared";
 import { saveBeam, updateSave, saveLastFormState, loadLastFormState } from "../lib/storage";
 import { IPN_PROFILES } from "../lib/profiles";
 import { UPN_PROFILES } from "../lib/upn-profiles";
 import { calculateBeamDual, migrateLoads } from "../lib/beam-calculations";
-import { DecimalInput } from "../hooks/useDecimalField";
+import { DecimalInput } from "@mascalculador/shared";
 
 export default function FormPage() {
   const location = useLocation();
@@ -258,6 +258,7 @@ export default function FormPage() {
       </header>
 
       <SavedBeams
+        app="steel"
         type="acero"
         onLoad={(data, save) => {
           setLoadedSaveId(save.id);

@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
-import MainLayout from "../components/MainLayout";
-import SavedBeams from "../components/SavedBeams";
+import { MainLayout } from "@mascalculador/shared";
+import { SavedBeams } from "@mascalculador/shared";
 import type { EdgeCondition, SlabInput } from "../lib/slab-calc";
 import { saveLastSlabFormState, loadLastSlabFormState, saveSlabInput, updateSlabInput } from "../lib/storage";
-import { DecimalInput } from "../hooks/useDecimalField";
+import { DecimalInput } from "@mascalculador/shared";
 
 export interface SlabState {
   lx: number;
@@ -193,6 +193,7 @@ export default function SlabForm() {
       </header>
 
       <SavedBeams
+        app="concrete"
         type="losa"
         label="Losas guardadas"
         onLoad={(data, save) => {

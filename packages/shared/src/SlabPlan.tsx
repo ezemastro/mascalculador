@@ -1,4 +1,4 @@
-import type { EdgeCondition } from "../lib/slab-calc";
+import type { EdgeCondition } from "./slab-types";
 
 interface Props {
   lx: number;

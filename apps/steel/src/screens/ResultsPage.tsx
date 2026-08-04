@@ -1,6 +1,6 @@
 import { useLocation, useNavigate } from "react-router";
 import { Mafs, Plot, Text, Vector } from "mafs";
-import MainLayout from "../components/MainLayout";
+import { MainLayout } from "@mascalculador/shared";
 import {
   calculateBeamDual,
   formatForce,

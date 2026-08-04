@@ -1,20 +1,21 @@
 import { useState, useEffect } from "react";
-import { listSaves, deleteSave, type SavedBeam } from "../lib/storage";
+import { listSaves, deleteSave, type SavedBeam, type App } from "./storage";
 
 interface Props {
+  app: App;
   type: "acero" | "hormigon" | "bases" | "columna" | "cartel" | "losa" | "rc-columna";
   onLoad: (data: Record<string, unknown>, save: SavedBeam) => void;
   onDelete?: (id: string) => void;
   label?: string;
 }
 
-export default function SavedBeams({ type, onLoad, onDelete, label }: Props) {
+export default function SavedBeams({ app, type, onLoad, onDelete, label }: Props) {
   const [saves, setSaves] = useState<SavedBeam[]>([]);
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    setSaves(listSaves().filter((s) => s.type === type));
-  }, [open, type]);
+    setSaves(listSaves(app).filter((s) => s.type === type));
+  }, [open, type, app]);
 
   function handleLoad(save: SavedBeam) {
     onLoad(save.data, save);
@@ -25,7 +26,7 @@ export default function SavedBeams({ type, onLoad, onDelete, label }: Props) {
     if (onDelete) {
       onDelete(id);
     }
-    deleteSave(id);
+    deleteSave(app, id);
     setSaves((prev) => prev.filter((s) => s.id !== id));
   }
 

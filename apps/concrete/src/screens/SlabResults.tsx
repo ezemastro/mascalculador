@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router";
-import MainLayout from "../components/MainLayout";
-import SlabPlan from "../components/SlabPlan";
+import { MainLayout } from "@mascalculador/shared";
+import { SlabPlan } from "@mascalculador/shared";
 import { designSlab, type DirectionResult } from "../lib/slab-calc";
 import { saveSlab, updateSlab, saveSlabInput, updateSlabInput } from "../lib/storage";
 import type { SlabInput } from "../lib/slab-calc";
