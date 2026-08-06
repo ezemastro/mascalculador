@@ -3,7 +3,12 @@ import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import { SavedBeams } from "@mascalculador/shared";
 import type { EdgeCondition, SlabInput } from "../lib/slab-calc";
-import { saveLastSlabFormState, loadLastSlabFormState, saveSlabInput, updateSlabInput } from "../lib/storage";
+import {
+  saveLastSlabFormState,
+  loadLastSlabFormState,
+  saveSlabInput,
+  updateSlabInput,
+} from "../lib/storage";
 import { DecimalInput } from "@mascalculador/shared";
 
 export interface SlabState {
@@ -21,6 +26,7 @@ export interface SlabState {
   h: number;
   dBarX: number;
   dBarY: number;
+  includeSelfWeight: boolean;
   /** Id del guardado cargado, si viene de uno existente */
   loadedSaveId?: string | null;
   loadedSaveName?: string | null;
@@ -43,16 +49,24 @@ export default function SlabForm() {
   const [lx, setLx] = useState(state?.lx ?? lastForm?.lx ?? 4);
   const [ly, setLy] = useState(state?.ly ?? lastForm?.ly ?? 5);
   const [edgeX0, setEdgeX0] = useState<EdgeCondition>(
-    (state?.edgeX0 as EdgeCondition) ?? (lastForm?.edgeX0 as EdgeCondition) ?? "simple",
+    (state?.edgeX0 as EdgeCondition) ??
+      (lastForm?.edgeX0 as EdgeCondition) ??
+      "simple",
   );
   const [edgeXL, setEdgeXL] = useState<EdgeCondition>(
-    (state?.edgeXL as EdgeCondition) ?? (lastForm?.edgeXL as EdgeCondition) ?? "simple",
+    (state?.edgeXL as EdgeCondition) ??
+      (lastForm?.edgeXL as EdgeCondition) ??
+      "simple",
   );
   const [edgeY0, setEdgeY0] = useState<EdgeCondition>(
-    (state?.edgeY0 as EdgeCondition) ?? (lastForm?.edgeY0 as EdgeCondition) ?? "simple",
+    (state?.edgeY0 as EdgeCondition) ??
+      (lastForm?.edgeY0 as EdgeCondition) ??
+      "simple",
   );
   const [edgeYL, setEdgeYL] = useState<EdgeCondition>(
-    (state?.edgeYL as EdgeCondition) ?? (lastForm?.edgeYL as EdgeCondition) ?? "simple",
+    (state?.edgeYL as EdgeCondition) ??
+      (lastForm?.edgeYL as EdgeCondition) ??
+      "simple",
   );
   const [D, setD] = useState(state?.D ?? lastForm?.D ?? 1.5);
   const [L, setL] = useState(state?.L ?? lastForm?.L ?? 2.0);
@@ -62,6 +76,9 @@ export default function SlabForm() {
   const [h, setH] = useState(state?.h ?? lastForm?.h ?? 0);
   const [dBarX, setDBarX] = useState(state?.dBarX ?? lastForm?.dBarX ?? 10);
   const [dBarY, setDBarY] = useState(state?.dBarY ?? lastForm?.dBarY ?? 10);
+  const [includeSelfWeight, setIncludeSelfWeight] = useState<boolean>(
+    state?.includeSelfWeight ?? lastForm?.includeSelfWeight ?? true,
+  );
 
   const [loadedSaveId, setLoadedSaveId] = useState<string | null>(null);
   const [loadedSaveName, setLoadedSaveName] = useState<string | null>(null);
@@ -88,8 +105,25 @@ export default function SlabForm() {
       h,
       dBarX,
       dBarY,
+      includeSelfWeight,
     });
-  }, [lx, ly, edgeX0, edgeXL, edgeY0, edgeYL, D, L, fc, fy, cover, h, dBarX, dBarY]);
+  }, [
+    lx,
+    ly,
+    edgeX0,
+    edgeXL,
+    edgeY0,
+    edgeYL,
+    D,
+    L,
+    fc,
+    fy,
+    cover,
+    h,
+    dBarX,
+    dBarY,
+    includeSelfWeight,
+  ]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -109,6 +143,7 @@ export default function SlabForm() {
         h,
         dBarX,
         dBarY,
+        includeSelfWeight,
         loadedSaveId,
         loadedSaveName,
       } as SlabState,
@@ -116,7 +151,25 @@ export default function SlabForm() {
   }
 
   function handleSaveData() {
-    const slabInput = { lx, ly, edges: [edgeX0, edgeXL, edgeY0, edgeYL] as [EdgeCondition, EdgeCondition, EdgeCondition, EdgeCondition], D, L, fc, fy, cover, h, dBarX, dBarY };
+    const slabInput = {
+      lx,
+      ly,
+      edges: [edgeX0, edgeXL, edgeY0, edgeYL] as [
+        EdgeCondition,
+        EdgeCondition,
+        EdgeCondition,
+        EdgeCondition,
+      ],
+      D,
+      L,
+      fc,
+      fy,
+      cover,
+      h,
+      dBarX,
+      dBarY,
+      includeSelfWeight,
+    };
     if (loadedSaveId) {
       updateSlabInput(loadedSaveId, slabInput);
       return;
@@ -175,13 +228,21 @@ export default function SlabForm() {
         <button
           type="button"
           onClick={() => {
-            setLx(4); setLy(5);
-            setEdgeX0("simple"); setEdgeXL("simple");
-            setEdgeY0("simple"); setEdgeYL("simple");
-            setD(1.5); setL(2.0);
-            setFc(25); setFy(420);
-            setCover(20); setH(0);
-            setDBarX(10); setDBarY(10);
+            setLx(4);
+            setLy(5);
+            setEdgeX0("simple");
+            setEdgeXL("simple");
+            setEdgeY0("simple");
+            setEdgeYL("simple");
+            setD(1.5);
+            setL(2.0);
+            setFc(25);
+            setFy(420);
+            setCover(20);
+            setH(0);
+            setDBarX(10);
+            setDBarY(10);
+            setIncludeSelfWeight(true);
             setLoadedSaveId(null);
             setLoadedSaveName(null);
             localStorage.removeItem("mascalculador_last_slab_form");
@@ -217,6 +278,8 @@ export default function SlabForm() {
           if (typeof input.h === "number") setH(input.h);
           if (typeof input.dBarX === "number") setDBarX(input.dBarX);
           if (typeof input.dBarY === "number") setDBarY(input.dBarY);
+          if (typeof input.includeSelfWeight === "boolean")
+            setIncludeSelfWeight(input.includeSelfWeight);
         }}
       />
 
@@ -225,7 +288,7 @@ export default function SlabForm() {
           <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
             Dimensiones
           </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
                 L<sub>x</sub> (m)
@@ -240,15 +303,12 @@ export default function SlabForm() {
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
-                h (cm, 0 = calcular)
-              </span>
-              <DecimalInput value={h / 10} onChange={(v) => setH(v * 10)} />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">
                 Recubrimiento (cm)
               </span>
-              <DecimalInput value={cover / 10} onChange={(v) => setCover(v * 10)} />
+              <DecimalInput
+                value={cover / 10}
+                onChange={(v) => setCover(v * 10)}
+              />
             </label>
           </div>
         </section>
@@ -257,9 +317,13 @@ export default function SlabForm() {
           <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
             Condiciones de borde
           </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             {[
-              { label: "Borde izquierdo (Izquierdo)", val: edgeX0, set: setEdgeX0 },
+              {
+                label: "Borde izquierdo (Izquierdo)",
+                val: edgeX0,
+                set: setEdgeX0,
+              },
               { label: "Borde derecho (Derecho)", val: edgeXL, set: setEdgeXL },
               { label: "Borde superior (Arriba)", val: edgeY0, set: setEdgeY0 },
               { label: "Borde inferior (Abajo)", val: edgeYL, set: setEdgeYL },
@@ -278,6 +342,12 @@ export default function SlabForm() {
                 </select>
               </label>
             ))}
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-text-muted">
+                h (cm) — 0 = predimensionar
+              </span>
+              <DecimalInput value={h / 10} onChange={(v) => setH(v * 10)} />
+            </label>
           </div>
         </section>
 
@@ -286,10 +356,26 @@ export default function SlabForm() {
             Cargas y materiales
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <label className="flex flex-row items-center gap-2 sm:col-span-2">
+              <input
+                type="checkbox"
+                checked={includeSelfWeight}
+                onChange={(e) => setIncludeSelfWeight(e.target.checked)}
+                className="w-4 h-4"
+              />
+              <span className="text-xs text-text-muted">
+                Incluir peso propio
+              </span>
+            </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
                 D (kN/m²){" "}
-                <span className="text-text-muted/60">— peso propio incluido</span>
+                <span className="text-text-muted/60">
+                  —{" "}
+                  {includeSelfWeight
+                    ? "adicional, peso propio calculado"
+                    : "peso propio ya incluido en D"}
+                </span>
               </span>
               <DecimalInput value={D} onChange={setD} />
             </label>
@@ -324,7 +410,6 @@ export default function SlabForm() {
               </select>
             </label>
           </div>
-
         </section>
 
         <button

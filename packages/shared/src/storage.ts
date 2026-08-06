@@ -11,7 +11,12 @@
  *   exclusivo de apps/concrete.
  */
 
-import type { EdgeIndex, SlabInput, SlabResult, CompatResult } from "./slab-types";
+import type {
+  EdgeIndex,
+  SlabInput,
+  SlabResult,
+  CompatResult,
+} from "./slab-types";
 import type { App, Load } from "./types";
 
 export type { App };
@@ -148,10 +153,7 @@ export interface LastFormState {
 
 export function saveLastFormState(state: LastFormState): void {
   try {
-    localStorage.setItem(
-      key("steel", LAST_FORM_KEY),
-      JSON.stringify(state),
-    );
+    localStorage.setItem(key("steel", LAST_FORM_KEY), JSON.stringify(state));
   } catch {
     /* quota exceeded, ignore */
   }
@@ -327,7 +329,13 @@ export interface RCColumnFormState {
   PL_direct?: number;
   includeSelfWeight?: boolean;
   contributedColumns?: { id: string; name: string; PD: number; PL: number }[];
-  contributedBeams?: { id: string; name: string; supportIdx: number; rD: number; rL: number }[];
+  contributedBeams?: {
+    id: string;
+    name: string;
+    supportIdx: number;
+    rD: number;
+    rL: number;
+  }[];
   nEsquinas?: number;
   nCarasX?: number;
   nCarasY?: number;
@@ -374,6 +382,7 @@ export interface SlabLastFormState {
   h: number;
   dBarX: number;
   dBarY: number;
+  includeSelfWeight?: boolean;
 }
 
 export function saveLastSlabFormState(state: SlabLastFormState): void {
@@ -408,22 +417,43 @@ export function getSavedSlabs(): SavedBeam[] {
   return getSavedBeams("concrete", "losa");
 }
 
-export function saveSlab(name: string, input: SlabInput, result: SlabResult): SavedBeam {
+export function saveSlab(
+  name: string,
+  input: SlabInput,
+  result: SlabResult,
+): SavedBeam {
   const data: SavedSlabData = { input, result };
-  return saveBeam("concrete", name, "losa", data as unknown as Record<string, unknown>);
+  return saveBeam(
+    "concrete",
+    name,
+    "losa",
+    data as unknown as Record<string, unknown>,
+  );
 }
 
-export function updateSlab(id: string, input: SlabInput, result: SlabResult): SavedBeam | null {
+export function updateSlab(
+  id: string,
+  input: SlabInput,
+  result: SlabResult,
+): SavedBeam | null {
   const data: SavedSlabData = { input, result };
   return updateSave("concrete", id, data as unknown as Record<string, unknown>);
 }
 
 export function saveSlabInput(name: string, input: SlabInput): SavedBeam {
   const data = { input };
-  return saveBeam("concrete", name, "losa", data as unknown as Record<string, unknown>);
+  return saveBeam(
+    "concrete",
+    name,
+    "losa",
+    data as unknown as Record<string, unknown>,
+  );
 }
 
-export function updateSlabInput(id: string, input: SlabInput): SavedBeam | null {
+export function updateSlabInput(
+  id: string,
+  input: SlabInput,
+): SavedBeam | null {
   const data = { input };
   return updateSave("concrete", id, data as unknown as Record<string, unknown>);
 }

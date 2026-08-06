@@ -15,6 +15,8 @@ export interface SlabInput {
   h: number; // mm (0 = compute)
   dBarX: number; // mm (X bar diameter for spacing)
   dBarY: number; // mm
+  /** Si true, el programa calcula y suma el peso propio a D. Si false, D ya incluye el peso propio cargado por el usuario. Default: true. */
+  includeSelfWeight: boolean;
 }
 
 export interface DirectionResult {
@@ -31,6 +33,10 @@ export interface DirectionResult {
   sMax: number; // mm
   phi: number;
   Mneg?: number; // kN·m/m — negative moment at support edge (undefined for simple supports)
+  /** Coeficiente LRFD usado (1.4 si CM dominante, 1.2 si mixto CM+CV) */
+  coef?: number;
+  /** d efectivo en mm usado para el cálculo (h - cover, o h - cover - 10 si es dirección secundaria en losa cruzada) */
+  d?: number;
 }
 
 export interface SlabResult {

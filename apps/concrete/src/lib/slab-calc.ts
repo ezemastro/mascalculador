@@ -14,6 +14,8 @@ export interface SlabInput {
   h: number; // mm (0 = compute)
   dBarX: number; // mm (X bar diameter for spacing)
   dBarY: number; // mm
+  /** Si true, el programa calcula y suma el peso propio a D. Si false, D ya incluye el peso propio cargado por el usuario. Default: true. */
+  includeSelfWeight: boolean;
 }
 
 export interface DirectionResult {
@@ -30,6 +32,10 @@ export interface DirectionResult {
   sMax: number; // mm
   phi: number;
   Mneg?: number; // kN·m/m — negative moment at support edge (undefined for simple supports)
+  /** Coeficiente LRFD usado (1.4 si CM dominante, 1.2 si mixto CM+CV) */
+  coef?: number;
+  /** d efectivo en mm usado para el cálculo (h - cover, o h - cover - 10 si es dirección secundaria en losa cruzada) */
+  d?: number;
 }
 
 export interface SlabResult {
@@ -2023,10 +2029,8 @@ function calcUnidirectionalMoments(
   if (xSupported >= 2) {
     // Span in X direction
     const L = lx;
-    const isFixed0 =
-      edges[0] === "continuo";
-    const isFixed1 =
-      edges[1] === "continuo";
+    const isFixed0 = edges[0] === "continuo";
+    const isFixed1 = edges[1] === "continuo";
 
     if (!isFixed0 && !isFixed1) {
       Mx = (qu * L * L) / 8;
@@ -2040,10 +2044,8 @@ function calcUnidirectionalMoments(
   } else if (ySupported >= 2) {
     // Span in Y direction
     const L = ly;
-    const isFixed0 =
-      edges[2] === "continuo";
-    const isFixed1 =
-      edges[3] === "continuo";
+    const isFixed0 = edges[2] === "continuo";
+    const isFixed1 = edges[3] === "continuo";
 
     if (!isFixed0 && !isFixed1) {
       My = (qu * L * L) / 8;
@@ -2084,8 +2086,7 @@ export function designSupportMoment(
   const Mn = Mu / 0.9;
   const mn_val = (Mn * 1e6) / (0.85 * fc * bw * d * d);
   const Ka = 1 - Math.sqrt(1 - 2 * mn_val);
-  const beta1 =
-    fc <= 30 ? 0.85 : Math.max(0.85 - 0.05 * ((fc - 30) / 7), 0.65);
+  const beta1 = fc <= 30 ? 0.85 : Math.max(0.85 - 0.05 * ((fc - 30) / 7), 0.65);
   const KaMax = 0.375 * beta1;
   const KaMin = fc <= 30 ? 1.4 / (0.85 * fc) : 1 / (3.4 * Math.sqrt(fc));
 
@@ -2152,9 +2153,7 @@ export function designSlab(input: SlabInput): SlabResult {
   st.push("");
 
   // Step 2: Predimensionado
-  const fixedEdges = edges.filter(
-      (e) => e === "continuo",
-  ).length;
+  const fixedEdges = edges.filter((e) => e === "continuo").length;
   const coefPredim = predimCoef(fixedEdges, isCrossed);
   const dMin = ((isCrossed ? Math.min(lx, ly) : lx) * 1000) / coefPredim;
   const hMinReg = 90;
@@ -2178,16 +2177,23 @@ export function designSlab(input: SlabInput): SlabResult {
   st.push("");
 
   // Step 3: Ultimate load
+  const includeSelfWeight = input.includeSelfWeight ?? true;
   const gSelf = (h / 1000) * 25; // kN/m² (self-weight of slab)
-  const DTotal = D + gSelf;
+  const DTotal = includeSelfWeight ? D + gSelf : D;
   const U1 = 1.4 * DTotal;
   const U2 = 1.2 * DTotal + 1.6 * L;
   const qu = Math.max(U1, U2);
   st.push(`3. Carga última:`);
-  st.push(`   Peso propio = h · 25 = ${gSelf.toFixed(2)} kN/m²`);
-  st.push(
-    `   D total = ${D.toFixed(2)} + ${gSelf.toFixed(2)} = ${DTotal.toFixed(2)} kN/m²`,
-  );
+  if (includeSelfWeight) {
+    st.push(`   Peso propio = h · 25 = ${gSelf.toFixed(2)} kN/m²`);
+    st.push(
+      `   D total = ${D.toFixed(2)} + ${gSelf.toFixed(2)} = ${DTotal.toFixed(2)} kN/m²`,
+    );
+  } else {
+    st.push(
+      `   D total = ${D.toFixed(2)} kN/m² (peso propio ya incluido en D)`,
+    );
+  }
   st.push(`   U1 = 1.4·D = ${U1.toFixed(2)} kN/m²`);
   st.push(`   U2 = 1.2·D + 1.6·L = ${U2.toFixed(2)} kN/m²`);
   st.push(`   qu = max(U1, U2) = ${qu.toFixed(2)} kN/m²`);
@@ -2251,7 +2257,7 @@ export function designSlab(input: SlabInput): SlabResult {
       if (xMixed) {
         RxIzq = xHasCont ? (5 * qu * lx) / 8 : (3 * qu * lx) / 8;
         RxDer = xLCont ? (5 * qu * lx) / 8 : (3 * qu * lx) / 8;
-        Rx = qu * lx / 2; // total reaction check
+        Rx = (qu * lx) / 2; // total reaction check
       } else {
         Rx = (qu * lx) / 2;
         RxIzq = RxDer = Rx;
@@ -2267,7 +2273,7 @@ export function designSlab(input: SlabInput): SlabResult {
       if (yMixed) {
         RyArr = yHasCont ? (5 * qu * ly) / 8 : (3 * qu * ly) / 8;
         RyAba = yLCont ? (5 * qu * ly) / 8 : (3 * qu * ly) / 8;
-        Ry = qu * ly / 2; // total reaction check
+        Ry = (qu * ly) / 2; // total reaction check
       } else {
         Ry = (qu * ly) / 2;
         RyArr = RyAba = Ry;
@@ -2518,9 +2524,6 @@ export function designSlab(input: SlabInput): SlabResult {
     }
     // TODO: When adjacent slab data becomes available, perform full compatibilización
     // (average support moments when M2/M1 ≥ 0.6, else re-calc as simple support).
-    st.push(
-      "   Compatibilización: borde continuo sin datos de losa adyacente → se asume empotramiento perfecto.",
-    );
     st.push("");
   }
 
@@ -2538,12 +2541,29 @@ export function designSlab(input: SlabInput): SlabResult {
     // if equal, both keep full d
   }
 
-  function designDir(Mu: number, _dir: string, dB: number, d_eff: number, Mneg?: number): DirectionResult {
+  function designDir(
+    Mu: number,
+    _dir: string,
+    dB: number,
+    d_eff: number,
+    Mneg?: number,
+  ): DirectionResult {
     return designSupportMoment(Mu, d_eff, h, fc, fy, bw, dB, Mneg);
   }
 
   const dirX = designDir(Mx, "X", dBarX, d_x, MnegX || undefined);
   const dirY = designDir(My, "Y", dBarY, d_y, MnegY || undefined);
+
+  // Populate audit-trail fields on every DirectionResult. coef reflects which
+  // LRFD combination (1.4·D or 1.2·D + 1.6·L) dominated and is identical for both
+  // span directions (the same qu drives the whole design). d is the effective
+  // depth used for the design (h - cover, or h - cover - 10 for the secondary
+  // direction in a crossed slab).
+  const coef = U1 >= U2 ? 1.4 : 1.2;
+  dirX.coef = coef;
+  dirY.coef = coef;
+  dirX.d = d_x;
+  dirY.d = d_y;
 
   st.push(`5-8. Dimensionamiento X:`);
   if (isCrossed && d_x < d) {
@@ -2591,10 +2611,10 @@ export function designSlab(input: SlabInput): SlabResult {
   // the single supported edge (articulated or continuous) carries the full negative moment.
   const isCantileverX = xSupported === 1;
   const isCantileverY = ySupported === 1;
-  MnegIzq = (isX0Fixed || (isCantileverX && edges[0] !== "free")) ? MnegX : 0;
-  MnegDer = (isXLFixed || (isCantileverX && edges[1] !== "free")) ? MnegX : 0;
-  MnegArr = (isY0Fixed || (isCantileverY && edges[2] !== "free")) ? MnegY : 0;
-  MnegAba = (isYLFixed || (isCantileverY && edges[3] !== "free")) ? MnegY : 0;
+  MnegIzq = isX0Fixed || (isCantileverX && edges[0] !== "free") ? MnegX : 0;
+  MnegDer = isXLFixed || (isCantileverX && edges[1] !== "free") ? MnegX : 0;
+  MnegArr = isY0Fixed || (isCantileverY && edges[2] !== "free") ? MnegY : 0;
+  MnegAba = isYLFixed || (isCantileverY && edges[3] !== "free") ? MnegY : 0;
 
   // Support reinforcement design for each supported edge that carries negative moment
   let supportX0: DirectionResult | undefined;
@@ -2604,51 +2624,133 @@ export function designSlab(input: SlabInput): SlabResult {
 
   if (MnegIzq !== 0) {
     supportX0 = designSupportMoment(MnegIzq, d, h, fc, fy, bw, dBarX, MnegIzq);
+    supportX0.coef = coef;
+    supportX0.d = d;
     st.push("");
-    st.push(`Apoyo Izquierdo (${edges[0] === "continuo" ? "continuo" : "articulado"}):`);
+    st.push(
+      `Apoyo Izquierdo (${edges[0] === "continuo" ? "continuo" : "articulado"}):`,
+    );
     st.push(`   M_u = ${MnegIzq.toFixed(2)} kN·m/m`);
-    st.push(`   K_a = ${supportX0.Ka.toFixed(4)}, K_a min = ${supportX0.KaMin.toFixed(4)}, K_a max = ${supportX0.KaMax.toFixed(4)}`);
+    st.push(
+      `   K_a = ${supportX0.Ka.toFixed(4)}, K_a min = ${supportX0.KaMin.toFixed(4)}, K_a max = ${supportX0.KaMax.toFixed(4)}`,
+    );
     st.push(`   ${supportX0.caseLabel}`);
-    st.push(`   A_s = ${supportX0.AsReq} mm²/m (mín: ${supportX0.AsMin}, temp: ${supportX0.AsTemp})`);
+    st.push(
+      `   A_s = ${supportX0.AsReq} mm²/m (mín: ${supportX0.AsMin}, temp: ${supportX0.AsTemp})`,
+    );
     st.push(`   s_máx = ${supportX0.sMax} mm`);
   }
   if (MnegDer !== 0) {
     supportXL = designSupportMoment(MnegDer, d, h, fc, fy, bw, dBarX, MnegDer);
+    supportXL.coef = coef;
+    supportXL.d = d;
     st.push("");
-    st.push(`Apoyo Derecho (${edges[1] === "continuo" ? "continuo" : "articulado"}):`);
+    st.push(
+      `Apoyo Derecho (${edges[1] === "continuo" ? "continuo" : "articulado"}):`,
+    );
     st.push(`   M_u = ${MnegDer.toFixed(2)} kN·m/m`);
-    st.push(`   K_a = ${supportXL.Ka.toFixed(4)}, K_a min = ${supportXL.KaMin.toFixed(4)}, K_a max = ${supportXL.KaMax.toFixed(4)}`);
+    st.push(
+      `   K_a = ${supportXL.Ka.toFixed(4)}, K_a min = ${supportXL.KaMin.toFixed(4)}, K_a max = ${supportXL.KaMax.toFixed(4)}`,
+    );
     st.push(`   ${supportXL.caseLabel}`);
-    st.push(`   A_s = ${supportXL.AsReq} mm²/m (mín: ${supportXL.AsMin}, temp: ${supportXL.AsTemp})`);
+    st.push(
+      `   A_s = ${supportXL.AsReq} mm²/m (mín: ${supportXL.AsMin}, temp: ${supportXL.AsTemp})`,
+    );
     st.push(`   s_máx = ${supportXL.sMax} mm`);
   }
   if (MnegArr !== 0) {
     supportY0 = designSupportMoment(MnegArr, d, h, fc, fy, bw, dBarY, MnegArr);
+    supportY0.coef = coef;
+    supportY0.d = d;
     st.push("");
-    st.push(`Apoyo Arriba (${edges[2] === "continuo" ? "continuo" : "articulado"}):`);
+    st.push(
+      `Apoyo Arriba (${edges[2] === "continuo" ? "continuo" : "articulado"}):`,
+    );
     st.push(`   M_u = ${MnegArr.toFixed(2)} kN·m/m`);
-    st.push(`   K_a = ${supportY0.Ka.toFixed(4)}, K_a min = ${supportY0.KaMin.toFixed(4)}, K_a max = ${supportY0.KaMax.toFixed(4)}`);
+    st.push(
+      `   K_a = ${supportY0.Ka.toFixed(4)}, K_a min = ${supportY0.KaMin.toFixed(4)}, K_a max = ${supportY0.KaMax.toFixed(4)}`,
+    );
     st.push(`   ${supportY0.caseLabel}`);
-    st.push(`   A_s = ${supportY0.AsReq} mm²/m (mín: ${supportY0.AsMin}, temp: ${supportY0.AsTemp})`);
+    st.push(
+      `   A_s = ${supportY0.AsReq} mm²/m (mín: ${supportY0.AsMin}, temp: ${supportY0.AsTemp})`,
+    );
     st.push(`   s_máx = ${supportY0.sMax} mm`);
   }
   if (MnegAba !== 0) {
     supportYL = designSupportMoment(MnegAba, d, h, fc, fy, bw, dBarY, MnegAba);
+    supportYL.coef = coef;
+    supportYL.d = d;
     st.push("");
-    st.push(`Apoyo Abajo (${edges[3] === "continuo" ? "continuo" : "articulado"}):`);
+    st.push(
+      `Apoyo Abajo (${edges[3] === "continuo" ? "continuo" : "articulado"}):`,
+    );
     st.push(`   M_u = ${MnegAba.toFixed(2)} kN·m/m`);
-    st.push(`   K_a = ${supportYL.Ka.toFixed(4)}, K_a min = ${supportYL.KaMin.toFixed(4)}, K_a max = ${supportYL.KaMax.toFixed(4)}`);
+    st.push(
+      `   K_a = ${supportYL.Ka.toFixed(4)}, K_a min = ${supportYL.KaMin.toFixed(4)}, K_a max = ${supportYL.KaMax.toFixed(4)}`,
+    );
     st.push(`   ${supportYL.caseLabel}`);
-    st.push(`   A_s = ${supportYL.AsReq} mm²/m (mín: ${supportYL.AsMin}, temp: ${supportYL.AsTemp})`);
+    st.push(
+      `   A_s = ${supportYL.AsReq} mm²/m (mín: ${supportYL.AsMin}, temp: ${supportYL.AsTemp})`,
+    );
     st.push(`   s_máx = ${supportYL.sMax} mm`);
   }
 
-  return { d, h, qu, x: dirX, y: dirY, distX, distY, Rx, Ry, RxIzq, RxDer, RyArr, RyAba, MnegIzq, MnegDer, MnegArr, MnegAba, supportX0, supportXL, supportY0, supportYL, steps: st };
+  // Unfactored D/L reactions per edge: back out the LRFD factor by dividing by qu.
+  // For unidirectional: R_edge = coef · qu · lShort ⇒ RD_edge = coef · D_total · lShort.
+  // For crossed: same algebra applies because every per-edge expression is
+  // linear in qu (either coef · qu · lShort or coef · qu · lShort² / edgeLength),
+  // so dividing by qu cancels the majoration and yields the correct un-factored
+  // reaction. Apply L analogously.
+  const factor = qu > 0 ? 1 / qu : 0;
+  const RD_izq = RxIzq * factor * DTotal;
+  const RD_der = RxDer * factor * DTotal;
+  const RD_arr = RyArr * factor * DTotal;
+  const RD_aba = RyAba * factor * DTotal;
+  const RL_izq = RxIzq * factor * L;
+  const RL_der = RxDer * factor * L;
+  const RL_arr = RyArr * factor * L;
+  const RL_aba = RyAba * factor * L;
+
+  return {
+    d,
+    h,
+    qu,
+    x: dirX,
+    y: dirY,
+    distX,
+    distY,
+    Rx,
+    Ry,
+    RxIzq,
+    RxDer,
+    RyArr,
+    RyAba,
+    MnegIzq,
+    MnegDer,
+    MnegArr,
+    MnegAba,
+    RD_izq,
+    RL_izq,
+    RD_der,
+    RL_der,
+    RD_arr,
+    RL_arr,
+    RD_aba,
+    RL_aba,
+    supportX0,
+    supportXL,
+    supportY0,
+    supportYL,
+    steps: st,
+  };
 }
 
 // ---- Slab Compatibilization ----
 
-export function detectSharedEdge(inputA: SlabInput, inputB: SlabInput): {
+export function detectSharedEdge(
+  inputA: SlabInput,
+  inputB: SlabInput,
+): {
   direction: "X" | "Y";
   ambiguous: boolean;
   edgesA: EdgeIndex[];
@@ -2697,7 +2799,8 @@ export function detectSharedEdge(inputA: SlabInput, inputB: SlabInput): {
     ambiguous: true,
     edgesA: pairs.map((p) => p.edgeA),
     edgesB: pairs.map((p) => p.edgeB),
-    message: "Múltiples bordes continuos detectados — seleccionar borde manualmente",
+    message:
+      "Múltiples bordes continuos detectados — seleccionar borde manualmente",
   };
 }
 
@@ -2736,7 +2839,16 @@ export function compatibilizeSlabs(
 
   if (ratio >= 0.6) {
     const Mcompat = (MnegA + MnegB) / 2;
-    const supportDesign = designSupportMoment(Math.abs(Mcompat), d, h, fc, fy, bw, dB, Mcompat);
+    const supportDesign = designSupportMoment(
+      Math.abs(Mcompat),
+      d,
+      h,
+      fc,
+      fy,
+      bw,
+      dB,
+      Mcompat,
+    );
     return {
       compatOK: true,
       ratio,
@@ -2750,11 +2862,16 @@ export function compatibilizeSlabs(
 
   // Not compatible — recalculate the slab with HIGHER Mneg (overestimated fixity)
   const recalcIsA = MnegA >= MnegB;
-  const recalcInput = { ...recalcIsA ? slabA.input : slabB.input };
+  const recalcInput = { ...(recalcIsA ? slabA.input : slabB.input) };
   const recalcEdge = recalcIsA ? edgeA : edgeB;
 
   // Change the shared edge from "continuo" to "simple"
-  const newEdges = [...recalcInput.edges] as [EdgeCondition, EdgeCondition, EdgeCondition, EdgeCondition];
+  const newEdges = [...recalcInput.edges] as [
+    EdgeCondition,
+    EdgeCondition,
+    EdgeCondition,
+    EdgeCondition,
+  ];
   if (newEdges[recalcEdge] === "continuo") {
     newEdges[recalcEdge] = "simple";
   }
@@ -2765,7 +2882,16 @@ export function compatibilizeSlabs(
 
   // Design reinforcement for the surviving (lower) Mneg
   const survivingMneg = recalcIsA ? MnegB : MnegA;
-  const supportDesign = designSupportMoment(Math.abs(survivingMneg), d, h, fc, fy, bw, dB, survivingMneg);
+  const supportDesign = designSupportMoment(
+    Math.abs(survivingMneg),
+    d,
+    h,
+    fc,
+    fy,
+    bw,
+    dB,
+    survivingMneg,
+  );
 
   return {
     compatOK: false,

@@ -3,7 +3,13 @@ import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import { SlabPlan } from "@mascalculador/shared";
 import { designSlab, type DirectionResult } from "../lib/slab-calc";
-import { saveSlab, updateSlab, saveSlabInput, updateSlabInput } from "../lib/storage";
+import { hasSlabDL } from "../lib/slab-to-beam";
+import {
+  saveSlab,
+  updateSlab,
+  saveSlabInput,
+  updateSlabInput,
+} from "../lib/storage";
 import type { SlabInput } from "../lib/slab-calc";
 import type { SlabState } from "./SlabForm";
 
@@ -22,7 +28,13 @@ const BAR_AREA: Record<number, number> = {
   20: 314,
 };
 
-function SupportSection({ label, dir }: { label: string; dir: DirectionResult }) {
+function SupportSection({
+  label,
+  dir,
+}: {
+  label: string;
+  dir: DirectionResult;
+}) {
   const asReqCm = (dir.AsReq / 100).toFixed(2);
   const asMinCm = (dir.AsMin / 100).toFixed(2);
   return (
@@ -44,16 +56,35 @@ function SupportSection({ label, dir }: { label: string; dir: DirectionResult })
           Ver cuentas
         </summary>
         <div className="mt-2 p-2 bg-surface-alt rounded text-xs text-text-muted font-mono space-y-0.5">
-          <p>M<sub>n</sub> = M<sub>u</sub> / φ = {(dir.Mu / 0.9).toFixed(2)} kN·m/m</p>
-          <p>m<sub>n</sub> = {dir.mn.toFixed(4)}</p>
-          <p>K<sub>a</sub> = {dir.Ka.toFixed(4)}</p>
-          <p>K<sub>a,min</sub> = {dir.KaMin.toFixed(4)}</p>
-          <p>K<sub>a,max</sub> = {dir.KaMax.toFixed(4)}</p>
+          <p>
+            M<sub>n</sub> = M<sub>u</sub> / φ = {(dir.Mu / 0.9).toFixed(2)}{" "}
+            kN·m/m
+          </p>
+          <p>
+            m<sub>n</sub> = {dir.mn.toFixed(4)}
+          </p>
+          <p>
+            K<sub>a</sub> = {dir.Ka.toFixed(4)}
+          </p>
+          <p>
+            K<sub>a,min</sub> = {dir.KaMin.toFixed(4)}
+          </p>
+          <p>
+            K<sub>a,max</sub> = {dir.KaMax.toFixed(4)}
+          </p>
           <p className="text-primary font-semibold">{dir.caseLabel}</p>
-          <p>A<sub>s,req</sub> = {dir.AsReq} mm²/m = {asReqCm} cm²/m</p>
-          <p>A<sub>s,mín</sub> = {dir.AsMin} mm²/m = {asMinCm} cm²/m</p>
-          <p>A<sub>s,temp</sub> = {dir.AsTemp} mm²/m</p>
-          <p>s<sub>máx</sub> = {dir.sMax} mm</p>
+          <p>
+            A<sub>s,req</sub> = {dir.AsReq} mm²/m = {asReqCm} cm²/m
+          </p>
+          <p>
+            A<sub>s,mín</sub> = {dir.AsMin} mm²/m = {asMinCm} cm²/m
+          </p>
+          <p>
+            A<sub>s,temp</sub> = {dir.AsTemp} mm²/m
+          </p>
+          <p>
+            s<sub>máx</sub> = {dir.sMax} mm
+          </p>
         </div>
       </details>
     </div>
@@ -136,11 +167,35 @@ function DirSection({
       {dist.AsReq > 0 && (
         <div className="border-t border-border mt-2 pt-2">
           <span className="text-xs text-text-muted">
-            Repartición: <strong>{(dist.AsReq / 100).toFixed(2)} cm²/m</strong> (s ≤ {dist.sMax}{" "}
-            mm)
+            Repartición: <strong>{(dist.AsReq / 100).toFixed(2)} cm²/m</strong>{" "}
+            (s ≤ {dist.sMax} mm)
           </span>
         </div>
       )}
+      <details className="border-t border-border mt-2 pt-2">
+        <summary className="cursor-pointer text-xs text-text-muted hover:text-text">
+          Ver cuentas
+        </summary>
+        <div className="mt-2 p-2 bg-surface-alt rounded text-xs text-text-muted font-mono space-y-0.5">
+          <p>Mu = {dir.Mu.toFixed(2)} kN·m/m</p>
+          <p>
+            coef = {dir.coef ?? "—"} (1.4 si CM dominante, 1.2 si CM+CV mixto)
+          </p>
+          <p>d = {dir.d ?? "—"} mm</p>
+          <p>Ka = {dir.Ka.toFixed(4)}</p>
+          <p>caseLabel = {dir.caseLabel}</p>
+          <p>As_req = {dir.AsReq} mm²/m</p>
+          <p>As_min = {dir.AsMin} mm²/m</p>
+          <p>As_temp = {dir.AsTemp} mm²/m (si aplica)</p>
+          <p>s_max = {dir.sMax} mm</p>
+          {dist.AsReq > 0 && (
+            <p>
+              As_dist ≥ 0.20·As_principal → {dist.AsReq} mm²/m (s ≤ {dist.sMax}{" "}
+              mm)
+            </p>
+          )}
+        </div>
+      </details>
     </div>
   );
 }
@@ -171,6 +226,7 @@ export default function SlabResults() {
     h,
     dBarX,
     dBarY,
+    includeSelfWeight,
     loadedSaveId,
     loadedSaveName,
   } = s;
@@ -186,6 +242,7 @@ export default function SlabResults() {
     h,
     dBarX,
     dBarY,
+    includeSelfWeight,
   });
 
   // Adopted reinforcement state (persisted when saving)
@@ -194,12 +251,16 @@ export default function SlabResults() {
   const [sepX, setSepX] = useState(15);
   const [diamY, setDiamY] = useState(10);
   const [sepY, setSepY] = useState(15);
-  const adoptedAsX = sepX > 0 ? Math.round((BAR_AREA[diamX] || 0) * 100 / sepX) : 0;
-  const adoptedAsY = sepY > 0 ? Math.round((BAR_AREA[diamY] || 0) * 100 / sepY) : 0;
+  const adoptedAsX =
+    sepX > 0 ? Math.round(((BAR_AREA[diamX] || 0) * 100) / sepX) : 0;
+  const adoptedAsY =
+    sepY > 0 ? Math.round(((BAR_AREA[diamY] || 0) * 100) / sepY) : 0;
 
   // Track save state (starts from router state, updates on save)
   const [savedId, setSavedId] = useState<string | null>(loadedSaveId ?? null);
-  const [savedName, setSavedName] = useState<string | null>(loadedSaveName ?? null);
+  const [savedName, setSavedName] = useState<string | null>(
+    loadedSaveName ?? null,
+  );
 
   return (
     <MainLayout>
@@ -226,7 +287,20 @@ export default function SlabResults() {
           <button
             type="button"
             onClick={() => {
-              const slabInput: SlabInput = { lx, ly, edges: [edgeX0, edgeXL, edgeY0, edgeYL], D, L, fc, fy, cover, h, dBarX, dBarY };
+              const slabInput: SlabInput = {
+                lx,
+                ly,
+                edges: [edgeX0, edgeXL, edgeY0, edgeYL],
+                D,
+                L,
+                fc,
+                fy,
+                cover,
+                h,
+                dBarX,
+                dBarY,
+                includeSelfWeight,
+              };
               if (savedId) {
                 updateSlabInput(savedId, slabInput);
                 return;
@@ -248,17 +322,38 @@ export default function SlabResults() {
           <button
             type="button"
             onClick={() => {
-              const slabInput: SlabInput = { lx, ly, edges: [edgeX0, edgeXL, edgeY0, edgeYL], D, L, fc, fy, cover, h, dBarX, dBarY };
+              const slabInput: SlabInput = {
+                lx,
+                ly,
+                edges: [edgeX0, edgeXL, edgeY0, edgeYL],
+                D,
+                L,
+                fc,
+                fy,
+                cover,
+                h,
+                dBarX,
+                dBarY,
+                includeSelfWeight,
+              };
 
               if (savedId) {
-                updateSlab(savedId, slabInput, { ...result, adoptedAsX, adoptedAsY });
+                updateSlab(savedId, slabInput, {
+                  ...result,
+                  adoptedAsX,
+                  adoptedAsY,
+                });
                 return;
               }
 
               const name = prompt("Nombre para guardar los resultados:");
               if (!name) return;
               try {
-                const saved = saveSlab(name, slabInput, { ...result, adoptedAsX, adoptedAsY });
+                const saved = saveSlab(name, slabInput, {
+                  ...result,
+                  adoptedAsX,
+                  adoptedAsY,
+                });
                 setSavedId(saved.id);
                 setSavedName(name);
               } catch (err: unknown) {
@@ -278,9 +373,14 @@ export default function SlabResults() {
         </div>
       </header>
 
-      <SlabPlan lx={lx} ly={ly} edges={[edgeX0, edgeXL, edgeY0, edgeYL]} slabType={
-        (() => {
-          const supEdges = [edgeX0, edgeXL, edgeY0, edgeYL].filter(e => e !== "free").length;
+      <SlabPlan
+        lx={lx}
+        ly={ly}
+        edges={[edgeX0, edgeXL, edgeY0, edgeYL]}
+        slabType={(() => {
+          const supEdges = [edgeX0, edgeXL, edgeY0, edgeYL].filter(
+            (e) => e !== "free",
+          ).length;
           const ratio = Math.min(lx, ly) / Math.max(lx, ly);
           // Cantilever: find which edge is the single support
           if (supEdges === 1) {
@@ -291,14 +391,14 @@ export default function SlabResults() {
           }
           if (supEdges === 4 && ratio > 0.5) return "crossed";
           // One-way: armor direction = direction with 2+ supported edges
-          const xSup = [edgeX0, edgeXL].filter(e => e !== "free").length;
-          const ySup = [edgeY0, edgeYL].filter(e => e !== "free").length;
+          const xSup = [edgeX0, edgeXL].filter((e) => e !== "free").length;
+          const ySup = [edgeY0, edgeYL].filter((e) => e !== "free").length;
           if (xSup >= 2) return "oneway-x";
           if (ySup >= 2) return "oneway-y";
           // Fallback: use the direction with more supports
           return xSup >= ySup ? "oneway-x" : "oneway-y";
-        })()
-      } />
+        })()}
+      />
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <div className="bg-surface rounded-xl border border-border p-3">
@@ -308,6 +408,17 @@ export default function SlabResults() {
           <p className="text-sm font-bold">
             {result.RxIzq !== undefined ? result.RxIzq.toFixed(2) : "—"} kN/m
           </p>
+          {hasSlabDL(result) && (
+            <details className="mt-2">
+              <summary className="text-xs text-text-muted cursor-pointer">
+                Ver D/L
+              </summary>
+              <div className="text-xs mt-1">
+                D: {result.RD_izq!.toFixed(2)} kN/m
+              </div>
+              <div className="text-xs">L: {result.RL_izq!.toFixed(2)} kN/m</div>
+            </details>
+          )}
         </div>
         <div className="bg-surface rounded-xl border border-border p-3">
           <span className="text-xs text-text-muted">
@@ -316,6 +427,17 @@ export default function SlabResults() {
           <p className="text-sm font-bold">
             {result.RxDer !== undefined ? result.RxDer.toFixed(2) : "—"} kN/m
           </p>
+          {hasSlabDL(result) && (
+            <details className="mt-2">
+              <summary className="text-xs text-text-muted cursor-pointer">
+                Ver D/L
+              </summary>
+              <div className="text-xs mt-1">
+                D: {result.RD_der!.toFixed(2)} kN/m
+              </div>
+              <div className="text-xs">L: {result.RL_der!.toFixed(2)} kN/m</div>
+            </details>
+          )}
         </div>
         <div className="bg-surface rounded-xl border border-border p-3">
           <span className="text-xs text-text-muted">
@@ -324,6 +446,17 @@ export default function SlabResults() {
           <p className="text-sm font-bold">
             {result.RyArr !== undefined ? result.RyArr.toFixed(2) : "—"} kN/m
           </p>
+          {hasSlabDL(result) && (
+            <details className="mt-2">
+              <summary className="text-xs text-text-muted cursor-pointer">
+                Ver D/L
+              </summary>
+              <div className="text-xs mt-1">
+                D: {result.RD_arr!.toFixed(2)} kN/m
+              </div>
+              <div className="text-xs">L: {result.RL_arr!.toFixed(2)} kN/m</div>
+            </details>
+          )}
         </div>
         <div className="bg-surface rounded-xl border border-border p-3">
           <span className="text-xs text-text-muted">
@@ -332,20 +465,58 @@ export default function SlabResults() {
           <p className="text-sm font-bold">
             {result.RyAba !== undefined ? result.RyAba.toFixed(2) : "—"} kN/m
           </p>
+          {hasSlabDL(result) && (
+            <details className="mt-2">
+              <summary className="text-xs text-text-muted cursor-pointer">
+                Ver D/L
+              </summary>
+              <div className="text-xs mt-1">
+                D: {result.RD_aba!.toFixed(2)} kN/m
+              </div>
+              <div className="text-xs">L: {result.RL_aba!.toFixed(2)} kN/m</div>
+            </details>
+          )}
         </div>
       </div>
 
-      {(edgeX0 === "continuo" || edgeXL === "continuo" || edgeY0 === "continuo" || edgeYL === "continuo") && (
+      {(edgeX0 === "continuo" ||
+        edgeXL === "continuo" ||
+        edgeY0 === "continuo" ||
+        edgeYL === "continuo") && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {result.supportX0 && <SupportSection label="Izquierdo" dir={result.supportX0} />}
-          {result.supportXL && <SupportSection label="Derecho" dir={result.supportXL} />}
-          {result.supportY0 && <SupportSection label="Arriba" dir={result.supportY0} />}
-          {result.supportYL && <SupportSection label="Abajo" dir={result.supportYL} />}
+          {result.supportX0 && (
+            <SupportSection label="Izquierdo" dir={result.supportX0} />
+          )}
+          {result.supportXL && (
+            <SupportSection label="Derecho" dir={result.supportXL} />
+          )}
+          {result.supportY0 && (
+            <SupportSection label="Arriba" dir={result.supportY0} />
+          )}
+          {result.supportYL && (
+            <SupportSection label="Abajo" dir={result.supportYL} />
+          )}
         </div>
       )}
 
-      <DirSection label="Dirección X" dir={result.x} dist={result.distX} diam={diamX} setDiam={setDiamX} sep={sepX} setSep={setSepX} />
-      <DirSection label="Dirección Y" dir={result.y} dist={result.distY} diam={diamY} setDiam={setDiamY} sep={sepY} setSep={setSepY} />
+      <DirSection
+        label="Dirección X"
+        dir={result.x}
+        dist={result.distX}
+        diam={diamX}
+        setDiam={setDiamX}
+        sep={sepX}
+        setSep={setSepX}
+      />
+      <DirSection
+        label="Dirección Y"
+        dir={result.y}
+        dist={result.distY}
+        diam={diamY}
+        setDiam={setDiamY}
+        sep={sepY}
+        setSep={setSepY}
+      />
 
       <details className="bg-surface rounded-xl border border-border p-5">
         <summary className="cursor-pointer text-sm font-semibold text-text-muted uppercase tracking-wider">
