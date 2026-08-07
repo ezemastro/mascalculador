@@ -2137,6 +2137,22 @@ export function designSlab(input: SlabInput): SlabResult {
   const st: string[] = [];
   const bw = 1000; // per meter width
 
+  // Helper: push the explicit M_n → m_n → K_a derivation for a DirectionResult
+  // so the user can audit the CIRSOC 201-05 path from M_u to K_a inside the
+  // "Ver cuentas completas" details. Reads `fc`, `bw`, `d`, `st` from the closure.
+  function pushKaSteps(r: DirectionResult): void {
+    const dEff = r.d ?? d;
+    st.push(
+      `   M_n = M_u / φ = ${r.Mu.toFixed(3)} / 0.9 = ${r.Mn.toFixed(3)} kN·m/m`,
+    );
+    st.push(
+      `   m_n = M_n·10⁶ / (0.85·f'_c·b·d²) = ${r.Mn.toFixed(3)}·10⁶ / (0.85·${fc}·${bw}·${dEff}²) = ${r.mn.toFixed(6)}`,
+    );
+    st.push(
+      `   K_a = 1 - √(1 - 2·m_n) = 1 - √(1 - 2·${r.mn.toFixed(6)}) = ${r.Ka.toFixed(4)}`,
+    );
+  }
+
   st.push(`Losa: lx = ${lx} m, ly = ${ly} m`);
   st.push(`Relación ly/lx = ${(ly / lx).toFixed(2)}`);
 
@@ -2569,6 +2585,7 @@ export function designSlab(input: SlabInput): SlabResult {
   if (isCrossed && d_x < d) {
     st.push(`   d_eff = ${d_x} mm (d - 10 mm, lado con M_x < M_y)`);
   }
+  pushKaSteps(dirX);
   st.push(
     `   K_a = ${dirX.Ka.toFixed(4)}, K_a min = ${dirX.KaMin.toFixed(4)}, K_a max = ${dirX.KaMax.toFixed(4)}`,
   );
@@ -2582,6 +2599,7 @@ export function designSlab(input: SlabInput): SlabResult {
   if (isCrossed && d_y < d) {
     st.push(`   d_eff = ${d_y} mm (d - 10 mm, lado con M_y < M_x)`);
   }
+  pushKaSteps(dirY);
   st.push(
     `   K_a = ${dirY.Ka.toFixed(4)}, K_a min = ${dirY.KaMin.toFixed(4)}, K_a max = ${dirY.KaMax.toFixed(4)}`,
   );
@@ -2631,6 +2649,7 @@ export function designSlab(input: SlabInput): SlabResult {
       `Apoyo Izquierdo (${edges[0] === "continuo" ? "continuo" : "articulado"}):`,
     );
     st.push(`   M_u = ${MnegIzq.toFixed(2)} kN·m/m`);
+    pushKaSteps(supportX0);
     st.push(
       `   K_a = ${supportX0.Ka.toFixed(4)}, K_a min = ${supportX0.KaMin.toFixed(4)}, K_a max = ${supportX0.KaMax.toFixed(4)}`,
     );
@@ -2649,6 +2668,7 @@ export function designSlab(input: SlabInput): SlabResult {
       `Apoyo Derecho (${edges[1] === "continuo" ? "continuo" : "articulado"}):`,
     );
     st.push(`   M_u = ${MnegDer.toFixed(2)} kN·m/m`);
+    pushKaSteps(supportXL);
     st.push(
       `   K_a = ${supportXL.Ka.toFixed(4)}, K_a min = ${supportXL.KaMin.toFixed(4)}, K_a max = ${supportXL.KaMax.toFixed(4)}`,
     );
@@ -2667,6 +2687,7 @@ export function designSlab(input: SlabInput): SlabResult {
       `Apoyo Arriba (${edges[2] === "continuo" ? "continuo" : "articulado"}):`,
     );
     st.push(`   M_u = ${MnegArr.toFixed(2)} kN·m/m`);
+    pushKaSteps(supportY0);
     st.push(
       `   K_a = ${supportY0.Ka.toFixed(4)}, K_a min = ${supportY0.KaMin.toFixed(4)}, K_a max = ${supportY0.KaMax.toFixed(4)}`,
     );
@@ -2685,6 +2706,7 @@ export function designSlab(input: SlabInput): SlabResult {
       `Apoyo Abajo (${edges[3] === "continuo" ? "continuo" : "articulado"}):`,
     );
     st.push(`   M_u = ${MnegAba.toFixed(2)} kN·m/m`);
+    pushKaSteps(supportYL);
     st.push(
       `   K_a = ${supportYL.Ka.toFixed(4)}, K_a min = ${supportYL.KaMin.toFixed(4)}, K_a max = ${supportYL.KaMax.toFixed(4)}`,
     );
