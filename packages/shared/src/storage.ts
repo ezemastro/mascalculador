@@ -379,7 +379,17 @@ export interface SlabLastFormState {
   fc: number;
   fy: number;
   cover: number;
-  h: number;
+  /**
+   * @deprecated Use `hAdop` (cm) instead. Kept only so legacy localStorage
+   * entries written by previous versions can still be read. New auto-saves
+   * MUST NOT write this field.
+   */
+  h?: number;
+  /**
+   * Adopted slab height in cm. `0` (or undefined) means "fall back to the
+   * live-predimensioned h computed from the edges and spans".
+   */
+  hAdop?: number;
   dBarX: number;
   dBarY: number;
   includeSelfWeight?: boolean;
@@ -400,7 +410,13 @@ export function loadLastSlabFormState(): SlabLastFormState | null {
   try {
     const raw = localStorage.getItem(key("concrete", LAST_SLAB_FORM_KEY));
     if (!raw) return null;
-    return JSON.parse(raw) as SlabLastFormState;
+    const parsed = JSON.parse(raw) as SlabLastFormState;
+    // Migration: legacy `h` was stored in mm; the new field `hAdop` is in cm.
+    // Only migrate when the new field is missing so we never clobber a newer save.
+    if (parsed.hAdop === undefined && typeof parsed.h === "number") {
+      parsed.hAdop = parsed.h / 10;
+    }
+    return parsed;
   } catch {
     return null;
   }

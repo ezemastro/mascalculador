@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import { SavedBeams } from "@mascalculador/shared";
-import type { EdgeCondition, SlabInput } from "../lib/slab-calc";
+import { predimCoef, type EdgeCondition, type SlabInput } from "../lib/slab-calc";
 import {
   saveLastSlabFormState,
   loadLastSlabFormState,
@@ -23,7 +23,18 @@ export interface SlabState {
   fc: number;
   fy: number;
   cover: number;
+  /**
+   * Effective h the engine actually used, in mm. When the form re-renders
+   * after a submit this is what the results page last computed (which is
+   * `(hAdop > 0 ? hAdop : hPredim) * 10`).
+   */
   h: number;
+  /**
+   * Adopted height in cm as set by the user in the form. `0` (or absent)
+   * means "fall back to the live-predimensioned h". Optional because
+   * navigation state written before this split only carried `h` (mm).
+   */
+  hAdop?: number;
   dBarX: number;
   dBarY: number;
   includeSelfWeight: boolean;
@@ -45,6 +56,14 @@ export default function SlabForm() {
 
   // Init hierarchy: state > lastForm > defaults
   const lastForm = !state ? loadLastSlabFormState() : null;
+
+  // hAdop is stored in cm. Prefer the new navigation field; fall back to
+  // legacy `state.h` (mm) divided by 10, then to lastForm, then to 0.
+  const initialHAdop =
+    state?.hAdop ??
+    (state && typeof state.h === "number" ? state.h / 10 : undefined) ??
+    lastForm?.hAdop ??
+    0;
 
   const [lx, setLx] = useState(state?.lx ?? lastForm?.lx ?? 4);
   const [ly, setLy] = useState(state?.ly ?? lastForm?.ly ?? 5);
@@ -73,12 +92,37 @@ export default function SlabForm() {
   const [fc, setFc] = useState(state?.fc ?? lastForm?.fc ?? 25);
   const [fy, setFy] = useState(state?.fy ?? lastForm?.fy ?? 420);
   const [cover, setCover] = useState(state?.cover ?? lastForm?.cover ?? 20);
-  const [h, setH] = useState(state?.h ?? lastForm?.h ?? 0);
+  const [hAdop, setHAdop] = useState<number>(initialHAdop);
   const [dBarX, setDBarX] = useState(state?.dBarX ?? lastForm?.dBarX ?? 10);
   const [dBarY, setDBarY] = useState(state?.dBarY ?? lastForm?.dBarY ?? 10);
   const [includeSelfWeight, setIncludeSelfWeight] = useState<boolean>(
     state?.includeSelfWeight ?? lastForm?.includeSelfWeight ?? true,
   );
+
+  // Live-predimensioned h in cm, recomputed whenever any of the geometric
+  // inputs or the cover change. Mirrors the engine's designSlab Step 1+2
+  // algorithm but rounds to 0.5 cm (the engine rounds to 1 cm; the display
+  // here is informational, and the value we pass to the engine is taken from
+  // this hPredim when hAdop is 0).
+  const hPredim = useMemo(() => {
+    const edges = [edgeX0, edgeXL, edgeY0, edgeYL] as const;
+    const minLuz = Math.min(lx, ly);
+    const maxLuz = Math.max(lx, ly);
+    const ratioOk = maxLuz > 0 ? minLuz / maxLuz > 0.5 : false;
+    const supportedEdges = edges.filter((e) => e !== "free").length;
+    const isCrossed = ratioOk && supportedEdges === 4;
+    const fixedEdges = edges.filter((e) => e === "continuo").length;
+    const coef = predimCoef(fixedEdges, isCrossed);
+    const lightOrL = isCrossed ? minLuz : lx;
+    const dMin = (lightOrL * 1000) / coef; // mm
+    const hMinReg = 90; // mm
+    const hPredimMm = Math.max(dMin + cover, hMinReg);
+    return Math.ceil(hPredimMm / 10 / 0.5) * 0.5; // cm, rounded up to 0.5
+  }, [lx, ly, edgeX0, edgeXL, edgeY0, edgeYL, cover]);
+
+  // Engine-effective h in mm. User's adopted value wins; otherwise the live
+  // predimensioned value. This is what the engine sees as `hInput`.
+  const hEfectivoMm = (hAdop > 0 ? hAdop : hPredim) * 10;
 
   const [loadedSaveId, setLoadedSaveId] = useState<string | null>(null);
   const [loadedSaveName, setLoadedSaveName] = useState<string | null>(null);
@@ -102,7 +146,7 @@ export default function SlabForm() {
       fc,
       fy,
       cover,
-      h,
+      hAdop,
       dBarX,
       dBarY,
       includeSelfWeight,
@@ -119,7 +163,7 @@ export default function SlabForm() {
     fc,
     fy,
     cover,
-    h,
+    hAdop,
     dBarX,
     dBarY,
     includeSelfWeight,
@@ -140,7 +184,8 @@ export default function SlabForm() {
         fc,
         fy,
         cover,
-        h,
+        h: hEfectivoMm,
+        hAdop,
         dBarX,
         dBarY,
         includeSelfWeight,
@@ -151,7 +196,7 @@ export default function SlabForm() {
   }
 
   function handleSaveData() {
-    const slabInput = {
+    const slabInput: SlabInput = {
       lx,
       ly,
       edges: [edgeX0, edgeXL, edgeY0, edgeYL] as [
@@ -165,7 +210,7 @@ export default function SlabForm() {
       fc,
       fy,
       cover,
-      h,
+      h: hEfectivoMm,
       dBarX,
       dBarY,
       includeSelfWeight,
@@ -239,7 +284,7 @@ export default function SlabForm() {
             setFc(25);
             setFy(420);
             setCover(20);
-            setH(0);
+            setHAdop(0);
             setDBarX(10);
             setDBarY(10);
             setIncludeSelfWeight(true);
@@ -275,7 +320,7 @@ export default function SlabForm() {
           if (typeof input.fc === "number") setFc(input.fc);
           if (typeof input.fy === "number") setFy(input.fy);
           if (typeof input.cover === "number") setCover(input.cover);
-          if (typeof input.h === "number") setH(input.h);
+          if (typeof input.h === "number") setHAdop(input.h / 10);
           if (typeof input.dBarX === "number") setDBarX(input.dBarX);
           if (typeof input.dBarY === "number") setDBarY(input.dBarY);
           if (typeof input.includeSelfWeight === "boolean")
@@ -342,12 +387,20 @@ export default function SlabForm() {
                 </select>
               </label>
             ))}
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">
-                h (cm) — 0 = predimensionar
-              </span>
-              <DecimalInput value={h / 10} onChange={(v) => setH(v * 10)} />
-            </label>
+            <div className="col-span-2 sm:col-span-5 mt-2 flex flex-wrap items-center gap-4">
+              <div className="text-sm text-text-muted">
+                h predim (cm):{" "}
+                <span className="font-semibold text-text">
+                  {hPredim.toFixed(1)}
+                </span>
+              </div>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-text-muted">
+                  h adop (cm) — 0 = usar predim
+                </span>
+                <DecimalInput value={hAdop} onChange={setHAdop} />
+              </label>
+            </div>
           </div>
         </section>
 

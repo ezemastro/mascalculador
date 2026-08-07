@@ -1999,7 +1999,7 @@ function interpolateKalmanok3FixedY(r: number) {
 }
 
 // Preliminary d_min: d = l / M where M from table
-function predimCoef(fixedEdges: number, isCrossed: boolean): number {
+export function predimCoef(fixedEdges: number, isCrossed: boolean): number {
   if (isCrossed) {
     if (fixedEdges === 4) return 60;
     if (fixedEdges >= 1) return 55;
