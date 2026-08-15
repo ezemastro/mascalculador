@@ -9,6 +9,8 @@ import {
 } from "react-router";
 import ConcreteForm from "./screens/ConcreteForm.tsx";
 import ConcreteResults from "./screens/ConcreteResults.tsx";
+import VigaContinuaForm from "./screens/VigaContinuaForm.tsx";
+import VigaContinuaResults from "./screens/VigaContinuaResults.tsx";
 import SlabForm from "./screens/SlabForm.tsx";
 import SlabResults from "./screens/SlabResults.tsx";
 import SlabCompat from "./screens/SlabCompat.tsx";
@@ -46,6 +48,12 @@ function NavBar() {
     <div className="fixed top-0 left-0 right-0 z-50 bg-surface border-b border-border px-4 py-2 flex gap-4">
       <Link to="/" className="text-sm text-text-muted hover:text-text">
         Viga H°
+      </Link>
+      <Link
+        to="/viga-continua"
+        className="text-sm text-text-muted hover:text-text"
+      >
+        Viga Continua
       </Link>
       <Link to="/bases" className="text-sm text-text-muted hover:text-text">
         Bases
@@ -85,6 +93,8 @@ const router = createBrowserRouter([
       { path: "/results", Component: ConcreteResults },
       { path: "/concrete", Component: ConcreteForm },
       { path: "/concrete-results", Component: ConcreteResults },
+      { path: "/viga-continua", Component: VigaContinuaForm },
+      { path: "/viga-continua-results", Component: VigaContinuaResults },
       { path: "/slab", Component: SlabForm },
       { path: "/slab-results", Component: SlabResults },
       { path: "/slab-compat", Component: SlabCompat },
