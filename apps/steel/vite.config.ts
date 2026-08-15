@@ -6,6 +6,7 @@ import path from "node:path";
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  server: { host: true },
   resolve: {
     alias: {
       "@mascalculador/shared": path.resolve(

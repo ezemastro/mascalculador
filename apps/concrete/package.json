@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host --force",
     "build": "tsc -b && vite build",
+    "build:viga-continua": "tsc -b && vite build --config vite.viga-continua.config.ts",
     "lint": "eslint .",
     "preview": "vite preview"
   },
