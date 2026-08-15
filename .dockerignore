@@ -1,9 +1,0 @@
-.git
-node_modules
-**/node_modules
-**/dist
-**/dist-viga-continua
-*.log
-.atl
-openspec
-clean-start.ps1

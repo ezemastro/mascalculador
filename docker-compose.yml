@@ -1,12 +1,8 @@
 services:
   viga-continua:
     build:
-      context: .
+      context: ./viga-continua
       dockerfile: Dockerfile
-      args:
-        APP: concrete
-        BUILD_CMD: build:viga-continua
-        DIST: dist-viga-continua
     restart: unless-stopped
     expose:
       - "80"
@@ -19,12 +15,8 @@ services:
 
   hormigon:
     build:
-      context: .
+      context: ./hormigon
       dockerfile: Dockerfile
-      args:
-        APP: concrete
-        BUILD_CMD: build
-        DIST: dist
     restart: unless-stopped
     expose:
       - "80"
@@ -37,12 +29,8 @@ services:
 
   acero:
     build:
-      context: .
+      context: ./acero
       dockerfile: Dockerfile
-      args:
-        APP: steel
-        BUILD_CMD: build
-        DIST: dist
     restart: unless-stopped
     expose:
       - "80"

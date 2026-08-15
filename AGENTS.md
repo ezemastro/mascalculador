@@ -2,31 +2,38 @@
 
 ## Encender el programa
 
-El proyecto es un monorepo con dos apps Vite separadas:
+El repositorio tiene **3 proyectos independientes** (cada uno autocontenido con su propio `package.json`, `shared/` vendado y Dockerfile):
 
-- **`apps/steel/`** — Estructuras de Acero (Viga Acero, Columnas, Carteles). Puerto `5173`.
-- **`apps/concrete/`** — Estructuras de Hormigon (Bases, Losas, Compat Losas, Viga H, Columna H). Puerto `5174`.
+- **`viga-continua/`** — Analisis de vigas continuas (envolventes Mu/Vu). Puerto `5175`.
+- **`hormigon/`** — Estructuras de Hormigon (Viga H, Viga Continua, Bases, Losas, Columna H). Puerto `5174`.
+- **`acero/`** — Estructuras de Acero (Viga Acero, Columnas, Carteles). Puerto `5173`.
 
-Cuando el usuario pida encender/entrar/arrancar el programa de **acero**, usar:
+Cuando el usuario pida encender/entrar/arrancar el programa de **viga continua**, usar:
 
 ```powershell
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location 'C:\Users\marce\mascalculador\apps\steel'; npm run dev"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location 'C:\Users\marce\mascalculador\viga-continua'; npm run dev"
 ```
 
-Disponible en `http://localhost:5173/`.
+Disponible en `http://localhost:5175/`.
 
 Para el programa de **hormigon**:
 
 ```powershell
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location 'C:\Users\marce\mascalculador\apps\concrete'; npm run dev"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location 'C:\Users\marce\mascalculador\hormigon'; npm run dev"
 ```
 
 Disponible en `http://localhost:5174/`.
 
-Para levantar ambas en simultaneo desde la raiz del monorepo:
+Para el programa de **acero**:
 
 ```powershell
-npm run dev
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location 'C:\Users\marce\mascalculador\acero'; npm run dev"
 ```
 
-(Equivalente a `npm run dev:steel && npm run dev:concrete` en paralelo via `concurrently`.)
+Disponible en `http://localhost:5173/`.
+
+## Deploy
+
+- Cada carpeta tiene su propio `Dockerfile` (build `npm ci` + `npm run build`, servido con nginx).
+- En Coolify: Build Pack = Dockerfile, Base Directory = la carpeta del proyecto (`viga-continua` | `hormigon` | `acero`).
+- `docker-compose.yml` en la raiz levanta los 3 servicios con healthcheck y sin puertos publicados.
