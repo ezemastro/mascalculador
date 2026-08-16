@@ -22,4 +22,16 @@ export interface VigaContinuaState {
   supportTypes: SupportType[];
   /** Cargas D/L (puntuales y distribuidas); al menos una con D + L > 0. */
   loads: AnalysisLoad[];
+  /**
+   * Set together with `loadedSaveName`. Both fields are set by
+   * `<SavedBeams>.onLoad`, the first-save success path, and the
+   * `useEffect`-driven restore from `loadLastVigaContinuaFormState` when
+   * they are present. Absent (or `undefined`) on a cold open.
+   *
+   * Setting one without the other is the BasesForm regression — forbidden
+   * here. See `design.md §11` (Anti-Regression: the `BasesForm` Bug).
+   */
+  loadedSaveId?: string;
+  /** See `loadedSaveId`. */
+  loadedSaveName?: string;
 }
