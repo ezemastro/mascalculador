@@ -2,9 +2,23 @@
 import { StrictMode, Component, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
-import { createBrowserRouter, RouterProvider, Link } from "react-router";
+import {
+  createBrowserRouter,
+  RouterProvider,
+  Link,
+  Outlet,
+} from "react-router";
 import VigaContinuaForm from "./screens/VigaContinuaForm.tsx";
 import VigaContinuaResults from "./screens/VigaContinuaResults.tsx";
+
+// Route + URL contract (since PR1):
+//   /                                  → VigaContinuaForm (default mode)
+//   /viga-continua                     → VigaContinuaForm (default mode)
+//   /viga-continua?mode=viga-continua  → beam form (default — the key may be omitted)
+//   /viga-continua?mode=portico        → pórtico placeholder branch inside the form screen
+//   /viga-continua-results             → VigaContinuaResults; branches on `location.state.mode`
+//                                       ("portico" → pórtico placeholder until PR3/PR4 ship)
+// The screens themselves read `useSearchParams` / `location.state` to switch.
 
 class ErrorBoundary extends Component<
   { children: ReactNode },
@@ -57,10 +71,13 @@ class ErrorBoundary extends Component<
 
 function NavBar() {
   return (
-    <div className="fixed top-0 left-0 right-0 z-50 bg-surface border-b border-border px-4 py-2 flex gap-4">
-      <Link to="/" className="text-sm text-text-muted hover:text-text">
-        Viga Continua
-      </Link>
+    <div className="min-h-screen">
+      <div className="fixed top-0 left-0 right-0 z-50 bg-surface border-b border-border px-4 py-2 flex gap-4">
+        <Link to="/" className="text-sm text-text-muted hover:text-text">
+          Viga Continua
+        </Link>
+      </div>
+      <Outlet />
     </div>
   );
 }
