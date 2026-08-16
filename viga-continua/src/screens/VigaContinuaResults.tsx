@@ -1,10 +1,39 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { Coordinates, Mafs, Plot, Polygon, Text } from "mafs";
 import { MainLayout } from "@mascalculador/shared";
 import { formatForce } from "@mascalculador/shared";
 import { calculateBeamEnvelope } from "../lib/beam-envelope";
-import type { VigaContinuaState } from "../lib/viga-continua";
+import type { BeamEnvelopeResult, EnvelopeLoad } from "../lib/beam-envelope";
+import type { AnalysisLoad, VigaContinuaState } from "../lib/viga-continua";
+import { saveVigaContinuaInput, updateVigaContinuaInput } from "../lib/storage";
+
+type EnvMode = "envolvente" | "servicio";
+type LocationState = VigaContinuaState | { mode: "portico" } | null;
+
+function isPorticoLocationState(s: LocationState): s is { mode: "portico" } {
+  return s !== null && typeof s === "object" && "mode" in s;
+}
+
+/**
+ * POC helper: returns the per-span V_u and M_u+ for a single load family
+ * (`mode === "D"` zeroes out L; `mode === "L"` zeroes out D). The result is a
+ * ULS-style envelope with live-load patterning retained (it is a no-op when
+ * the dropped family is zero), so values are still in the 1.2·D / 1.6·L
+ * factored convention. PR4 task 4.4 replaces this with a true unfactored
+ * cached envelope — keep the `POC` label visible while this helper ships.
+ */
+function factoredLoadEnvelope(
+  spans: number[],
+  supportTypes: VigaContinuaState["supportTypes"],
+  loads: AnalysisLoad[],
+  mode: "D" | "L",
+): BeamEnvelopeResult {
+  const filtered: EnvelopeLoad[] = loads.map((l) =>
+    mode === "D" ? { ...l, L: 0 } : { ...l, D: 0 },
+  );
+  return calculateBeamEnvelope(spans, supportTypes, filtered, 0);
+}
 
 function peak(
   fn: (x: number) => number,
@@ -45,16 +74,145 @@ function supportTriangle(x: number, h: number, w: number): [number, number][] {
 export default function VigaContinuaResults() {
   const location = useLocation();
   const navigate = useNavigate();
-  const s = location.state as VigaContinuaState | null;
+  const raw = location.state as LocationState;
+
+  // Toggle state — local, defaults to "envolvente" per R-beam-env-toggle.
+  const [envMode, setEnvMode] = useState<EnvMode>("envolvente");
+
+  // Save context seeded from location.state. Router state is intentionally
+  // lossy across hard refreshes — spec scenario "Hard refresh resets save state"
+  // accepts that limitation. We only seed when the state object actually
+  // looks like a beam submission (carries `spans`).
+  // [BasesForm-bug-free] BOTH fields are seeded together, never one without
+  // the other. See design.md §11.
+  const [loadedSaveId, setLoadedSaveId] = useState<string | null>(() => {
+    if (!raw || isPorticoLocationState(raw)) return null;
+    const v = (raw as VigaContinuaState).loadedSaveId;
+    return typeof v === "string" ? v : null;
+  });
+  const [loadedSaveName, setLoadedSaveName] = useState<string | null>(() => {
+    if (!raw || isPorticoLocationState(raw)) return null;
+    const v = (raw as VigaContinuaState).loadedSaveName;
+    return typeof v === "string" ? v : null;
+  });
+
+  // Compute envelopes ONLY when the location state carries a beam submission.
+  // Pórtico mode reaches `raw === { mode: "portico" }` and gets `null` here so
+  // the pórtico placeholder branch below renders without touching beam math.
+  const beamState =
+    raw && !isPorticoLocationState(raw) ? (raw as VigaContinuaState) : null;
 
   // Envolvente de esfuerzos últimos (cargas alternadas). Peso propio = 0.
   const envelope = useMemo(
     () =>
-      s ? calculateBeamEnvelope(s.spans, s.supportTypes, s.loads, 0) : null,
-    [s],
+      beamState
+        ? calculateBeamEnvelope(
+            beamState.spans,
+            beamState.supportTypes,
+            beamState.loads,
+            0,
+          )
+        : null,
+    [beamState],
   );
 
-  if (!s || !envelope)
+  // POC: Servicio slices — same ULS-style envelope but with the opposite load
+  // family zeroed out, so the table reads "V_u (D)" / "V_u (L)" side-by-side.
+  // PR4 task 4.4 promotes this to true unfactored cached beam-envelope.
+  const envelopeD = useMemo(
+    () =>
+      beamState
+        ? factoredLoadEnvelope(
+            beamState.spans,
+            beamState.supportTypes,
+            beamState.loads,
+            "D",
+          )
+        : null,
+    [beamState],
+  );
+  const envelopeL = useMemo(
+    () =>
+      beamState
+        ? factoredLoadEnvelope(
+            beamState.spans,
+            beamState.supportTypes,
+            beamState.loads,
+            "L",
+          )
+        : null,
+    [beamState],
+  );
+
+  // [BasesForm-bug-free] handleSave: branches on loadedSaveId; the first-save
+  // path sets BOTH loadedSaveId and loadedSaveName together. The re-save path
+  // calls updateVigaContinuaInput silently. The envelope passed in the payload
+  // is the value already memoized on screen at click time — no re-solve.
+  // Empty prompt is a no-op. Duplicate-name throws surface via alert().
+  function handleSave() {
+    if (!beamState || !envelope) return;
+    const input = {
+      spans: beamState.spans,
+      supportTypes: beamState.supportTypes,
+      loads: beamState.loads,
+    };
+
+    if (loadedSaveId) {
+      const name = prompt("Nombre para guardar corrección:");
+      if (!name) return;
+      try {
+        updateVigaContinuaInput(loadedSaveId, { input, envelope });
+      } catch (err: unknown) {
+        alert(err instanceof Error ? err.message : "Error al guardar");
+      }
+      return;
+    }
+
+    const name = prompt("Nombre para guardar esta viga:");
+    if (!name) return;
+    try {
+      const saved = saveVigaContinuaInput(name, { input, envelope });
+      // [BasesForm-bug-free] both setters called together.
+      setLoadedSaveId(saved.id);
+      setLoadedSaveName(name);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Error al guardar");
+    }
+  }
+
+  // Pórtico placeholder branch (R-routing-portico-routes). The actual
+  // PorticoResults component ships in PR4 (task 4.x). The toggle is mounted
+  // here just so the screen reads as operational in both modes.
+  if (isPorticoLocationState(raw)) {
+    return (
+      <MainLayout>
+        <header className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-text">Pórtico</h1>
+            <p className="text-sm text-text-muted">
+              Análisis estructural 2-D — placeholder
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <EnvToggle envMode={envMode} setEnvMode={setEnvMode} />
+            <button
+              onClick={() => navigate("/viga-continua")}
+              className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-3 py-1.5 rounded-lg"
+            >
+              ← Volver
+            </button>
+          </div>
+        </header>
+        <section className="bg-surface rounded-xl border border-border p-12 text-center text-text-muted">
+          Modo Pórtico: completar en PR3/PR4.
+        </section>
+      </MainLayout>
+    );
+  }
+
+  const s = beamState;
+
+  if (!s || !envelope || !envelopeD || !envelopeL)
     return (
       <MainLayout>
         <div className="flex flex-col items-center gap-4 py-12">
@@ -150,14 +308,25 @@ export default function VigaContinuaResults() {
           <h1 className="text-xl font-semibold text-text">Viga Continua</h1>
           <p className="text-sm text-text-muted">
             L={L.toFixed(2)} m &middot; {nSpans} tramo{nSpans > 1 ? "s" : ""}
+            {loadedSaveName && ` · Editando: ${loadedSaveName}`}
           </p>
         </div>
-        <button
-          onClick={() => navigate("/viga-continua")}
-          className="text-sm bg-surface-alt border-border hover:bg-surface text-text-muted"
-        >
-          ← Volver
-        </button>
+        <div className="flex items-center gap-3">
+          <EnvToggle envMode={envMode} setEnvMode={setEnvMode} />
+          <button
+            onClick={() => navigate("/viga-continua")}
+            className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-3 py-1.5 rounded-lg"
+          >
+            ← Volver
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            className="bg-surface-alt border border-border text-text-muted font-semibold px-3 py-1.5 rounded-lg hover:bg-surface transition-colors"
+          >
+            {loadedSaveId ? "Guardar corrección" : "Guardar"}
+          </button>
+        </div>
       </header>
 
       {/* Reacciones (sin factorar) */}
@@ -198,69 +367,155 @@ export default function VigaContinuaResults() {
         </div>
       </section>
 
-      {/* Esfuerzos factorados por tramo y apoyo interior */}
+      {/* Esfuerzos — alterna entre Envolvente (U) y Servicio (D | L) */}
       <section className="bg-surface rounded-xl border border-border p-5">
         <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-1">
-          Esfuerzos factorados
+          {envMode === "envolvente"
+            ? "Esfuerzos factorados"
+            : "Esfuerzos sin factorar (POC)"}
         </h2>
-        <p className="text-xs text-text-muted mb-3">U = 1.2·D + 1.6·L</p>
-        <div className="flex flex-col gap-2">
-          {spans.map((len, i) => (
-            <div
-              key={i}
-              className="flex flex-wrap items-center gap-4 p-3 bg-surface-alt rounded-lg"
-            >
-              <span className="text-xs text-text-muted w-40">
-                Tramo {i + 1} — {len.toFixed(2)} m
-              </span>
-              <span className="text-sm">
-                <span className="text-xs text-text-muted">
-                  V<sub>u</sub> ={" "}
+        <p className="text-xs text-text-muted mb-3">
+          {envMode === "envolvente"
+            ? "U = 1.2·D + 1.6·L"
+            : "Servicio — D y L por separado (POC: los valores siguen factorados, 1.2·D / 1.6·L)"}
+        </p>
+        {envMode === "envolvente" ? (
+          <div className="flex flex-col gap-2">
+            {spans.map((len, i) => (
+              <div
+                key={i}
+                className="flex flex-wrap items-center gap-4 p-3 bg-surface-alt rounded-lg"
+              >
+                <span className="text-xs text-text-muted w-40">
+                  Tramo {i + 1} — {len.toFixed(2)} m
                 </span>
-                <span className="font-semibold text-text">
-                  {spanVu[i].toFixed(1)} kN
+                <span className="text-sm">
+                  <span className="text-xs text-text-muted">
+                    V<sub>u</sub> ={" "}
+                  </span>
+                  <span className="font-semibold text-text">
+                    {spanVu[i].toFixed(1)} kN
+                  </span>
                 </span>
-              </span>
-              <span className="text-sm">
-                <span className="text-xs text-text-muted">
-                  M<sub>u</sub>
-                  <sup>+</sup> ={" "}
+                <span className="text-sm">
+                  <span className="text-xs text-text-muted">
+                    M<sub>u</sub>
+                    <sup>+</sup> ={" "}
+                  </span>
+                  <span className="font-semibold text-text">
+                    {spanMuPos[i].toFixed(1)} kN·m
+                  </span>
                 </span>
-                <span className="font-semibold text-text">
-                  {spanMuPos[i].toFixed(1)} kN·m
+              </div>
+            ))}
+            {interiorSupportMuNeg.map((mu, j) => (
+              <div
+                key={`neg-${j}`}
+                className="flex flex-wrap items-center gap-4 p-3 bg-surface-alt rounded-lg"
+              >
+                <span className="text-xs text-text-muted w-40">
+                  {supportLabel(j + 1)}
                 </span>
-              </span>
-            </div>
-          ))}
-          {interiorSupportMuNeg.map((mu, j) => (
-            <div
-              key={`neg-${j}`}
-              className="flex flex-wrap items-center gap-4 p-3 bg-surface-alt rounded-lg"
-            >
-              <span className="text-xs text-text-muted w-40">
-                {supportLabel(j + 1)}
-              </span>
-              <span className="text-sm">
-                <span className="text-xs text-text-muted">
-                  M<sub>u</sub>
-                  <sup>−</sup> ={" "}
+                <span className="text-sm">
+                  <span className="text-xs text-text-muted">
+                    M<sub>u</sub>
+                    <sup>−</sup> ={" "}
+                  </span>
+                  <span className="font-semibold text-text">
+                    {mu.toFixed(1)} kN·m
+                  </span>
                 </span>
-                <span className="font-semibold text-text">
-                  {mu.toFixed(1)} kN·m
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {spans.map((len, i) => (
+              <div
+                key={i}
+                className="flex flex-wrap items-center gap-4 p-3 bg-surface-alt rounded-lg"
+              >
+                <span className="text-xs text-text-muted w-40">
+                  Tramo {i + 1} — {len.toFixed(2)} m
                 </span>
-              </span>
-            </div>
-          ))}
-        </div>
+                <span className="text-sm">
+                  <span className="text-xs text-text-muted">
+                    V<sub>D</sub> ={" "}
+                  </span>
+                  <span className="font-semibold text-text">
+                    {envelopeD.spanVu[i].toFixed(1)} kN
+                  </span>
+                </span>
+                <span className="text-sm">
+                  <span className="text-xs text-text-muted">
+                    V<sub>L</sub> ={" "}
+                  </span>
+                  <span className="font-semibold text-text">
+                    {envelopeL.spanVu[i].toFixed(1)} kN
+                  </span>
+                </span>
+                <span className="text-sm">
+                  <span className="text-xs text-text-muted">
+                    M<sub>D</sub>
+                    <sup>+</sup> ={" "}
+                  </span>
+                  <span className="font-semibold text-text">
+                    {envelopeD.spanMuPos[i].toFixed(1)} kN·m
+                  </span>
+                </span>
+                <span className="text-sm">
+                  <span className="text-xs text-text-muted">
+                    M<sub>L</sub>
+                    <sup>+</sup> ={" "}
+                  </span>
+                  <span className="font-semibold text-text">
+                    {envelopeL.spanMuPos[i].toFixed(1)} kN·m
+                  </span>
+                </span>
+              </div>
+            ))}
+            {interiorSupportMuNeg.map((_, j) => (
+              <div
+                key={`neg-${j}`}
+                className="flex flex-wrap items-center gap-4 p-3 bg-surface-alt rounded-lg"
+              >
+                <span className="text-xs text-text-muted w-40">
+                  {supportLabel(j + 1)}
+                </span>
+                <span className="text-sm">
+                  <span className="text-xs text-text-muted">
+                    M<sub>D</sub>
+                    <sup>−</sup> ={" "}
+                  </span>
+                  <span className="font-semibold text-text">
+                    {envelopeD.supportMuNeg[j + 1].toFixed(1)} kN·m
+                  </span>
+                </span>
+                <span className="text-sm">
+                  <span className="text-xs text-text-muted">
+                    M<sub>L</sub>
+                    <sup>−</sup> ={" "}
+                  </span>
+                  <span className="font-semibold text-text">
+                    {envelopeL.supportMuNeg[j + 1].toFixed(1)} kN·m
+                  </span>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
-      {/* Diagramas (envolvente factorada) */}
+      {/* Diagramas — POC: la toggle no re-renderiza Mafs (siempre ULS).
+          PR4 task 4.4 cablea el re-render no-op con los slices cacheados. */}
       <div className="flex flex-col gap-2">
         <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
           Diagramas
         </h2>
         <p className="text-xs text-text-muted">
-          Envolventes factoradas (U = 1.2·D + 1.6·L).
+          {envMode === "envolvente"
+            ? "Envolventes factoradas (U = 1.2·D + 1.6·L)."
+            : "Servicio — POC: los diagramas siguen mostrando la envolvente ULS hasta PR4."}
         </p>
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -410,5 +665,46 @@ export default function VigaContinuaResults() {
         </section>
       </div>
     </MainLayout>
+  );
+}
+
+function EnvToggle({
+  envMode,
+  setEnvMode,
+}: {
+  envMode: EnvMode;
+  setEnvMode: (m: EnvMode) => void;
+}) {
+  const opts: ReadonlyArray<{ id: EnvMode; label: string }> = [
+    { id: "envolvente", label: "Envolvente" },
+    { id: "servicio", label: "Servicio" },
+  ];
+  return (
+    <div
+      role="tablist"
+      aria-label="Modo de cálculo"
+      className="inline-flex p-1 bg-surface-alt rounded-lg"
+    >
+      {opts.map((opt) => {
+        const active = opt.id === envMode;
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => setEnvMode(opt.id)}
+            className={
+              "px-3 py-1.5 text-sm font-medium rounded-md transition-colors " +
+              (active
+                ? "bg-primary text-white shadow-sm"
+                : "text-text-muted hover:text-text")
+            }
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
