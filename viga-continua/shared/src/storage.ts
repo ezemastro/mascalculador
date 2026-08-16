@@ -17,9 +17,9 @@ import type {
   SlabResult,
   CompatResult,
 } from "./slab-types";
-import type { App, Load } from "./types";
+import type { App, Load, SupportType } from "./types";
 
-export type { App };
+export type { App, SupportType };
 
 export function key(app: App, name: string): string {
   return `${app}:${name}`;
@@ -34,6 +34,7 @@ const LAST_CARTEL_FORM_KEY = "last_cartel_form";
 const LAST_BASES_FORM_KEY = "last_bases_form";
 const LAST_RC_COLUMN_FORM_KEY = "last_rc_column_form";
 const LAST_SLAB_FORM_KEY = "last_slab_form";
+const LAST_VIGA_CONTINUA_FORM_KEY = "last_viga_continua_form";
 const COMPAT_KEY = "saved-compats";
 
 // ---- Tipos genericos ----
@@ -45,7 +46,9 @@ export type SaveType =
   | "columna"
   | "cartel"
   | "losa"
-  | "rc-columna";
+  | "rc-columna"
+  | "portico"
+  | "viga-continua";
 
 export interface SavedBeam {
   id: string;
@@ -483,6 +486,199 @@ export function loadSlab(id: string): SavedSlabData | null {
 
 export function deleteSlab(id: string): void {
   deleteSave("concrete", id);
+}
+
+// ---- Especificas de hormigon (portico) ----
+//
+// Persistence shell for the new pórtico mode of viga-continua. The canonical,
+// richer domain types live in viga-continua/src/lib/portico.ts (R-portico-types).
+// shared/ does NOT import from src/ (reverse-dep banned by tasks.md §1.1), so
+// the shapes are re-declared here as minimal structural types. They are kept
+// structurally identical to the domain types so app-side saves round-trip.
+
+/**
+ * Structural minimum of `PorticoState` (viga-continua/src/lib/portico.ts).
+ * Used only as the persistence-shape argument for the portico helpers below.
+ * Read-only accessors make this interface accept the mutable domain shape.
+ */
+export interface PorticoState {
+  readonly nodes: ReadonlyArray<{
+    readonly id: string;
+    readonly x: number;
+    readonly y: number;
+  }>;
+  readonly bars: ReadonlyArray<{
+    readonly id: string;
+    readonly fromNodeId: string;
+    readonly toNodeId: string;
+  }>;
+  readonly loads: ReadonlyArray<{
+    readonly barId: string;
+    readonly intensity: number;
+    readonly angleDeg: number;
+    readonly distanceFromOrigin: number;
+  }>;
+  readonly supports: ReadonlyArray<{
+    readonly nodeId: string;
+    readonly kind: "hinge" | "fixed";
+  }>;
+}
+
+/**
+ * Named save for a pórtico state. Mirrors `SavedSlabData`'s structure but
+ * reduced to `input` (no result snapshot until PR2 ships the solver).
+ */
+export interface PorticoSavedData {
+  name: string;
+  input: PorticoState;
+}
+
+/** localStorage key suffix for auto-saved portico form state. */
+const PORTICO_LAST_FORM_STATE_KEY = "porticoLastFormState";
+
+/** Save a named pórtico input under `type = "portico"`. */
+export function savePorticoInput(data: PorticoSavedData): SavedBeam {
+  const payload: Record<string, unknown> = {
+    name: data.name,
+    input: data.input,
+  };
+  return saveBeam("concrete", data.name, "portico", payload);
+}
+
+/** Auto-save the in-progress portico form state. Silently ignores quota errors. */
+export function saveLastPorticoFormState(state: PorticoState): void {
+  try {
+    localStorage.setItem(
+      key("concrete", PORTICO_LAST_FORM_STATE_KEY),
+      JSON.stringify(state),
+    );
+  } catch {
+    /* quota exceeded, ignore */
+  }
+}
+
+/** Load the auto-saved portico form state; null if absent or unparseable. */
+export function loadLastPorticoFormState(): PorticoState | null {
+  try {
+    const raw = localStorage.getItem(
+      key("concrete", PORTICO_LAST_FORM_STATE_KEY),
+    );
+    if (!raw) return null;
+    return JSON.parse(raw) as PorticoState;
+  } catch {
+    return null;
+  }
+}
+
+// ---- Especificas de hormigon (viga continua) ----
+//
+// Persistence shell for viga-continua analysis. The canonical, richer domain
+// types live in viga-continua/src/lib/viga-continua.ts (R-vc-state-payload).
+// shared/ does NOT import from src/ (reverse-dep banned by tasks.md §1.1), so
+// the shape is re-declared here as a minimal structural type. The optional
+// `loadedSaveId` / `loadedSaveName` travel with the state so the form and
+// results screens can re-find the same id without re-prompting the user.
+
+/**
+ * Structural minimum of `VigaContinuaState` (viga-continua/src/lib/viga-continua.ts).
+ * The `loads` array carries position only (no React-key `id`) because ids are
+ * regenerated on each mount — see `VigaContinuaForm.handleLoad` and
+ * `handleSave` for round-trip details.
+ */
+export interface VigaContinuaInput {
+  spans: number[];
+  supportTypes: SupportType[];
+  loads: Array<{
+    type: "point" | "distributed";
+    D: number;
+    L: number;
+    position?: number;
+    start?: number;
+    end?: number;
+  }>;
+  /**
+   * Set together with `loadedSaveName`. Both fields are set by
+   * `<SavedBeams>.onLoad` and the first-save path; absent on a cold open.
+   * Setting one without the other is the BasesForm bug — forbidden here.
+   */
+  loadedSaveId?: string;
+  /** See `loadedSaveId`. */
+  loadedSaveName?: string;
+}
+
+/** Persisted shape for a viga-continua entry. Form saves input-only; results
+ *  also include the envelope. The envelope field is opaque (`unknown`) so
+ *  shared/ does not need to import `BeamEnvelopeResult` from `src/`. */
+export interface VigaContinuaSavedData {
+  input: VigaContinuaInput;
+  envelope?: unknown;
+}
+
+/** Save a named viga-continua entry under `type = "viga-continua"`. Throws on
+ *  duplicate `(name, "viga-continua")`. */
+export function saveVigaContinuaInput(
+  name: string,
+  data: VigaContinuaSavedData,
+): SavedBeam {
+  return saveBeam(
+    "concrete",
+    name,
+    "viga-continua",
+    data as unknown as Record<string, unknown>,
+  );
+}
+
+/** Update an existing viga-continua entry by id. Silent overwrite. */
+export function updateVigaContinuaInput(
+  id: string,
+  data: VigaContinuaSavedData,
+): SavedBeam | null {
+  return updateSave("concrete", id, data as unknown as Record<string, unknown>);
+}
+
+/** All saved vigas-continuas (filtered by SaveType). */
+export function getSavedVigasContinuas(): SavedBeam[] {
+  return getSavedBeams("concrete", "viga-continua");
+}
+
+/** Load a viga-continua entry by id. Returns the persisted shape or null. */
+export function loadVigaContinuaInput(
+  id: string,
+): VigaContinuaSavedData | null {
+  const items = getSavedBeams("concrete", "viga-continua");
+  const item = items.find((b) => b.id === id);
+  if (!item) return null;
+  return item.data as unknown as VigaContinuaSavedData;
+}
+
+/** Delete a viga-continua entry by id. */
+export function deleteVigaContinuaInput(id: string): void {
+  deleteSave("concrete", id);
+}
+
+/** Auto-save the in-progress form state. Silently ignores quota errors. */
+export function saveLastVigaContinuaFormState(state: VigaContinuaInput): void {
+  try {
+    localStorage.setItem(
+      key("concrete", LAST_VIGA_CONTINUA_FORM_KEY),
+      JSON.stringify(state),
+    );
+  } catch {
+    /* quota exceeded, ignore */
+  }
+}
+
+/** Load the auto-saved form state. Returns the parsed state or null. */
+export function loadLastVigaContinuaFormState(): VigaContinuaInput | null {
+  try {
+    const raw = localStorage.getItem(
+      key("concrete", LAST_VIGA_CONTINUA_FORM_KEY),
+    );
+    if (!raw) return null;
+    return JSON.parse(raw) as VigaContinuaInput;
+  } catch {
+    return null;
+  }
 }
 
 // ---- Especificas de hormigon (compatibilizacion) ----
