@@ -47,28 +47,23 @@ export default function VigaContinuaForm() {
       ? (lastForm.supportTypes as SupportType[])
       : ["simple", "simple"],
   );
-  const [loads, setLoads] = useState<AnalysisLoad[]>(
-    Array.isArray(lastForm?.loads)
-      ? (
-          lastForm.loads as Array<{
-            type?: unknown;
-            D?: unknown;
-            L?: unknown;
-            position?: unknown;
-            start?: unknown;
-            end?: unknown;
-          }>
-        ).map((l) => ({
-          id: crypto.randomUUID(),
-          type: l.type === "distributed" ? "distributed" : "point",
-          D: typeof l.D === "number" ? l.D : 0,
-          L: typeof l.L === "number" ? l.L : 0,
-          position: typeof l.position === "number" ? l.position : 0,
-          start: typeof l.start === "number" ? l.start : 0,
-          end: typeof l.end === "number" ? l.end : 0,
-        }))
-      : [],
-  );
+  // Seed loads from auto-persist IF those entries already carry ids (the
+  // original auto-save path stored full AnalysisLoad shapes with ids).
+  // Empty auto-persist payloads → start with no loads (matches pre-apply UX).
+  // Never regenerate ids inside the initial state — Date.now()/Math.random
+  // are impure and break react-hooks/purity (and would replace persisted ids
+  // on every render). New ids are minted in `addLoad`/`handleNueva` only.
+  const [loads, setLoads] = useState<AnalysisLoad[]>(() => {
+    const persisted = lastForm?.loads;
+    if (!Array.isArray(persisted)) return [];
+    return persisted.filter(
+      (l): l is AnalysisLoad =>
+        l != null &&
+        typeof (l as { id?: unknown }).id === "string" &&
+        ((l as { type?: unknown }).type === "point" ||
+          (l as { type?: unknown }).type === "distributed"),
+    );
+  });
 
   // Save context for the form/buttons.
   // [BasesForm-bug-free] MUST be set together in every code path that updates them.
