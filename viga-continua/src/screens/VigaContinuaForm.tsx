@@ -8,6 +8,7 @@ import {
   loadLastVigaContinuaFormState,
   saveVigaContinuaInput,
   updateVigaContinuaInput,
+  getSavedVigasContinuas,
 } from "../lib/storage";
 import type { AnalysisLoad, VigaContinuaState } from "../lib/viga-continua";
 import ModeSelector, { type Mode } from "../components/ModeSelector";
@@ -142,9 +143,11 @@ export default function VigaContinuaForm() {
     const input = { spans: spanLengths, supportTypes, loads };
 
     if (loadedSaveId) {
-      // Already saved: re-prompt and overwrite silently.
-      const name = prompt("Nombre para guardar corrección:");
-      if (!name) return;
+      // [R-vc-save-re-save] Already editing a saved beam — overwrite the same
+      // record silently. Do NOT re-prompt for a name; the user has already
+      // named this beam and pressing Guardar again means "save the current
+      // changes to the same record". Renames go through SavedBeams → Eliminar
+      // and a fresh save.
       try {
         updateVigaContinuaInput(loadedSaveId, { input });
       } catch (err: unknown) {
@@ -199,6 +202,13 @@ export default function VigaContinuaForm() {
     supportTypes.some((t) => t !== "free") &&
     loads.some((l) => l.D + l.L > 0);
 
+  // [R-vc-save-number] Stable ordinal for the saved beam: 1-based index in
+  // the saved list (chronological order). Recomputed each render so that
+  // deleting or adding other beams reorders this one correctly.
+  const vigaNumber = loadedSaveId
+    ? getSavedVigasContinuas().findIndex((s) => s.id === loadedSaveId) + 1
+    : null;
+
   return (
     <MainLayout>
       <header className="flex items-center gap-3">
@@ -220,9 +230,9 @@ export default function VigaContinuaForm() {
         <div className="flex-1">
           <h1 className="text-xl font-semibold text-text">Viga Continua</h1>
           <p className="text-sm text-text-muted">
-            {loadedSaveName
-              ? `Editando: ${loadedSaveName}`
-              : "Análisis estructural — envolvente de esfuerzos"}
+            {vigaNumber != null && loadedSaveName
+              ? `Viga #${vigaNumber} — ${loadedSaveName}`
+              : "Viga sin guardar"}
           </p>
         </div>
       </header>

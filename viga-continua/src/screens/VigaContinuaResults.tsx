@@ -6,7 +6,11 @@ import { formatForce } from "@mascalculador/shared";
 import { calculateBeamEnvelope } from "../lib/beam-envelope";
 import type { BeamEnvelopeResult, EnvelopeLoad } from "../lib/beam-envelope";
 import type { AnalysisLoad, VigaContinuaState } from "../lib/viga-continua";
-import { saveVigaContinuaInput, updateVigaContinuaInput } from "../lib/storage";
+import {
+  saveVigaContinuaInput,
+  updateVigaContinuaInput,
+  getSavedVigasContinuas,
+} from "../lib/storage";
 
 type EnvMode = "envolvente" | "servicio";
 type LocationState = VigaContinuaState | { mode: "portico" } | null;
@@ -158,8 +162,8 @@ export default function VigaContinuaResults() {
     };
 
     if (loadedSaveId) {
-      const name = prompt("Nombre para guardar corrección:");
-      if (!name) return;
+      // [R-vc-save-re-save] Already editing a saved beam — overwrite the same
+      // record silently with the current envelope snapshot. Do NOT re-prompt.
       try {
         updateVigaContinuaInput(loadedSaveId, { input, envelope });
       } catch (err: unknown) {
@@ -230,6 +234,13 @@ export default function VigaContinuaResults() {
   const { spans, supportTypes } = s;
   const nSpans = spans.length;
   const L = spans.reduce((a, b) => a + b, 0);
+
+  // [R-vc-save-number] Stable ordinal for the saved beam (1-based index in
+  // the saved list). Recomputed each render so deletions/reorders of other
+  // beams update this number correctly.
+  const vigaNumber = loadedSaveId
+    ? getSavedVigasContinuas().findIndex((s) => s.id === loadedSaveId) + 1
+    : null;
 
   const supportPositions: number[] = [0];
   for (const sp of spans)
@@ -308,7 +319,9 @@ export default function VigaContinuaResults() {
           <h1 className="text-xl font-semibold text-text">Viga Continua</h1>
           <p className="text-sm text-text-muted">
             L={L.toFixed(2)} m &middot; {nSpans} tramo{nSpans > 1 ? "s" : ""}
-            {loadedSaveName && ` · Editando: ${loadedSaveName}`}
+            {vigaNumber != null && loadedSaveName
+              ? ` · Viga #${vigaNumber} — ${loadedSaveName}`
+              : " · Viga sin guardar"}
           </p>
         </div>
         <div className="flex items-center gap-3">
