@@ -1,5 +1,10 @@
 import { calculateBeam } from "@mascalculador/shared";
-import type { BeamConfig, BeamResults, Load, SupportType } from "@mascalculador/shared";
+import type {
+  BeamConfig,
+  BeamResults,
+  Load,
+  SupportType,
+} from "@mascalculador/shared";
 
 export interface EnvelopeLoad {
   type: "point" | "distributed";
@@ -74,7 +79,10 @@ export function calculateBeamEnvelope(
       const p = ld.position ?? 0;
       let spanIdx = 0;
       for (let i = 0; i < n; i++) {
-        if (p >= supportPositions[i] - 1e-9 && p <= supportPositions[i + 1] + 1e-9) {
+        if (
+          p >= supportPositions[i] - 1e-9 &&
+          p <= supportPositions[i + 1] + 1e-9
+        ) {
           spanIdx = i;
           break;
         }
@@ -88,7 +96,15 @@ export function calculateBeamEnvelope(
         const b = supportPositions[i + 1];
         const s = Math.max(s0, a);
         const e = Math.min(e0, b);
-        if (s < e) segments.push({ spanIdx: i, type: "distributed", D: ld.D, L: ld.L, start: s, end: e });
+        if (s < e)
+          segments.push({
+            spanIdx: i,
+            type: "distributed",
+            D: ld.D,
+            L: ld.L,
+            start: s,
+            end: e,
+          });
       }
     }
   }
@@ -131,10 +147,16 @@ export function calculateBeamEnvelope(
 
   // ---- Envelope query functions ----
   const momentPos = (x: number): number =>
-    patterns.reduce((mx, p) => Math.max(mx, Math.max(0, p.bendingMoment(x))), 0);
+    patterns.reduce(
+      (mx, p) => Math.max(mx, Math.max(0, p.bendingMoment(x))),
+      0,
+    );
 
   const momentNeg = (x: number): number =>
-    patterns.reduce((mx, p) => Math.max(mx, Math.max(0, -p.bendingMoment(x))), 0);
+    patterns.reduce(
+      (mx, p) => Math.max(mx, Math.max(0, -p.bendingMoment(x))),
+      0,
+    );
 
   const shearMax = (x: number): number =>
     patterns.reduce((mx, p) => Math.max(mx, Math.abs(p.shearForce(x))), 0);
@@ -153,10 +175,20 @@ export function calculateBeamEnvelope(
 
   // ---- Per-span / per-support extremes ----
   const spanMuPos = spans.map((_s, i) =>
-    maxOf(momentPos, supportPositions[i], supportPositions[i + 1], criticalPoints),
+    maxOf(
+      momentPos,
+      supportPositions[i],
+      supportPositions[i + 1],
+      criticalPoints,
+    ),
   );
   const spanVu = spans.map((_s, i) =>
-    maxOf(shearMax, supportPositions[i], supportPositions[i + 1], criticalPoints),
+    maxOf(
+      shearMax,
+      supportPositions[i],
+      supportPositions[i + 1],
+      criticalPoints,
+    ),
   );
   const supportMuNeg = supportPositions.map((pos) => momentNeg(pos));
 
@@ -213,7 +245,7 @@ function maxOf(
 ): number {
   let m = 0;
   for (let k = 0; k <= steps; k++) {
-    const x = x0 + ((k / steps) * (x1 - x0));
+    const x = x0 + (k / steps) * (x1 - x0);
     m = Math.max(m, fn(x));
   }
   for (const x of criticalPoints) {

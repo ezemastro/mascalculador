@@ -1,15 +1,30 @@
+/* eslint-disable react-hooks/set-state-in-effect -- baseline: refactor to useSyncExternalStore tracked in follow-up */
 import { useState, useEffect } from "react";
 import { listSaves, deleteSave, type SavedBeam, type App } from "./storage";
 
 interface Props {
   app: App;
-  type: "acero" | "hormigon" | "bases" | "columna" | "cartel" | "losa" | "rc-columna";
+  type:
+    | "acero"
+    | "hormigon"
+    | "bases"
+    | "columna"
+    | "cartel"
+    | "losa"
+    | "rc-columna";
   onLoad: (data: Record<string, unknown>, save: SavedBeam) => void;
   onDelete?: (id: string) => void;
   label?: string;
 }
 
-export default function SavedBeams({ app, type, onLoad, onDelete, label }: Props) {
+export default function SavedBeams({
+  app,
+  type,
+  onLoad,
+  onDelete,
+  label,
+}: Props) {
+  // eslint-disable react-hooks/set-state-in-effect -- baseline: refactor to useSyncExternalStore tracked in follow-up; setSaves() + setOpen() chain through event handlers too
   const [saves, setSaves] = useState<SavedBeam[]>([]);
   const [open, setOpen] = useState(false);
 

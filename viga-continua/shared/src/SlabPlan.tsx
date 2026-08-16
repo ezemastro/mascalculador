@@ -4,7 +4,14 @@ interface Props {
   lx: number;
   ly: number;
   edges: [EdgeCondition, EdgeCondition, EdgeCondition, EdgeCondition];
-  slabType: "crossed" | "oneway-x" | "oneway-y" | "cantilever-left" | "cantilever-right" | "cantilever-top" | "cantilever-bottom";
+  slabType:
+    | "crossed"
+    | "oneway-x"
+    | "oneway-y"
+    | "cantilever-left"
+    | "cantilever-right"
+    | "cantilever-top"
+    | "cantilever-bottom";
 }
 
 export default function SlabPlan({ lx, ly, edges, slabType }: Props) {
@@ -20,7 +27,13 @@ export default function SlabPlan({ lx, ly, edges, slabType }: Props) {
   const y0 = pad + (H - 2 * pad - h) / 2;
   const hatchLen = 20;
 
-  function hatchLines(x1: number, y1: number, x2: number, y2: number, outward: boolean) {
+  function hatchLines(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    outward: boolean,
+  ) {
     const dx = x2 - x1,
       dy = y2 - y1;
     const len = Math.sqrt(dx * dx + dy * dy);
@@ -108,11 +121,17 @@ export default function SlabPlan({ lx, ly, edges, slabType }: Props) {
   // For bottom edge, u=(1,0) → perp=(0,1) which points down (outward), ok
 
   // Build edge paths: x1,y1 → x2,y2 and outward flag
-  const edgeData: { x1: number; y1: number; x2: number; y2: number; outward: boolean }[] = [
-    { x1: x0, y1: y0, x2: x0, y2: y0 + h, outward: true },   // left → outward is left
+  const edgeData: {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    outward: boolean;
+  }[] = [
+    { x1: x0, y1: y0, x2: x0, y2: y0 + h, outward: true }, // left → outward is left
     { x1: x0 + w, y1: y0, x2: x0 + w, y2: y0 + h, outward: false }, // right → outward is right (flip)
-    { x1: x0, y1: y0, x2: x0 + w, y2: y0, outward: false },   // top → outward is up (flip)
-    { x1: x0, y1: y0 + h, x2: x0 + w, y2: y0 + h, outward: true },  // bottom → outward is down
+    { x1: x0, y1: y0, x2: x0 + w, y2: y0, outward: false }, // top → outward is up (flip)
+    { x1: x0, y1: y0 + h, x2: x0 + w, y2: y0 + h, outward: true }, // bottom → outward is down
   ];
 
   return (
@@ -135,7 +154,14 @@ export default function SlabPlan({ lx, ly, edges, slabType }: Props) {
         {/* Edges */}
         {edges.map((edge, i) => (
           <g key={i}>
-            {edgeSymbol(edge, edgeData[i].x1, edgeData[i].y1, edgeData[i].x2, edgeData[i].y2, edgeData[i].outward)}
+            {edgeSymbol(
+              edge,
+              edgeData[i].x1,
+              edgeData[i].y1,
+              edgeData[i].x2,
+              edgeData[i].y2,
+              edgeData[i].outward,
+            )}
           </g>
         ))}
         {/* Slab type symbol */}
@@ -147,9 +173,30 @@ export default function SlabPlan({ lx, ly, edges, slabType }: Props) {
             // Circle with cross — both lines extend past the circle
             return (
               <g opacity={0.4}>
-                <circle cx={cx} cy={cy} r={r} fill="none" stroke="#fbbf24" strokeWidth={2} />
-                <line x1={cx - r * 1.6} y1={cy} x2={cx + r * 1.6} y2={cy} stroke="#fbbf24" strokeWidth={2} />
-                <line x1={cx} y1={cy - r * 1.6} x2={cx} y2={cy + r * 1.6} stroke="#fbbf24" strokeWidth={2} />
+                <circle
+                  cx={cx}
+                  cy={cy}
+                  r={r}
+                  fill="none"
+                  stroke="#fbbf24"
+                  strokeWidth={2}
+                />
+                <line
+                  x1={cx - r * 1.6}
+                  y1={cy}
+                  x2={cx + r * 1.6}
+                  y2={cy}
+                  stroke="#fbbf24"
+                  strokeWidth={2}
+                />
+                <line
+                  x1={cx}
+                  y1={cy - r * 1.6}
+                  x2={cx}
+                  y2={cy + r * 1.6}
+                  stroke="#fbbf24"
+                  strokeWidth={2}
+                />
               </g>
             );
           }
@@ -157,8 +204,22 @@ export default function SlabPlan({ lx, ly, edges, slabType }: Props) {
             // Circle with horizontal line (armor in X direction)
             return (
               <g opacity={0.4}>
-                <circle cx={cx} cy={cy} r={r} fill="none" stroke="#fbbf24" strokeWidth={2} />
-                <line x1={cx - r * 1.8} y1={cy} x2={cx + r * 1.8} y2={cy} stroke="#fbbf24" strokeWidth={2} />
+                <circle
+                  cx={cx}
+                  cy={cy}
+                  r={r}
+                  fill="none"
+                  stroke="#fbbf24"
+                  strokeWidth={2}
+                />
+                <line
+                  x1={cx - r * 1.8}
+                  y1={cy}
+                  x2={cx + r * 1.8}
+                  y2={cy}
+                  stroke="#fbbf24"
+                  strokeWidth={2}
+                />
               </g>
             );
           }
@@ -166,8 +227,22 @@ export default function SlabPlan({ lx, ly, edges, slabType }: Props) {
             // Circle with vertical line (armor in Y direction)
             return (
               <g opacity={0.4}>
-                <circle cx={cx} cy={cy} r={r} fill="none" stroke="#fbbf24" strokeWidth={2} />
-                <line x1={cx} y1={cy - r * 1.8} x2={cx} y2={cy + r * 1.8} stroke="#fbbf24" strokeWidth={2} />
+                <circle
+                  cx={cx}
+                  cy={cy}
+                  r={r}
+                  fill="none"
+                  stroke="#fbbf24"
+                  strokeWidth={2}
+                />
+                <line
+                  x1={cx}
+                  y1={cy - r * 1.8}
+                  x2={cx}
+                  y2={cy + r * 1.8}
+                  stroke="#fbbf24"
+                  strokeWidth={2}
+                />
               </g>
             );
           }
@@ -177,7 +252,14 @@ export default function SlabPlan({ lx, ly, edges, slabType }: Props) {
             return (
               <g opacity={0.4}>
                 <path d={d} fill="none" stroke="#f87171" strokeWidth={2} />
-                <line x1={cx} y1={cy - r} x2={cx} y2={cy + r} stroke="#f87171" strokeWidth={2} />
+                <line
+                  x1={cx}
+                  y1={cy - r}
+                  x2={cx}
+                  y2={cy + r}
+                  stroke="#f87171"
+                  strokeWidth={2}
+                />
               </g>
             );
           }
@@ -187,7 +269,14 @@ export default function SlabPlan({ lx, ly, edges, slabType }: Props) {
             return (
               <g opacity={0.4}>
                 <path d={d} fill="none" stroke="#f87171" strokeWidth={2} />
-                <line x1={cx} y1={cy - r} x2={cx} y2={cy + r} stroke="#f87171" strokeWidth={2} />
+                <line
+                  x1={cx}
+                  y1={cy - r}
+                  x2={cx}
+                  y2={cy + r}
+                  stroke="#f87171"
+                  strokeWidth={2}
+                />
               </g>
             );
           }
@@ -197,7 +286,14 @@ export default function SlabPlan({ lx, ly, edges, slabType }: Props) {
             return (
               <g opacity={0.4}>
                 <path d={d} fill="none" stroke="#f87171" strokeWidth={2} />
-                <line x1={cx - r} y1={cy} x2={cx + r} y2={cy} stroke="#f87171" strokeWidth={2} />
+                <line
+                  x1={cx - r}
+                  y1={cy}
+                  x2={cx + r}
+                  y2={cy}
+                  stroke="#f87171"
+                  strokeWidth={2}
+                />
               </g>
             );
           }
@@ -207,7 +303,14 @@ export default function SlabPlan({ lx, ly, edges, slabType }: Props) {
             return (
               <g opacity={0.4}>
                 <path d={d} fill="none" stroke="#f87171" strokeWidth={2} />
-                <line x1={cx - r} y1={cy} x2={cx + r} y2={cy} stroke="#f87171" strokeWidth={2} />
+                <line
+                  x1={cx - r}
+                  y1={cy}
+                  x2={cx + r}
+                  y2={cy}
+                  stroke="#f87171"
+                  strokeWidth={2}
+                />
               </g>
             );
           }
@@ -250,7 +353,11 @@ export default function SlabPlan({ lx, ly, edges, slabType }: Props) {
           <span className="inline-block w-4 h-0.5 bg-[#7c8aff]" /> Continuo
         </span>
         <span className="flex items-center gap-1">
-          <span className="inline-block w-4 h-0.5 bg-[#4ade80]" style={{ borderTop: "2px dashed #4ade80", height: 0 }} /> Libre
+          <span
+            className="inline-block w-4 h-0.5 bg-[#4ade80]"
+            style={{ borderTop: "2px dashed #4ade80", height: 0 }}
+          />{" "}
+          Libre
         </span>
       </div>
     </div>
