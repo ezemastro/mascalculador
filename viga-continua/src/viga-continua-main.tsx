@@ -71,13 +71,15 @@ class ErrorBoundary extends Component<
 
 function NavBar() {
   return (
-    <div className="min-h-screen">
-      <div className="fixed top-0 left-0 right-0 z-50 bg-surface border-b border-border px-4 py-2 flex gap-4">
+    <div className="min-h-screen bg-bg text-text">
+      <header className="sticky top-0 z-50 bg-surface border-b border-border px-4 py-2 flex gap-4">
         <Link to="/" className="text-sm text-text-muted hover:text-text">
           Viga Continua
         </Link>
-      </div>
-      <Outlet />
+      </header>
+      <main className="px-4 py-4">
+        <Outlet />
+      </main>
     </div>
   );
 }
