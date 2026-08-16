@@ -139,3 +139,43 @@ Version 1 MUST NOT persist results, MUST NOT integrate downstream (beam reaction
 - WHEN inspected
 - THEN there is no self-weight toggle
 - AND dead load is entered as a D load
+
+### Requirement: Nueva button (shared)
+
+The form SHALL show a `Nueva` button. Clicking it SHALL open a confirmation prompt; on confirm the state SHALL be cleared and reset to defaults (single-span 1 m, no loads). Cancelling the confirmation SHALL leave the current state untouched.
+
+#### Scenario: Nueva resets to defaults after confirmation
+
+- GIVEN the user edits a multi-span beam with loads
+- WHEN the user clicks `Nueva` and confirms
+- THEN `VigaContinuaForm` clears the state and re-populates a single-span 1 m with no loads
+
+#### Scenario: Cancelled confirmation preserves state
+
+- GIVEN the user clicks `Nueva`
+- WHEN the confirmation dialog is dismissed
+- THEN the current state is preserved verbatim
+
+### Requirement: Envolvente / Servicio toggle (shared)
+
+The results screen SHALL show a toggle between `Envolvente` (ULS = 1.2·D + 1.6·L) and `Servicio` (SLS, D and L returned separately). The default selection SHALL be `Envolvente`. Toggling SHALL re-render the shear and moment diagrams and the reactions table from the already-computed solve set — no re-solve is performed.
+
+#### Scenario: Toggle to Envolvente renders ULS
+
+- GIVEN a solved beam with both ULS and SLS results cached
+- WHEN the user toggles to `Envolvente`
+- THEN the shear and moment diagrams and the reactions table render the ULS values
+- AND values are labeled `U = 1.2·D + 1.6·L`
+
+#### Scenario: Toggle to Servicio renders D and L separately
+
+- GIVEN a solved beam
+- WHEN the user toggles to `Servicio`
+- THEN the reactions table shows D and L columns separately (unfactored)
+- AND the diagram legend updates to `Servicio — D y L por separado`
+
+#### Scenario: Default selection is Envolvente
+
+- GIVEN a fresh results screen
+- WHEN it first renders
+- THEN the toggle is in `Envolvente` position
