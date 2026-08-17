@@ -602,6 +602,7 @@ function recoverBarForces(
   map: DofMap,
   u: number[],
   localLoad: Map<string, number[]>,
+  factor: (D: number, L: number) => number,
 ): Array<{ barId: string; forces: PorticoBarForces }> {
   const out: Array<{ barId: string; forces: PorticoBarForces }> = [];
   for (const bar of state.bars) {
@@ -660,31 +661,46 @@ function recoverBarForces(
       M: -fInternal[5],
     };
 
-    // 11 muestras intermedias con Hermite (en marco local).
+    // 11 muestras interiores + extremos. La recuperación de M/V se hace
+    // desde los esfuerzos de extremo y las cargas locales; usar solamente
+    // la curvatura Hermite de desplazamientos omitía el término parabólico
+    // de una carga distribuida.
     const samples: PorticoBarSample[] = [];
-    for (let i = 1; i <= 11; i++) {
-      const xi = i / 12;
-      // d²N1/dξ² = -6 + 12ξ; d²N2/dξ² = -4 + 6ξ; d²N3/dξ² = 6 - 12ξ;
-      // d²N4/dξ² = -2 + 6ξ. M+ = -EI · d²v/dx²  (convención: tensión abajo
-      // → curvatura hacia arriba → momento positivo).
-      const d2v =
-        ((-6 + 12 * xi) * uLocal[1] +
-          L * (-4 + 6 * xi) * uLocal[2] +
-          (6 - 12 * xi) * uLocal[4] +
-          L * (-2 + 6 * xi) * uLocal[5]) /
-        (L * L);
-      const Mi = -EI * d2v;
-      // V = dM/dx = -EI · d³v/dx³.
-      const d3v =
-        ((12 * uLocal[1] +
-          L * 6 * uLocal[2] +
-          -12 * uLocal[4] +
-          L * 6 * uLocal[5]) /
-          (L * L * L)) *
-        EI;
-      const Vi = -d3v;
-      const Ni = (EA * (uLocal[3] - uLocal[0])) / L;
-      samples.push({ s: xi * L, N: Ni, V: Vi, M: Mi });
+    for (let i = 0; i <= 12; i++) {
+      const sPos = (i / 12) * L;
+      let V = startForce.V;
+      let N = startForce.N;
+      let M = startForce.M - startForce.V * sPos;
+
+      for (const load of state.loads) {
+        if (load.barId !== bar.id) continue;
+        const angleRad = (load.angle * Math.PI) / 180;
+        const magnitude = factor(load.D, load.L);
+        const globalFx = magnitude * Math.cos(angleRad);
+        const globalFy = magnitude * Math.sin(angleRad);
+        const localN = globalFx * c + globalFy * s;
+        const localV = -globalFx * s + globalFy * c;
+
+        if (load.kind === "distributed") {
+          const loadStart = Math.max(0, Math.min(load.a, L));
+          const loadEnd = Math.max(loadStart, Math.min(load.b ?? L, L));
+          const loadedLength = Math.max(0, Math.min(sPos, loadEnd) - loadStart);
+          if (loadedLength > 0) {
+            N += localN * loadedLength;
+            V += localV * loadedLength;
+            M -= (localV * loadedLength * loadedLength) / 2;
+          }
+        } else {
+          const point = Math.max(0, Math.min(load.a, L));
+          if (sPos >= point) {
+            N += localN;
+            V += localV;
+            M -= localV * (sPos - point);
+          }
+        }
+      }
+
+      samples.push({ s: sPos, N, V, M });
     }
 
     out.push({
@@ -761,7 +777,7 @@ export function solvePortico(
         };
       }),
       reactions,
-      bars: recoverBarForces(state, map, u, localLoad),
+      bars: recoverBarForces(state, map, u, localLoad, factor),
     };
   }
 
