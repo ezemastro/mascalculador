@@ -94,7 +94,7 @@ npm run lint:all && npm run typecheck:all && npm run build:all
 
 ## PR2 — Pórtico 2-D Stiffness Solver
 
-### 2.1 — Conventions, element matrix, and loads
+### 2.1 — Conventions, element matrix, and loads ✅ (applied 2026-08-17, PR2a)
 - **Action**: Document M+/Y conventions and implement the local 6×6 EAN frame element plus point/distributed equivalent nodal loads.
 - **Requirements covered**: R-portico-solver, R-portico-supports, R-portico-y-axis, R-portico-m-plus-convention.
 - **Files**:
@@ -108,7 +108,7 @@ npm run lint:all && npm run typecheck:all && npm run build:all
 ```
 - **Notes**: Use partial pivoting; no numerical dependency and no internal size cap.
 
-### 2.2 — Global assembly, constraints, and three-mode solve
+### 2.2 — Global assembly, constraints, and three-mode solve ✅ (applied 2026-08-17, PR2a)
 - **Action**: Assemble `K`, apply hinge/fixed boundary conditions, and solve ULS plus D/L service modes against the same stiffness matrix.
 - **Requirements covered**: R-portico-types, R-portico-solver, R-portico-supports, R-portico-y-axis.
 - **Files**:
@@ -122,7 +122,7 @@ npm run lint:all && npm run typecheck:all && npm run build:all
 ```
 - **Notes**: Keep `solvePortico` pure: no I/O, globals, or form cap.
 
-### 2.3 — Reactions, internal forces, and M+ samples
+### 2.3 — Reactions, internal forces, and M+ samples ✅ (applied 2026-08-17, PR2b)
 - **Action**: Recover constrained reactions and endpoint/intermediate `N/V/M` forces with the 11 locked samples per bar.
 - **Requirements covered**: R-portico-results, R-portico-m-plus-convention, R-portico-y-axis.
 - **Files**:
@@ -139,7 +139,7 @@ npm run lint:all && npm run typecheck:all && npm run build:all
 recoverInternalForces(K, u, F, dofMap)
 ```
 
-### 2.4 — Three hand-calculated smoke fixtures
+### 2.4 — Three hand-calculated smoke fixtures ✅ (applied 2026-08-17, PR2b)
 - **Action**: Add a standalone `tsx` runbook asserting cantilever, symmetric frame, and inclined-load reactions to 0.1%.
 - **Requirements covered**: R-portico-solver, R-portico-supports, R-portico-results.
 - **Files**:

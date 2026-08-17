@@ -9,16 +9,12 @@
  * - 6 GDL por barra: `u, v, θ` en cada extremo (num. local) → DOF global
  *   `3*i + 0..2` para el nudo `i`.
  * - M+ = fibra inferior traccionada en el tramo; vector momento apuntando a
- *   +x (regla de la mano derecha). El signo del momento en la convención
- *   adoptada coincide con `M = r × F` para una viga horizontal con carga
- *   apuntando a +y (down). La recuperación detallada se hace en
- *   `recoverInternalForces()` (PR2b); aquí solo se ensambla y resuelve
- *   el desplazamiento.
+ *   +x (regla de la mano derecha). La recuperación detallada se hace en
+ *   `recoverBarForces()` (PR2b).
  *
  * ## Modos de carga
  *
- * - `uls` = `1.2·D + 1.6·L` aplicadas en simultáneo sobre todas las cargas
- *   (sin patronado; locked en proposal §Open Decisions).
+ * - `uls` = `1.2·D + 1.6·L` aplicadas en simultáneo sobre todas las cargas.
  * - `sls-d` = solo cargas muertas D, sin factor.
  * - `sls-l` = solo cargas vivas L, sin factor.
  *
@@ -32,8 +28,7 @@
  * ## Sin dependencias externas
  *
  * La inversa de K se computa con Gauss-Jordan de pivoteo parcial
- * implementado a mano. Funciona para frames pequeños (≤ 5 barras × 6 GDL)
- * sin costo perceptible.
+ * implementado a mano.
  */
 import type { PorticoState } from "./portico";
 import type {
@@ -70,9 +65,7 @@ export class PorticoValidationError extends Error {
 export function validatePorticoState(state: PorticoState): void {
   const issues: string[] = [];
 
-  // 1. IDs únicos por colección. Se aceptan duplicados textuales entre
-  // colecciones (un nudo y una carga pueden llamarse "X" sin chocar) pero
-  // cada colección debe tener IDs únicos internamente.
+  // IDs únicos por colección.
   const seenNode = new Set<string>();
   for (const n of state.nodes) {
     if (seenNode.has(n.id)) issues.push(`nodo con id duplicado "${n.id}"`);
@@ -94,7 +87,6 @@ export function validatePorticoState(state: PorticoState): void {
     else seenSup.add(s.id);
   }
 
-  // 2. Las barras referencian nudos existentes y tienen largo > 0.
   const nodeById = new Map(state.nodes.map((n) => [n.id, n]));
   for (const b of state.bars) {
     const a = nodeById.get(b.fromNodeId);
@@ -112,7 +104,6 @@ export function validatePorticoState(state: PorticoState): void {
       if (L < 1e-9) issues.push(`barra ${b.id} tiene longitud cero`);
     }
   }
-  // 3. Cargas referencian barras existentes y rangos válidos.
   const barIds = new Set(state.bars.map((b) => b.id));
   for (const l of state.loads) {
     if (!barIds.has(l.barId)) {
@@ -136,13 +127,11 @@ export function validatePorticoState(state: PorticoState): void {
       }
     }
   }
-  // 4. Apoyos referencian nudos existentes.
   for (const s of state.supports) {
     if (!nodeById.has(s.nodeId)) {
       issues.push(`apoyo ${s.id} referencia nudo inexistente "${s.nodeId}"`);
     }
   }
-  // 5. Mínimo viable.
   if (state.nodes.length < 2) issues.push("se requieren al menos 2 nudos");
   if (state.bars.length < 1) issues.push("se requiere al menos 1 barra");
   if (state.supports.length < 1) issues.push("se requiere al menos 1 apoyo");
@@ -166,8 +155,6 @@ function buildDofMap(state: PorticoState): DofMap {
   return { nodeStart, nDof: 3 * state.nodes.length };
 }
 
-/** Devuelve los 6 índices DOF globales para una barra, en orden
- *  `[u1, v1, θ1, u2, v2, θ2]` después de la transformación de cosenos. */
 function barLocalDofIndices(
   bar: { fromNodeId: string; toNodeId: string },
   map: DofMap,
@@ -180,14 +167,6 @@ function barLocalDofIndices(
 }
 
 // ---- Matriz elemental 6×6 en marco local ----
-//
-// Formato EAN (Euler-Bernoulli axial + flexión). Layout rows/cols:
-//   [u1, v1, θ1, u2, v2, θ2]
-//
-// k_local con la subdivisión:
-//   EA·L² / L³ = EA/L para axial (u1,u1)/(u1,u2)/etc.
-//   12·EI/L³ para shear, 6·EI/L² para shear-momento, 4·EI/L para momento
-// puro. Detalles en design.md §6.2.
 
 function localElementStiffness(L: number, EA: number, EI: number): number[][] {
   const k: number[][] = Array.from({ length: 6 }, () => Array(6).fill(0));
@@ -223,18 +202,6 @@ function localElementStiffness(L: number, EA: number, EI: number): number[][] {
   return k;
 }
 
-// ---- Matriz de transformación cosenoidal ----
-//
-// Para una barra con vector unitario local `x̄ = (c, s)` (c = cos α,
-// s = sin α, α medido desde +x global hacia +y global que es down),
-// la transformación T de local → global es 6×6 con dos bloques 3×3 iguales:
-//
-//   T = [ R  0 ]
-//       [ 0  R ]
-//   donde R = [[ c, s, 0], [-s, c, 0], [0,0,1]]
-//
-// K_global = Tᵀ · K_local · T. Implementado abajo de forma explícita.
-
 function transformationMatrix(c: number, s: number): number[][] {
   const T: number[][] = Array.from({ length: 6 }, () => Array(6).fill(0));
   // Bloque R en filas/cols 0..2.
@@ -252,7 +219,6 @@ function transformationMatrix(c: number, s: number): number[][] {
   return T;
 }
 
-/** Multiplica matrices densas. Helper puro, sin verificar shapes (uso interno). */
 function matMul(A: number[][], B: number[][]): number[][] {
   const r = A.length;
   const c = B[0].length;
@@ -276,8 +242,6 @@ function transpose(A: number[][]): number[][] {
   return T;
 }
 
-/** Combina k_local 6×6 con T (coseno) → K_global_bar 6×6 ya indexable
- *  por DOF locales [u1,v1,θ1,u2,v2,θ2] que se mapean a globales vía dofs[]. */
 function transformBarStiffness(kLocal: number[][], T: number[][]): number[][] {
   return matMul(matMul(transpose(T), kLocal), T);
 }
@@ -293,15 +257,13 @@ function assembleK(state: PorticoState, map: DofMap): number[][] {
   for (const bar of state.bars) {
     const a = state.nodes.find((n) => n.id === bar.fromNodeId);
     const b = state.nodes.find((n) => n.id === bar.toNodeId);
-    if (!a || !b) continue; // validación ya filtró
+    if (!a || !b) continue;
     const dx = b.x - a.x;
     const dy = b.y - a.y;
     const L = Math.hypot(dx, dy);
     if (L < 1e-9) continue;
     const c = dx / L;
-    const s = dy / L; // +y hacia abajo; barras que van hacia abajo tienen s > 0
-    // Los E/A/I son placeholders no-diseño. Para pórticos pequeños con
-    // cargas kN/m↔m, los cocientes EA/L y EI/L³ fijan la escala.
+    const s = dy / L;
     const EA = (bar.E ?? 1) * (bar.A ?? 1e-2);
     const EI = (bar.E ?? 1) * (bar.I ?? 1e-4);
     const kLocal = localElementStiffness(L, EA, EI);
@@ -325,12 +287,9 @@ function constrainedDofs(state: PorticoState, map: DofMap): boolean[] {
     const start = map.nodeStart.get(s.nodeId);
     if (start === undefined) continue;
     if (s.kind === "hinge") {
-      // u, v constreñidos.
       c[start] = true;
       c[start + 1] = true;
-      // θ libre.
     } else {
-      // fixed: u, v, θ.
       c[start] = true;
       c[start + 1] = true;
       c[start + 2] = true;
@@ -387,36 +346,29 @@ function buildF(
     const dy = b.y - a.y;
     const Lbar = Math.hypot(dx, dy);
     if (Lbar < 1e-9) continue;
+
+    const mag = factor(load.D, load.L);
+    if (mag === 0) continue;
     const c = dx / Lbar;
     const sG = dy / Lbar;
 
-    // Cargas distribuidas: integración por Simpson con N=20 subintervalos.
-    // Para cada subsegmento ds en posición s, se agrega una carga puntual
-    // de magnitud w·ds (mismo ángulo, mismo barId). Trade-off explícito:
-    // pequeño error numérico vs código simple.
     if (load.kind === "distributed") {
-      const w = factor(load.D, load.L);
-      if (w !== 0) {
-        const a0 = Math.max(0, load.a);
-        const b0 = Math.min(Lbar, load.b ?? load.a);
-        if (b0 > a0) {
-          const N = 20;
-          const step = (b0 - a0) / N;
-          // Pesos Simpson: 1, 4, 2, 4, ..., 4, 1.
-          for (let i = 0; i < N; i++) {
-            const weight = i % 2 === 1 ? 4 : 2;
-            const subMag = (w * step * weight) / 3;
-            const sPos = a0 + (i + 0.5) * step;
-            addGlobalLoad(F, map, bar, sPos, Lbar, c, sG, subMag, load.angle);
-          }
+      const a0 = Math.max(0, load.a);
+      const b0 = Math.min(Lbar, load.b ?? load.a);
+      if (b0 > a0) {
+        const N = 20;
+        const step = (b0 - a0) / N;
+        // Pesos Simpson: 1, 4, 2, 4, ..., 4, 1.
+        for (let i = 0; i < N; i++) {
+          const weight = i % 2 === 1 ? 4 : 2;
+          const subMag = (mag * step * weight) / 3;
+          const sPos = a0 + (i + 0.5) * step;
+          addGlobalLoad(F, map, bar, sPos, Lbar, c, sG, subMag, load.angle);
         }
       }
       continue;
     }
 
-    // Carga puntual.
-    const mag = factor(load.D, load.L);
-    if (mag === 0) continue;
     const aPos = Math.max(0, Math.min(load.a, Lbar));
     addGlobalLoad(F, map, bar, aPos, Lbar, c, sG, mag, load.angle);
   }
@@ -425,8 +377,12 @@ function buildF(
 
 /** Suma al vector F global la carga equivalente a una carga puntual de
  *  magnitud `mag` (kN) y ángulo `angleDeg` aplicada en `sPos` desde `from`
- *  a lo largo de la barra `bar`. La transformación a global se hace con
- *  la matriz T = R ⊕ R del elemento (R = coseno/seno del ángulo de la barra). */
+ *  a lo largo de la barra `bar`. Usa el vector de carga consistente:
+ *  - Axial: N_A = N̄·b/L, N_B = −N̄·a/L (proporcional al brazo).
+ *  - Transversal: funciones de forma Hermite N_v1, N_v2, N_θ1, N_θ2 —
+ *    la formulación correcta del método de rigidez (equivalente a las
+ *    fórmulas de viga empotrada-empotrada en posiciones intermedias, y
+ *    correcta en posiciones de extremo donde V_A / V_B no se anulan mal). */
 function addGlobalLoad(
   F: number[],
   map: DofMap,
@@ -440,64 +396,145 @@ function addGlobalLoad(
 ): void {
   const dof = barLocalDofIndices(bar, map);
   const angleRad = (angleDeg * Math.PI) / 180;
-  // Componentes globales (Y-down: sin > 0 → fy positivo).
   const fx = mag * Math.cos(angleRad);
   const fy = mag * Math.sin(angleRad);
-  // Proyección a local: x̄ = (c, sG), ȳ = (-sG, c).
+  // Proyección a local.
   const Nbar = fx * c + fy * sG;
   const Pbar = -fx * sG + fy * c;
 
-  // Componente axial: reparte N̄ entre A y B sin momentos.
-  if (Math.abs(Nbar) > 1e-12) {
-    F[dof[0]] += c * Nbar;
-    F[dof[1]] += sG * Nbar;
-    F[dof[3]] += -c * Nbar;
-    F[dof[4]] += -sG * Nbar;
-  }
+  const aCl = Math.max(0, Math.min(sPos, Lbar));
+  const bCl = Lbar - aCl;
+  const NAxial = Nbar * (bCl / Lbar);
+  const NBxial = -Nbar * (aCl / Lbar);
 
-  // Componente transversal.
-  if (Math.abs(Pbar) > 1e-12) {
-    const a = sPos;
-    const b = Lbar - sPos;
-    if (b < 1e-9 || a < 1e-9) {
-      // Carga en el extremo: tratar como carga nodal completa.
-      if (a < 1e-9) {
-        F[dof[0]] += -sG * Pbar;
-        F[dof[1]] += c * Pbar;
-      } else {
-        F[dof[3]] += -sG * Pbar;
-        F[dof[4]] += c * Pbar;
+  // Funciones de forma Hermite en ξ = aCl/L.
+  const xi = aCl / Lbar;
+  const Nv1 = 1 - 3 * xi * xi + 2 * xi * xi * xi;
+  const Nv2 = 3 * xi * xi - 2 * xi * xi * xi;
+  const Nth1 = Lbar * (xi - 2 * xi * xi + xi * xi * xi);
+  const Nth2 = Lbar * (-xi * xi + xi * xi * xi);
+
+  const VA = Pbar * Nv1;
+  const VB = Pbar * Nv2;
+  const MA = Pbar * Nth1;
+  const MB = Pbar * Nth2;
+
+  // Acumular al F global proyectando local → global con la matriz T = R ⊕ R:
+  // F_global = T · F_local con T = [[c, s], [-s, c]] (design.md §6.3).
+  //   F_gx = c · F_x̄ + s · F_ȳ
+  //   F_gy = −s · F_x̄ + c · F_ȳ
+  // Nudo A (DOFs u_A=dof[0], v_A=dof[1], θ_A=dof[2]):
+  F[dof[0]] += c * NAxial + sG * VA;
+  F[dof[1]] += -sG * NAxial + c * VA;
+  F[dof[2]] += MA;
+  // Nudo B (DOFs u_B=dof[3], v_B=dof[4], θ_B=dof[5]):
+  F[dof[3]] += c * NBxial + sG * VB;
+  F[dof[4]] += -sG * NBxial + c * VB;
+  F[dof[5]] += MB;
+}
+
+/** Devuelve un mapa bar.id → 6-vector LOCAL [N_A, V_A, M_A, N_B, V_B, M_B]
+ *  con las fuerzas equivalentes a las cargas EN MARCO LOCAL. Es la mitad
+ *  que falta en `f_internal = k·u − f_load` para la recuperación de fuerzas
+ *  internas (PR2b). Usa el mismo `factor` que se aplicó al resolver `u`. */
+function buildLocalLoadVectors(
+  state: PorticoState,
+  _map: DofMap,
+  factor: (D: number, L: number) => number,
+): Map<string, number[]> {
+  const out = new Map<string, number[]>();
+  for (const bar of state.bars) out.set(bar.id, [0, 0, 0, 0, 0, 0]);
+
+  for (const load of state.loads) {
+    const bar = state.bars.find((b2) => b2.id === load.barId);
+    if (!bar) continue;
+    const a = state.nodes.find((n) => n.id === bar.fromNodeId);
+    const b = state.nodes.find((n) => n.id === bar.toNodeId);
+    if (!a || !b) continue;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const Lbar = Math.hypot(dx, dy);
+    if (Lbar < 1e-9) continue;
+    const c = dx / Lbar;
+    const sG = dy / Lbar;
+
+    if (load.kind === "distributed") {
+      const w = factor(load.D, load.L);
+      if (w !== 0) {
+        const a0 = Math.max(0, load.a);
+        const b0 = Math.min(Lbar, load.b ?? load.a);
+        if (b0 > a0) {
+          const N = 20;
+          const step = (b0 - a0) / N;
+          for (let i = 0; i < N; i++) {
+            const weight = i % 2 === 1 ? 4 : 2;
+            const subMag = (w * step * weight) / 3;
+            const sPos = a0 + (i + 0.5) * step;
+            accumulateLocalLoad(
+              out.get(bar.id)!,
+              subMag,
+              load.angle,
+              sPos,
+              Lbar,
+              c,
+              sG,
+            );
+          }
+        }
       }
-    } else {
-      const VA = (Pbar * b * (Lbar * Lbar - b * b)) / (Lbar * Lbar * Lbar);
-      const VB = (Pbar * a * (Lbar * Lbar - a * a)) / (Lbar * Lbar * Lbar);
-      const MA = (-Pbar * a * (b * b)) / (Lbar * Lbar);
-      const MB = (Pbar * (a * a) * b) / (Lbar * Lbar);
-      if (Math.abs(VA) > 1e-12) {
-        F[dof[0]] += -sG * VA;
-        F[dof[1]] += c * VA;
-      }
-      if (Math.abs(VB) > 1e-12) {
-        F[dof[3]] += -sG * VB;
-        F[dof[4]] += c * VB;
-      }
-      if (Math.abs(MA) > 1e-12) {
-        F[dof[2]] += MA;
-      }
-      if (Math.abs(MB) > 1e-12) {
-        F[dof[5]] += MB;
-      }
+      continue;
     }
+
+    const mag = factor(load.D, load.L);
+    if (mag === 0) continue;
+    const aPos = Math.max(0, Math.min(load.a, Lbar));
+    accumulateLocalLoad(out.get(bar.id)!, mag, load.angle, aPos, Lbar, c, sG);
   }
+  return out;
+}
+
+/** Acumula al 6-vector LOCAL de una barra la contribución de una carga
+ *  puntual de magnitud `mag` (kN) y ángulo `angleDeg` en posición `sPos`.
+ *  Mismo vector de carga consistente que `addGlobalLoad`, pero en local
+ *  (sin proyectar al global). */
+function accumulateLocalLoad(
+  f6: number[],
+  mag: number,
+  angleDeg: number,
+  sPos: number,
+  Lbar: number,
+  c: number,
+  sG: number,
+): void {
+  const angleRad = (angleDeg * Math.PI) / 180;
+  const fx = mag * Math.cos(angleRad);
+  const fy = mag * Math.sin(angleRad);
+  const Nbar = fx * c + fy * sG;
+  const Pbar = -fx * sG + fy * c;
+
+  const aCl = Math.max(0, Math.min(sPos, Lbar));
+  const bCl = Lbar - aCl;
+  const NAxial = Nbar * (bCl / Lbar);
+  const NBxial = -Nbar * (aCl / Lbar);
+
+  const xi = aCl / Lbar;
+  const Nv1 = 1 - 3 * xi * xi + 2 * xi * xi * xi;
+  const Nv2 = 3 * xi * xi - 2 * xi * xi * xi;
+  const Nth1 = Lbar * (xi - 2 * xi * xi + xi * xi * xi);
+  const Nth2 = Lbar * (-xi * xi + xi * xi * xi);
+
+  f6[0] += NAxial;
+  f6[1] += Pbar * Nv1;
+  f6[2] += Pbar * Nth1;
+  f6[3] += NBxial;
+  f6[4] += Pbar * Nv2;
+  f6[5] += Pbar * Nth2;
 }
 
 // ---- Solver Gauss-Jordan con pivoteo parcial ----
 
-/** Resuelve `A · x = b` con Gauss-Jordan de pivoteo parcial. Lanza
- *  `Error("K_ff singular")` si aparece pivot menor a 1e-12. */
 function gaussSolve(A: number[][], b: number[]): number[] {
   const n = A.length;
-  // Matriz aumentada copia.
   const M: number[][] = A.map((row, i) => [...row, b[i]]);
   for (let k = 0; k < n; k++) {
     let p = k;
@@ -521,6 +558,141 @@ function gaussSolve(A: number[][], b: number[]): number[] {
   return M.map((row, i) => row[n] / row[i]);
 }
 
+// ---- Recuperación: reacciones y fuerzas internas ----
+
+/** Reacciones: `R = K·u − F` en DOFs restringidos, sign-flipped a la
+ *  convención del usuario (positivo = apoyo empuja la estructura). */
+function recoverReactions(
+  state: PorticoState,
+  map: DofMap,
+  K: number[][],
+  u: number[],
+  F: number[],
+  constrained: boolean[],
+): PorticoReaction[] {
+  const Ku: number[] = new Array(map.nDof).fill(0);
+  for (let i = 0; i < map.nDof; i++) {
+    let s = 0;
+    for (let j = 0; j < map.nDof; j++) s += K[i][j] * u[j];
+    Ku[i] = s;
+  }
+  const out: PorticoReaction[] = [];
+  for (const sup of state.supports) {
+    const start = map.nodeStart.get(sup.nodeId);
+    if (start === undefined) continue;
+    const all =
+      constrained[start] && constrained[start + 1] && constrained[start + 2];
+    out.push({
+      supportId: sup.id,
+      Fx: -(Ku[start] - F[start]),
+      Fy: -(Ku[start + 1] - F[start + 1]),
+      Mz: all ? -(Ku[start + 2] - F[start + 2]) : 0,
+    });
+  }
+  return out;
+}
+
+/** Recupera fuerzas internas por barra (extremos + 11 muestras intermedias
+ *  con Hermite). Convención: M+ = fiber traccionada abajo en vigas
+ *  horizontales con carga vertical hacia abajo → `M = -EI · d²v/dx²`. */
+function recoverBarForces(
+  state: PorticoState,
+  map: DofMap,
+  u: number[],
+  localLoad: Map<string, number[]>,
+): Array<{ barId: string; forces: PorticoBarForces }> {
+  const out: Array<{ barId: string; forces: PorticoBarForces }> = [];
+  for (const bar of state.bars) {
+    const a = state.nodes.find((n) => n.id === bar.fromNodeId);
+    const b = state.nodes.find((n) => n.id === bar.toNodeId);
+    if (!a || !b) continue;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const L = Math.hypot(dx, dy);
+    if (L < 1e-9) continue;
+    const c = dx / L;
+    const s = dy / L;
+    const EA = (bar.E ?? 1) * (bar.A ?? 1e-2);
+    const EI = (bar.E ?? 1) * (bar.I ?? 1e-4);
+    const kLocal = localElementStiffness(L, EA, EI);
+    const T = transformationMatrix(c, s);
+
+    const startA = map.nodeStart.get(bar.fromNodeId);
+    const startB = map.nodeStart.get(bar.toNodeId);
+    if (startA === undefined || startB === undefined) continue;
+    const uG = [
+      u[startA],
+      u[startA + 1],
+      u[startA + 2],
+      u[startB],
+      u[startB + 1],
+      u[startB + 2],
+    ];
+    // u_local = T · u_global.
+    const uLocal: number[] = new Array(6).fill(0);
+    for (let r = 0; r < 6; r++) {
+      let s2 = 0;
+      for (let cI = 0; cI < 6; cI++) s2 += T[r][cI] * uG[cI];
+      uLocal[r] = s2;
+    }
+    // f_internal_local_end = k·u − f_load_local (convención McGuire).
+    const fLoad = localLoad.get(bar.id) ?? [0, 0, 0, 0, 0, 0];
+    const fKE: number[] = new Array(6).fill(0);
+    for (let r = 0; r < 6; r++) {
+      let s2 = 0;
+      for (let cI = 0; cI < 6; cI++) s2 += kLocal[r][cI] * uLocal[cI];
+      fKE[r] = s2;
+    }
+    const fInternal = fKE.map((v, i) => v - fLoad[i]);
+
+    // Extremo B: signo invertido (Newton: la fuerza en el otro extremo se
+    // reporta opuesta a la que la barra ejerce sobre el nudo).
+    const startForce = {
+      N: fInternal[0],
+      V: fInternal[1],
+      M: fInternal[2],
+    };
+    const endForce = {
+      N: -fInternal[3],
+      V: -fInternal[4],
+      M: -fInternal[5],
+    };
+
+    // 11 muestras intermedias con Hermite (en marco local).
+    const samples: PorticoBarSample[] = [];
+    for (let i = 1; i <= 11; i++) {
+      const xi = i / 12;
+      // d²N1/dξ² = -6 + 12ξ; d²N2/dξ² = -4 + 6ξ; d²N3/dξ² = 6 - 12ξ;
+      // d²N4/dξ² = -2 + 6ξ. M+ = -EI · d²v/dx²  (convención: tensión abajo
+      // → curvatura hacia arriba → momento positivo).
+      const d2v =
+        ((-6 + 12 * xi) * uLocal[1] +
+          L * (-4 + 6 * xi) * uLocal[2] +
+          (6 - 12 * xi) * uLocal[4] +
+          L * (-2 + 6 * xi) * uLocal[5]) /
+        (L * L);
+      const Mi = -EI * d2v;
+      // V = dM/dx = -EI · d³v/dx³.
+      const d3v =
+        ((12 * uLocal[1] +
+          L * 6 * uLocal[2] +
+          -12 * uLocal[4] +
+          L * 6 * uLocal[5]) /
+          (L * L * L)) *
+        EI;
+      const Vi = -d3v;
+      const Ni = (EA * (uLocal[3] - uLocal[0])) / L;
+      samples.push({ s: xi * L, N: Ni, V: Vi, M: Mi });
+    }
+
+    out.push({
+      barId: bar.id,
+      forces: { start: startForce, end: endForce, samples },
+    });
+  }
+  return out;
+}
+
 // ---- Entrada principal: solvePortico ----
 
 function runMode(
@@ -529,33 +701,28 @@ function runMode(
   K: number[][],
   constrained: boolean[],
   factor: (D: number, L: number) => number,
-): { u: number[] } {
+): { u: number[]; F: number[] } {
   const F = buildF(state, map, factor);
   const { freeDofs, constrainedDofs: cDofs } = partition(map.nDof, constrained);
   if (freeDofs.length === 0) {
-    // Sin DOFs libres: estructura totalmente restringida. Vector de
-    // desplazamiento todo en cero.
-    return { u: new Array<number>(map.nDof).fill(0) };
+    return { u: new Array<number>(map.nDof).fill(0), F };
   }
   const Kff = subMatrix(K, freeDofs, freeDofs);
   const Ff = subVector(F, freeDofs);
   const uf = gaussSolve(Kff, Ff);
   const u = new Array<number>(map.nDof).fill(0);
   for (let i = 0; i < freeDofs.length; i++) u[freeDofs[i]] = uf[i];
-  // Asegurar nulos en DOFs constreñidos (sanidad).
   for (const d of cDofs) u[d] = 0;
-  return { u };
+  return { u, F };
 }
 
 /** Resuelve el pórtico bajo los tres modos (ULS, SLS-D, SLS-L) y devuelve el
- *  triple. La función es PURA — sin I/O, sin estado global, sin cap interno.
- *  PR2a completa los `displacements`; PR2b agrega `recoverInternalForces`.
+ *  triple con displacements, reactions y bar forces poblados.
  *
  *  El parámetro `mode` es parte del contrato público (PR4 lo pasa siempre).
  *  Hoy se ignora porque `solvePortico` resuelve los tres modos
  *  simultáneamente y devuelve el triple (el toggle elige el slice a
- *  renderizar, sin re-resolver).
- */
+ *  renderizar, sin re-resolver). */
 export function solvePortico(
   state: PorticoState,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept in the API for forward-compatibility with single-mode calls
@@ -570,25 +737,35 @@ export function solvePortico(
   const factorD = (D: number) => D;
   const factorL = (_D: number, L: number) => L;
 
-  const uUls = runMode(state, map, K, constrained, factorUls).u;
-  const uD = runMode(state, map, K, constrained, factorD).u;
-  const uL = runMode(state, map, K, constrained, factorL).u;
+  const ulsRun = runMode(state, map, K, constrained, factorUls);
+  const dRun = runMode(state, map, K, constrained, factorD);
+  const lRun = runMode(state, map, K, constrained, factorL);
 
-  function toDisplacements(u: number[]): PorticoNodeDisplacement[] {
-    return state.nodes.map((n) => {
-      const start = map.nodeStart.get(n.id) ?? 0;
-      return {
-        nodeId: n.id,
-        u: u[start],
-        v: u[start + 1],
-        theta: u[start + 2],
-      };
-    });
+  function toSolved(
+    u: number[],
+    F: number[],
+    factor: (D: number, L: number) => number,
+  ): SolvedPortico {
+    const reactions = recoverReactions(state, map, K, u, F, constrained);
+    const localLoad = buildLocalLoadVectors(state, map, factor);
+    return {
+      displacements: state.nodes.map((n) => {
+        const start = map.nodeStart.get(n.id) ?? 0;
+        return {
+          nodeId: n.id,
+          u: u[start],
+          v: u[start + 1],
+          theta: u[start + 2],
+        };
+      }),
+      reactions,
+      bars: recoverBarForces(state, map, u, localLoad),
+    };
   }
 
   return {
-    uls: { displacements: toDisplacements(uUls), reactions: [], bars: [] },
-    slsD: { displacements: toDisplacements(uD), reactions: [], bars: [] },
-    slsL: { displacements: toDisplacements(uL), reactions: [], bars: [] },
+    uls: toSolved(ulsRun.u, ulsRun.F, factorUls),
+    slsD: toSolved(dRun.u, dRun.F, factorD),
+    slsL: toSolved(lRun.u, lRun.F, factorL),
   };
 }
