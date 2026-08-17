@@ -67,10 +67,10 @@ const SUPPORT_HALF_W = 0.22;
 function hingeTriangle(cx: number, cy: number): [number, number][] {
   const h = SUPPORT_HALF_W * 1.6;
   return [
-    // Vértice arriba, como pidió el usuario; la base queda debajo del nudo.
-    [cx, cy - h],
-    [cx - SUPPORT_HALF_W, cy + h * 0.45],
-    [cx + SUPPORT_HALF_W, cy + h * 0.45],
+    // El vértice superior coincide exactamente con el nudo.
+    [cx, cy],
+    [cx - SUPPORT_HALF_W, cy + h],
+    [cx + SUPPORT_HALF_W, cy + h],
   ];
 }
 
@@ -562,54 +562,122 @@ export default function PorticoDiagram({
           const dy = bN.y - a.y;
           const L = Math.hypot(dx, dy);
           if (L < 1e-9) return null;
-          const angleRad = (l.angle * Math.PI) / 180;
-          const fx = Math.cos(angleRad);
-          const fy = Math.sin(angleRad);
-          const len = Math.max(0.4, widthSpan * 0.07);
           const start = Math.max(0, Math.min(l.a, L));
           const end =
             l.kind === "distributed"
               ? Math.max(start, Math.min(l.b ?? L, L))
               : start;
-          const arrowCount = l.kind === "distributed" ? 5 : 1;
-          return Array.from({ length: arrowCount }, (_, i) => {
-            const ratio = arrowCount === 1 ? 0 : i / (arrowCount - 1);
-            const aPos = start + ratio * (end - start);
-            const x = a.x + (aPos / L) * dx;
-            const y = a.y + (aPos / L) * dy;
-            const tailX = x - fx * len;
-            const tailY = y - fy * len;
-            const wing = len * 0.25;
-            const wingX1 = tailX + -fy * wing;
-            const wingY1 = tailY + fx * wing;
-            const wingX2 = tailX - -fy * wing;
-            const wingY2 = tailY - fx * wing;
-            return (
-              <Fragment key={`load-${l.id}-${i}`}>
-                <Polygon
-                  points={[
-                    [x, y],
-                    [tailX, tailY],
-                    [wingX1, wingY1],
-                    [wingX2, wingY2],
-                  ]}
-                  color={COLOR_LOAD}
-                  fillOpacity={1}
-                />
-                {i === Math.floor(arrowCount / 2) && (
-                  <Text
-                    x={tailX - fx * len * 0.2}
-                    y={tailY - fy * len * 0.2}
-                    size={14}
-                    color={COLOR_LOAD}
-                    attach="e"
-                  >
-                    {`${Math.round(l.D)}D+${Math.round(l.L)}L`}
-                  </Text>
-                )}
-              </Fragment>
-            );
-          });
+          if (l.kind === "distributed") {
+            // Banda rectangular perpendicular a la barra, con flechas
+            // interiores apuntando hacia ella. Para una barra horizontal,
+            // la banda queda arriba y las flechas apuntan hacia abajo.
+            const ux = dx / L;
+            const uy = dy / L;
+            const nx = uy;
+            const ny = -ux;
+            const bandHeight = Math.max(0.35, widthSpan * 0.09);
+            const p0: [number, number] = [
+              a.x + (start / L) * dx,
+              a.y + (start / L) * dy,
+            ];
+            const p1: [number, number] = [
+              a.x + (end / L) * dx,
+              a.y + (end / L) * dy,
+            ];
+            const q0: [number, number] = [
+              p0[0] + nx * bandHeight,
+              p0[1] + ny * bandHeight,
+            ];
+            const q1: [number, number] = [
+              p1[0] + nx * bandHeight,
+              p1[1] + ny * bandHeight,
+            ];
+            const arrowCount = 5;
+            return [
+              <Polygon
+                key={`load-band-${l.id}`}
+                points={[p0, p1, q1, q0]}
+                color={COLOR_LOAD}
+                fillOpacity={0.18}
+                strokeOpacity={1}
+                weight={2}
+              />,
+              ...Array.from({ length: arrowCount }, (_, i) => {
+                const ratio = i / (arrowCount - 1);
+                const bx = p0[0] + ratio * (p1[0] - p0[0]);
+                const by = p0[1] + ratio * (p1[1] - p0[1]);
+                const tx = bx + nx * bandHeight * 0.78;
+                const ty = by + ny * bandHeight * 0.78;
+                const head = bandHeight * 0.16;
+                return (
+                  <Fragment key={`load-arrow-${l.id}-${i}`}>
+                    <Plot.Parametric
+                      xy={(t) => [bx + t * (tx - bx), by + t * (ty - by)]}
+                      domain={[0, 1]}
+                      color={COLOR_LOAD}
+                      weight={2}
+                    />
+                    <Polygon
+                      points={[
+                        [bx, by],
+                        [tx + ux * head, ty + uy * head],
+                        [tx - ux * head, ty - uy * head],
+                      ]}
+                      color={COLOR_LOAD}
+                      fillOpacity={1}
+                    />
+                  </Fragment>
+                );
+              }),
+              <Text
+                key={`load-label-${l.id}`}
+                x={(q0[0] + q1[0]) / 2}
+                y={(q0[1] + q1[1]) / 2}
+                size={14}
+                color={COLOR_LOAD}
+                attach="n"
+              >
+                {`${Math.round(l.D)}D+${Math.round(l.L)}L`}
+              </Text>,
+            ];
+          }
+
+          const angleRad = (l.angle * Math.PI) / 180;
+          const fx = Math.cos(angleRad);
+          const fy = Math.sin(angleRad);
+          const len = Math.max(0.4, widthSpan * 0.07);
+          const x = a.x + (start / L) * dx;
+          const y = a.y + (start / L) * dy;
+          const tailX = x - fx * len;
+          const tailY = y - fy * len;
+          const wing = len * 0.25;
+          const wingX1 = tailX + -fy * wing;
+          const wingY1 = tailY + fx * wing;
+          const wingX2 = tailX - -fy * wing;
+          const wingY2 = tailY - fx * wing;
+          return [
+            <Fragment key={`load-${l.id}`}>
+              <Polygon
+                points={[
+                  [x, y],
+                  [tailX, tailY],
+                  [wingX1, wingY1],
+                  [wingX2, wingY2],
+                ]}
+                color={COLOR_LOAD}
+                fillOpacity={1}
+              />
+              <Text
+                x={tailX - fx * len * 0.2}
+                y={tailY - fy * len * 0.2}
+                size={14}
+                color={COLOR_LOAD}
+                attach="e"
+              >
+                {`${Math.round(l.D)}D+${Math.round(l.L)}L`}
+              </Text>
+            </Fragment>,
+          ];
         })}
 
       {/* Nodos con ID (siempre); coords solo en geometría */}
