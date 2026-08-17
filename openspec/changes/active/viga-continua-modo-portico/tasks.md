@@ -156,7 +156,7 @@ npm run lint:all && npm run typecheck:all && npm run build:all
 
 ## PR3 — PorticoForm Editor
 
-### 3.1 — Default geometry factory
+### 3.1 — Default geometry factory ✅ (applied 2026-08-17)
 - **Action**: Isolate the precarged 3-node/2-bar/2-support/1-load example and the Y-positive-down hint.
 - **Requirements covered**: R-portico-default-geometry, R-portico-y-axis, R-portico-limits.
 - **Files**:
@@ -170,7 +170,7 @@ npm run lint:all && npm run typecheck:all && npm run build:all
 ```
 - **Notes**: This is the locked PR3 budget cut from §7.
 
-### 3.2 — Form shell, hydration, autosave, and named saves
+### 3.2 — Form shell, hydration, autosave, and named saves ✅ (applied 2026-08-17)
 - **Action**: Build `PorticoForm` state lifecycle, default/autosave hydration, CRUD wiring, and the Pórtico `SavedBeams` panel.
 - **Requirements covered**: R-portico-persistence, R-portico-default-geometry, R-portico-nueva-shared.
 - **Files**:
@@ -184,7 +184,7 @@ npm run lint:all && npm run typecheck:all && npm run build:all
 ```
 - **Notes**: Shared storage accepts structural input; import domain types only in the app screen.
 
-### 3.3 — Node and bar editors
+### 3.3 — Node and bar editors ✅ (applied 2026-08-17)
 - **Action**: Add editable node IDs/coords and bar endpoints plus `E`, `A`, and `I` using existing numeric/format primitives.
 - **Requirements covered**: R-portico-types, R-portico-default-geometry, R-portico-y-axis, R-portico-limits.
 - **Files**:
@@ -198,7 +198,7 @@ npm run lint:all && npm run typecheck:all && npm run build:all
 ```
 - **Notes**: `DecimalInput` and `format*` are mandatory reuse points.
 
-### 3.4 — Support and load editors
+### 3.4 — Support and load editors ✅ (applied 2026-08-17)
 - **Action**: Add hinge/fixed support rows and point/distributed D/L, angle, `a`, and optional `b` load rows with add/remove controls.
 - **Requirements covered**: R-portico-supports, R-portico-solver, R-portico-limits.
 - **Files**:
@@ -212,7 +212,7 @@ npm run lint:all && npm run typecheck:all && npm run build:all
 ```
 - **Notes**: Validate only on submit so valid editing remains frictionless.
 
-### 3.5 — Nueva, validation, and submit
+### 3.5 — Nueva, validation, and submit ✅ (applied 2026-08-17)
 - **Action**: Add confirmed reset, `validatePorticoState` errors, and navigation to the common results route with pórtico state.
 - **Requirements covered**: R-portico-nueva-shared, R-portico-persistence, R-portico-supports, R-routing-portico-routes.
 - **Files**:
