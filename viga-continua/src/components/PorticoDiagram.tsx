@@ -88,10 +88,6 @@ function fixedSupportBlock(cx: number, cy: number): [number, number][] {
   ];
 }
 
-const sinL = (x: number) => x;
-const cosL = (x: number) =>
-  Math.sqrt(Math.max(0, 1 - x * x)) * (x >= 0 ? 1 : -1);
-
 // ---- ViewBox ----
 
 function computeFitViewBox(
@@ -138,9 +134,10 @@ function buildOffsetPolyline(
       const dy = c.y - a.y;
       const L = Math.hypot(dx, dy);
       if (L < 1e-9) return null;
-      // Perpendicular local en Y-DOWN screen: (-sin α, cos α).
-      const offX = -sinL(dy / L);
-      const offY = cosL(dx / L);
+      // Normal local en el modelo Y-down. No calcular cosenos aquí: para
+      // una barra horizontal dx/L=1 y la normal debe ser (0,1), no (0,0).
+      const offX = -dy / L;
+      const offY = dx / L;
       const samples: BarSamplePoint[] = b.forces.samples.map((s) => {
         const forceVal = s[sampleKey];
         // Para M usamos tensión abajo (mean sign); para N/V usamos el signo
@@ -207,8 +204,8 @@ function buildNPolylines(
     const dy = c.y - a.y;
     const L = Math.hypot(dx, dy);
     if (L < 1e-9) continue;
-    const offX = -sinL(dy / L);
-    const offY = cosL(dx / L);
+    const offX = -dy / L;
+    const offY = dx / L;
     for (let i = 0; i < b.forces.samples.length - 1; i++) {
       const p0 = b.forces.samples[i];
       const p1 = b.forces.samples[i + 1];
@@ -258,8 +255,8 @@ function buildVPolylines(
     const dy = c.y - a.y;
     const L = Math.hypot(dx, dy);
     if (L < 1e-9) continue;
-    const offX = -sinL(dy / L);
-    const offY = cosL(dx / L);
+    const offX = -dy / L;
+    const offY = dx / L;
     for (let i = 0; i < b.forces.samples.length - 1; i++) {
       const p0 = b.forces.samples[i];
       const p1 = b.forces.samples[i + 1];
