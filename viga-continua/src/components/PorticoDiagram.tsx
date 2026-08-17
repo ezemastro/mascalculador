@@ -568,13 +568,15 @@ export default function PorticoDiagram({
               ? Math.max(start, Math.min(l.b ?? L, L))
               : start;
           if (l.kind === "distributed") {
-            // Banda rectangular perpendicular a la barra, con flechas
-            // interiores apuntando hacia ella. Para una barra horizontal,
-            // la banda queda arriba y las flechas apuntan hacia abajo.
+            // El ángulo de la carga manda la dirección de las flechas. Con
+            // Y positiva hacia abajo: 90° apunta hacia abajo. La banda se
+            // coloca en sentido contrario al vector, de modo que cada flecha
+            // nace en la banda y termina sobre la barra.
             const ux = dx / L;
             const uy = dy / L;
-            const nx = uy;
-            const ny = -ux;
+            const angleRad = (l.angle * Math.PI) / 180;
+            const forceX = Math.cos(angleRad);
+            const forceY = Math.sin(angleRad);
             const bandHeight = Math.max(0.35, widthSpan * 0.09);
             const p0: [number, number] = [
               a.x + (start / L) * dx,
@@ -585,12 +587,12 @@ export default function PorticoDiagram({
               a.y + (end / L) * dy,
             ];
             const q0: [number, number] = [
-              p0[0] + nx * bandHeight,
-              p0[1] + ny * bandHeight,
+              p0[0] - forceX * bandHeight,
+              p0[1] - forceY * bandHeight,
             ];
             const q1: [number, number] = [
-              p1[0] + nx * bandHeight,
-              p1[1] + ny * bandHeight,
+              p1[0] - forceX * bandHeight,
+              p1[1] - forceY * bandHeight,
             ];
             const arrowCount = 5;
             return [
@@ -606,8 +608,8 @@ export default function PorticoDiagram({
                 const ratio = i / (arrowCount - 1);
                 const bx = p0[0] + ratio * (p1[0] - p0[0]);
                 const by = p0[1] + ratio * (p1[1] - p0[1]);
-                const tx = bx + nx * bandHeight * 0.78;
-                const ty = by + ny * bandHeight * 0.78;
+                const tx = bx - forceX * bandHeight * 0.78;
+                const ty = by - forceY * bandHeight * 0.78;
                 const head = bandHeight * 0.16;
                 return (
                   <Fragment key={`load-arrow-${l.id}-${i}`}>
@@ -620,8 +622,14 @@ export default function PorticoDiagram({
                     <Polygon
                       points={[
                         [bx, by],
-                        [tx + ux * head, ty + uy * head],
-                        [tx - ux * head, ty - uy * head],
+                        [
+                          bx - forceX * head + ux * head,
+                          by - forceY * head + uy * head,
+                        ],
+                        [
+                          bx - forceX * head - ux * head,
+                          by - forceY * head - uy * head,
+                        ],
                       ]}
                       color={COLOR_LOAD}
                       fillOpacity={1}
