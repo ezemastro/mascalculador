@@ -956,24 +956,32 @@ export default function PorticoDiagram({
           const angleRad = (l.angle * Math.PI) / 180;
           const fx = Math.cos(angleRad);
           const fy = -Math.sin(angleRad);
-          const len = Math.max(0.4, widthSpan * 0.07);
+          const len = Math.max(0.75, widthSpan * 0.14);
           const x = a.x + (start / L) * dx;
           const y = -(a.y + (start / L) * dy);
           const tailX = x - fx * len;
           const tailY = y - fy * len;
-          const wing = len * 0.25;
-          const wingX1 = tailX + -fy * wing;
-          const wingY1 = tailY + fx * wing;
-          const wingX2 = tailX - -fy * wing;
-          const wingY2 = tailY - fx * wing;
+          const head = Math.max(0.1, len * 0.12);
+          const headWidth = head * 0.7;
           return [
             <Fragment key={`load-${l.id}`}>
+              <Plot.Parametric
+                xy={(t) => [tailX + t * (x - tailX), tailY + t * (y - tailY)]}
+                domain={[0, 1]}
+                color={COLOR_LOAD}
+                weight={2}
+              />
               <Polygon
                 points={[
                   [x, y],
-                  [tailX, tailY],
-                  [wingX1, wingY1],
-                  [wingX2, wingY2],
+                  [
+                    x - fx * head + -fy * headWidth,
+                    y - fy * head + fx * headWidth,
+                  ],
+                  [
+                    x - fx * head - -fy * headWidth,
+                    y - fy * head - fx * headWidth,
+                  ],
                 ]}
                 color={COLOR_LOAD}
                 fillOpacity={1}
