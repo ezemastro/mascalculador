@@ -21,6 +21,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { DecimalInput, MainLayout, SavedBeams } from "@mascalculador/shared";
+import PorticoDiagram from "../components/PorticoDiagram";
 import {
   loadLastPorticoFormState,
   saveLastPorticoFormState,
@@ -747,6 +748,21 @@ export default function PorticoForm() {
           Editando "{loadedSaveName}" — Guardar actualiza este registro.
         </p>
       )}
+
+      {/* Preview de geometría en tiempo real (mientras se edita). */}
+      <section className="bg-surface rounded-xl border border-border overflow-hidden">
+        <div className="px-4 py-2 border-b border-border flex items-center justify-between">
+          <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider">
+            Vista previa — geometría
+          </h3>
+          <span className="text-xs text-text-muted">
+            Actualiza al editar nodos/barras/cargas/apoyos
+          </span>
+        </div>
+        <div className="p-1">
+          <PorticoDiagram porticoState={state} mode="geometria" height={360} />
+        </div>
+      </section>
     </MainLayout>
   );
 }

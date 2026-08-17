@@ -28,7 +28,6 @@
 
 import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { Coordinates, Mafs, Plot, Polygon, Text } from "mafs";
 import { MainLayout, formatMoment } from "@mascalculador/shared";
 import { solvePortico } from "../lib/portico-analysis";
 import type {
@@ -39,6 +38,19 @@ import type {
   SolvedPortico,
 } from "../lib/portico";
 import EnvToggle, { type EnvMode } from "../components/EnvToggle";
+import DiagramModeToggle from "../components/DiagramModeToggle";
+import type { DiagramMode } from "../components/PorticoDiagram";
+import PorticoDiagram, {
+  COLOR_BAR,
+  COLOR_DEFORM,
+  COLOR_LOAD,
+  COLOR_M,
+  COLOR_N_COMPRESSION,
+  COLOR_N_TENSION,
+  COLOR_SUPPORT,
+  COLOR_V,
+} from "../components/PorticoDiagram";
+import ZoomControls from "../components/ZoomControls";
 
 interface PorticoNavState {
   mode: "portico";
@@ -55,69 +67,11 @@ function isPorticoNavState(s: unknown): s is PorticoNavState {
   );
 }
 
-// ---- Estética de soporte ----
-
-const SUPPORT_HALF_W = 0.18;
-function hingeTriangle(cx: number, cy: number): [number, number][] {
-  return [
-    [cx, cy],
-    [cx - SUPPORT_HALF_W, cy + SUPPORT_HALF_W * 1.5],
-    [cx + SUPPORT_HALF_W, cy + SUPPORT_HALF_W * 1.5],
-  ];
-}
-function fixedHatchBox(cx: number, cy: number): [number, number][] {
-  const h = SUPPORT_HALF_W * 0.9;
-  return [
-    [cx - SUPPORT_HALF_W, cy],
-    [cx + SUPPORT_HALF_W, cy],
-    [cx + SUPPORT_HALF_W, cy + h * 2],
-    [cx - SUPPORT_HALF_W, cy + h * 2],
-  ];
-}
-
-// Exageraciones visuales.
-const DEFORM_SCALE = 50;
-const M_SCALE = 50;
-
-interface BarSamplePoint {
-  x: number;
-  y: number;
-}
-
-function buildBarPolylines(
-  porticoState: PorticoState,
-  active: SolvedPortico,
-): Array<{ barId: string; samples: BarSamplePoint[] }> {
-  return active.bars
-    .map((b) => {
-      const bar = porticoState.bars.find((bb) => bb.id === b.barId);
-      if (!bar) return null;
-      const a = porticoState.nodes.find((n) => n.id === bar.fromNodeId);
-      const c = porticoState.nodes.find((n) => n.id === bar.toNodeId);
-      if (!a || !c) return null;
-      const dx = c.x - a.x;
-      const dy = c.y - a.y;
-      const L = Math.hypot(dx, dy);
-      if (L < 1e-9) return null;
-      const meanM =
-        b.forces.samples.reduce((s, p) => s + p.M, 0) /
-        Math.max(1, b.forces.samples.length);
-      const tensionedSign = meanM >= 0 ? 1 : -1;
-      // Perpendicular local en Y-DOWN screen: (-sin α, cos α).
-      const offX = -sinL(dy / L) * tensionedSign;
-      const offY = cosL(dx / L) * tensionedSign;
-      const samples: BarSamplePoint[] = b.forces.samples.map((s) => ({
-        x: a.x + (s.s / L) * dx + offX * s.M * M_SCALE,
-        y: a.y + (s.s / L) * dy + offY * s.M * M_SCALE,
-      }));
-      return { barId: b.barId, samples };
-    })
-    .filter((x): x is NonNullable<typeof x> => x !== null);
-}
-
-const sinL = (x: number) => x;
-const cosL = (x: number) =>
-  Math.sqrt(Math.max(0, 1 - x * x)) * (x >= 0 ? 1 : -1);
+// ---- Estética de soporte (movida a PorticoDiagram.tsx) ----
+// Las constantes SUPPORT_HALF_W, hingeTriangle, fixedHatchBox, DEFORM_SCALE,
+// M_SCALE, buildBarPolylines, sinL, cosL y la interface BarSamplePoint
+// ahora viven en PorticoDiagram. PorticoResults solo orquesta: state de
+// modo + zoom + selector + componente de render.
 
 export default function PorticoResults() {
   const navigate = useNavigate();
@@ -125,6 +79,10 @@ export default function PorticoResults() {
   const raw: unknown = location.state;
 
   const [envMode, setEnvMode] = useState<EnvMode>("envolvente");
+  const [diagramMode, setDiagramMode] = useState<DiagramMode>("geometria");
+  const [viewBoxOverride, setViewBoxOverride] = useState<
+    [number, number, number, number] | null
+  >(null);
 
   // Resolver una sola vez (caller: PorticoForm / mode-selector). Memoiza
   // en raw para re-resolver sólo si cambia el payload (poco probable en la
@@ -183,30 +141,47 @@ export default function PorticoResults() {
 
   const active: SolvedPortico = envMode === "envolvente" ? uls : slsD;
 
-  // ---- Geometría: Mafs viewBox ----
-  const xs = porticoState.nodes.map((n) => n.x);
-  const ys = porticoState.nodes.map((n) => n.y);
-  const xMin = Math.min(...xs, -1);
-  const xMax = Math.max(...xs, 1);
-  const yMin = Math.min(...ys, -1);
-  const yMax = Math.max(...ys, 1);
-  const padX = Math.max(2, (xMax - xMin) * 0.18);
-  const padY = Math.max(2, (yMax - yMin) * 0.18);
-  const xLo = Math.floor(xMin - padX);
-  const xHi = Math.ceil(xMax + padX);
-  const yLo = Math.floor(yMin - padY);
-  const yHi = Math.ceil(yMax + padY);
+  // ---- Zoom helpers ----
+  // Mantienen el centro del viewBox y escalan los spans. Cuando el override
+  // es null, el diagrama usa fit-to-bbox automático.
+  function zoomBy(factor: number) {
+    setViewBoxOverride((cur) => {
+      // Calcular bbox base desde los nodos (fit-to-bbox).
+      const xs = porticoState.nodes.map((n) => n.x);
+      const ys = porticoState.nodes.map((n) => n.y);
+      const xMin = xs.length ? Math.min(...xs) : -1;
+      const xMax = xs.length ? Math.max(...xs) : 1;
+      const yMin = ys.length ? Math.min(...ys) : -1;
+      const yMax = ys.length ? Math.max(...ys) : 1;
+      const padX = Math.max(2, (xMax - xMin) * 0.18);
+      const padY = Math.max(2, (yMax - yMin) * 0.18);
+      const baseXLo = xMin - padX;
+      const baseXHi = xMax + padX;
+      const baseYLo = yMin - padY;
+      const baseYHi = yMax + padY;
+      const base: [number, number, number, number] = cur ?? [
+        baseXLo,
+        baseXHi,
+        baseYLo,
+        baseYHi,
+      ];
+      const cx = (base[0] + base[1]) / 2;
+      const cy = (base[2] + base[3]) / 2;
+      const halfW = ((base[1] - base[0]) * factor) / 2;
+      const halfH = ((base[3] - base[2]) * factor) / 2;
+      return [cx - halfW, cx + halfW, cy - halfH, cy + halfH];
+    });
+  }
 
-  // useMemo llamado siempre, ANTES del early-return para cumplir
-  // rules-of-hooks.
-  const barPolylines = useMemo<ReturnType<typeof buildBarPolylines>>(
-    () => buildBarPolylines(porticoState, active),
-    [porticoState, active],
-  );
-  const dispByNodeId = useMemo(
-    () => new Map(active.displacements.map((d) => [d.nodeId, d])),
-    [active],
-  );
+  function zoomIn() {
+    zoomBy(0.8);
+  }
+  function zoomOut() {
+    zoomBy(1.25);
+  }
+  function zoomFit() {
+    setViewBoxOverride(null);
+  }
 
   // Errores tempranos: AHORA sí retornamos.
   if (!solved.ok) {
@@ -302,168 +277,98 @@ export default function PorticoResults() {
 
       {/* Diagrama Mafs */}
       <section className="bg-surface rounded-xl border border-border overflow-hidden">
-        <div className="px-4 py-2 border-b border-border flex items-center justify-between">
+        <div className="px-4 py-2 border-b border-border flex items-center justify-between gap-3 flex-wrap">
           <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider">
-            Geometría + diagrama M+ (deformada ×50)
+            Diagrama
           </h3>
+          <div className="flex items-center gap-2">
+            <DiagramModeToggle mode={diagramMode} setMode={setDiagramMode} />
+            <ZoomControls
+              hasOverride={viewBoxOverride !== null}
+              onIn={zoomIn}
+              onOut={zoomOut}
+              onFit={zoomFit}
+            />
+          </div>
         </div>
-        <div className="p-1">
-          <Mafs
-            viewBox={{
-              x: [xLo, xHi],
-              y: [yLo, yHi],
-            }}
-            height={400}
-            preserveAspectRatio={false}
-          >
-            <Coordinates.Cartesian xAxis={{ lines: 4 }} yAxis={{ lines: 4 }} />
-
-            {/* Barras indeformadas (Plot.OfX linear por barra) */}
-            {porticoState.bars.map((b) => {
-              const a = porticoState.nodes.find((n) => n.id === b.fromNodeId);
-              const c = porticoState.nodes.find((n) => n.id === b.toNodeId);
-              if (!a || !c) return null;
-              return (
-                <Plot.OfX
-                  key={`bar-${b.id}`}
-                  y={(t) => {
-                    if (t < a.x || t > c.x) return a.y;
-                    const u = (t - a.x) / (c.x - a.x || 1);
-                    return a.y + u * (c.y - a.y);
-                  }}
-                  domain={[Math.min(a.x, c.x), Math.max(a.x, c.x)]}
-                  color="#6b7280"
+        <div className="p-1 w-full">
+          <PorticoDiagram
+            porticoState={porticoState}
+            solved={active}
+            mode={diagramMode}
+            viewBoxOverride={viewBoxOverride ?? undefined}
+            height={420}
+          />
+        </div>
+        <div className="px-4 py-2 border-t border-border text-xs text-text-muted flex flex-wrap gap-3">
+          {diagramMode === "geometria" && (
+            <>
+              <span>
+                <span
+                  className="inline-block w-3 h-3 rounded-full align-middle mr-1"
+                  style={{ background: COLOR_BAR }}
                 />
-              );
-            })}
-
-            {/* Diagrama M+ por barra (Plot.Parametric sobre la polilínea
-                de samples precomputada). Plot.Parametric exige funciones
-                x(t)/y(t) suaves, así que aproximamos la polilínea con
-                una interpolación lineal por segmentos entre samples. */}
-            {barPolylines.flatMap((pl) => {
-              if (pl.samples.length < 2) return [];
-              const segments: Array<{
-                x0: number;
-                x1: number;
-                y0: number;
-                y1: number;
-              }> = [];
-              for (let i = 0; i < pl.samples.length - 1; i++) {
-                const p0 = pl.samples[i];
-                const p1 = pl.samples[i + 1];
-                segments.push({
-                  x0: p0.x,
-                  x1: p1.x,
-                  y0: p0.y,
-                  y1: p1.y,
-                });
-              }
-              return segments.map((s, idx) => (
-                <Plot.OfX
-                  key={`m-${pl.barId}-${idx}`}
-                  y={(t) => {
-                    if (t < s.x0 || t > s.x1) return s.y0;
-                    const u = (t - s.x0) / (s.x1 - s.x0 || 1);
-                    return s.y0 + u * (s.y1 - s.y0);
-                  }}
-                  domain={[Math.min(s.x0, s.x1), Math.max(s.x0, s.x1)]}
-                  color="#fbbf24"
+                Barras
+              </span>
+              <span>
+                <span
+                  className="inline-block w-3 h-3 rounded-full align-middle mr-1"
+                  style={{ background: COLOR_DEFORM }}
                 />
-              ));
-            })}
-
-            {/* Geometría deformada ×50 (líneas azules) */}
-            {porticoState.bars.map((b) => {
-              const a = porticoState.nodes.find((n) => n.id === b.fromNodeId);
-              const c = porticoState.nodes.find((n) => n.id === b.toNodeId);
-              const disA = a ? dispByNodeId.get(a.id) : undefined;
-              const disC = c ? dispByNodeId.get(c.id) : undefined;
-              if (!a || !c || !disA || !disC) return null;
-              return (
-                <Polygon
-                  key={`deform-${b.id}`}
-                  points={[
-                    [a.x + disA.u * DEFORM_SCALE, a.y + disA.v * DEFORM_SCALE],
-                    [c.x + disC.u * DEFORM_SCALE, c.y + disC.v * DEFORM_SCALE],
-                  ]}
-                  color="#3b82f6"
-                  fillOpacity={0}
-                  strokeOpacity={1}
+                Deformada ×50
+              </span>
+              <span>
+                <span
+                  className="inline-block w-3 h-3 rounded-full align-middle mr-1"
+                  style={{ background: COLOR_SUPPORT }}
                 />
-              );
-            })}
-
-            {/* Glyphs de apoyo */}
-            {porticoState.supports.map((sup) => {
-              const n = porticoState.nodes.find((nn) => nn.id === sup.nodeId);
-              if (!n) return null;
-              const isHinge = sup.kind === "hinge";
-              return (
-                <Polygon
-                  key={`sup-${sup.id}`}
-                  points={
-                    isHinge ? hingeTriangle(n.x, n.y) : fixedHatchBox(n.x, n.y)
-                  }
-                  color="#10b981"
-                  fillOpacity={isHinge ? 1 : 0.2}
-                  strokeOpacity={1}
+                Apoyos
+              </span>
+              <span>
+                <span
+                  className="inline-block w-3 h-3 rounded-full align-middle mr-1"
+                  style={{ background: COLOR_LOAD }}
                 />
-              );
-            })}
-
-            {/* Flechas de carga */}
-            {porticoState.loads.map((l) => {
-              const bar = porticoState.bars.find((b) => b.id === l.barId);
-              const a = porticoState.nodes.find(
-                (n) => n.id === bar?.fromNodeId,
-              );
-              const b = porticoState.nodes.find((n) => n.id === bar?.toNodeId);
-              if (!a || !b || !bar) return null;
-              const dx = b.x - a.x;
-              const dy = b.y - a.y;
-              const L = Math.hypot(dx, dy);
-              if (L < 1e-9) return null;
-              const aPos = Math.max(0, Math.min(l.a, L));
-              const x = a.x + (aPos / L) * dx;
-              const y = a.y + (aPos / L) * dy;
-              const angleRad = (l.angle * Math.PI) / 180;
-              const fx = Math.cos(angleRad);
-              const fy = Math.sin(angleRad);
-              const len = Math.max(0.4, (xMax - xMin) * 0.07);
-              const tailX = x - fx * len;
-              const tailY = y - fy * len;
-              const wing = len * 0.25;
-              const wingX1 = tailX + -fy * wing;
-              const wingY1 = tailY + fx * wing;
-              const wingX2 = tailX - -fy * wing;
-              const wingY2 = tailY - fx * wing;
-              return (
-                <g key={`load-${l.id}`}>
-                  <Polygon
-                    points={[
-                      [x, y],
-                      [tailX, tailY],
-                      [wingX1, wingY1],
-                      [wingX2, wingY2],
-                    ]}
-                    color="#f87171"
-                    fillOpacity={1}
-                  />
-                  <Text
-                    x={tailX - fx * len * 0.2}
-                    y={tailY - fy * len * 0.2}
-                    size={14}
-                    color="#f87171"
-                  >
-                    {`${Math.round(l.D)}D+${Math.round(l.L)}L`}
-                  </Text>
-                </g>
-              );
-            })}
-
-            <Plot.OfX y={() => 0} domain={[xLo, xHi]} color="#374151" />
-          </Mafs>
+                Cargas
+              </span>
+            </>
+          )}
+          {diagramMode === "normales" && (
+            <>
+              <span>
+                <span
+                  className="inline-block w-3 h-3 rounded-full align-middle mr-1"
+                  style={{ background: COLOR_N_TENSION }}
+                />
+                Tracción (+)
+              </span>
+              <span>
+                <span
+                  className="inline-block w-3 h-3 rounded-full align-middle mr-1"
+                  style={{ background: COLOR_N_COMPRESSION }}
+                />
+                Compresión (−)
+              </span>
+            </>
+          )}
+          {diagramMode === "momentos" && (
+            <span>
+              <span
+                className="inline-block w-3 h-3 rounded-full align-middle mr-1"
+                style={{ background: COLOR_M }}
+              />
+              M+ (fibra inferior traccionada)
+            </span>
+          )}
+          {diagramMode === "corte" && (
+            <span>
+              <span
+                className="inline-block w-3 h-3 rounded-full align-middle mr-1"
+                style={{ background: COLOR_V }}
+              />
+              V (signo derecho)
+            </span>
+          )}
         </div>
       </section>
 
