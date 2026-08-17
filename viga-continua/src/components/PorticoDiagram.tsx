@@ -31,8 +31,6 @@ import type { PorticoState, SolvedPortico } from "../lib/portico";
 
 // ---- Visual constants ----
 
-const DEFORM_SCALE = 50;
-
 export const COLOR_BAR = "#f8fafc";
 export const COLOR_DEFORM = "#3b82f6";
 export const COLOR_SUPPORT = "#10b981";
@@ -395,6 +393,15 @@ export default function PorticoDiagram({
   const widthSpan = xHi - xLo;
   const heightSpan = yHi - yLo;
   const diagramSpan = Math.max(1, Math.min(widthSpan, heightSpan));
+  const maxDisplacement = solved
+    ? solved.displacements.reduce(
+        (max, d) => Math.max(max, Math.hypot(d.u, d.v)),
+        0,
+      )
+    : 0;
+  // Exageración visual automática: limita la deformada a ~20% del gráfico.
+  const deformScale =
+    maxDisplacement > 1e-12 ? (diagramSpan * 0.2) / maxDisplacement : 1;
 
   // Memoize heavy derivatives
   const mScale = solved ? forceScale(solved.bars, "M", diagramSpan * 0.2) : 0;
@@ -474,8 +481,8 @@ export default function PorticoDiagram({
             <Polygon
               key={`deform-${b.id}`}
               points={[
-                [a.x + disA.u * DEFORM_SCALE, -(a.y + disA.v * DEFORM_SCALE)],
-                [c.x + disC.u * DEFORM_SCALE, -(c.y + disC.v * DEFORM_SCALE)],
+                [a.x + disA.u * deformScale, -(a.y + disA.v * deformScale)],
+                [c.x + disC.u * deformScale, -(c.y + disC.v * deformScale)],
               ]}
               color={COLOR_DEFORM}
               fillOpacity={0}

@@ -339,7 +339,7 @@ export default function PorticoResults() {
                 className="inline-block w-3 h-3 rounded-full align-middle mr-1"
                 style={{ background: COLOR_DEFORM }}
               />
-              Deformada ×50
+              Deformada — escala gráfica automática
             </span>
           )}
           {diagramMode === "normales" && (
