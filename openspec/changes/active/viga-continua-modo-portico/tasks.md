@@ -6,40 +6,43 @@
 
 ## PR1 — Foundations + Routing + Selector + Shared UI Stubs
 
-### 1.1 — Portico domain contracts
+### 1.1 — Portico domain contracts ✅ (applied 2026-08-16, PR1 sub-slice)
 - **Action**: Create the strict domain model, result shapes, support semantics, and validation contract for pórtico state.
 - **Requirements covered**: R-portico-types, R-portico-supports, R-portico-results, R-portico-y-axis, R-portico-m-plus-convention.
 - **Files**:
   - `viga-continua/src/lib/portico.ts` (new, ~70 LOC)
 - **Acceptance**:
-  - `PorticoState`, force/displacement/reaction outputs, and `"hinge" | "fixed"` supports are strongly typed; Y is positive downward.
-  - `validatePorticoState` rejects duplicate IDs, bad references, zero-length bars, invalid load ranges, missing supports, and mechanisms before assembly.
+  - [x] `PorticoState`, force/displacement/reaction outputs, and `"hinge" | "fixed"` supports are strongly typed; Y is positive downward.
+  - [ ] `validatePorticoState` rejects duplicate IDs, bad references, zero-length bars, invalid load ranges, missing supports, and mechanisms before assembly. *(deferred to PR2 per orchestrator directive — types-only PR1 scope)*
 - **Verification**:
 ```bash
 npm run lint:all && npm run typecheck:all && npm run build:all
 ```
-- **Notes**: Use structural persistence types in `shared/`; do not create a reverse dependency from `shared/src` to `src/lib/portico.ts`.
+- **Notes**: PR1 landed types only (no `validatePorticoState`); the richer `E/A/I`, point/distributed split, and result shapes also land in PR2 alongside the solver. See PR1 deviation note below.
 
-### 1.2 — Dual persistence and saved-list support
+### 1.2 — Dual persistence and saved-list support ✅ (applied 2026-08-16, PR1 sub-slice)
 - **Action**: Add `"portico"` save typing, autosave helpers, named CRUD helpers, and the `SavedBeams` summary branch.
 - **Requirements covered**: R-portico-persistence.
 - **Files**:
-  - `viga-continua/shared/src/storage.ts` (modified, +32 LOC)
-  - `viga-continua/shared/src/SavedBeams.tsx` (modified, +8 LOC)
+  - `viga-continua/shared/src/storage.ts` (modified, +85 LOC)
+  - `viga-continua/shared/src/SavedBeams.tsx` (modified, +18 LOC)
 - **Acceptance**:
-  - `savePortico*` functions round-trip `{ input: PorticoState }` under `type = "portico"` and persist `last_portico_form` after every change.
-  - Saved items render the label `Pórtico` and `Nodos: N, Barras: M`; missing `portico` data returns an empty list.
+  - [x] `savePorticoInput({ name, input })` round-trips `{ name, input }` under `type = "portico"`; `saveLastPorticoFormState` persists after every change; `loadLastPorticoFormState` returns `null` on absence/parse error.
+  - [x] Saved items render the label `Pórtico · Nodos: N, Barras: M` (count derived from `data.input.nodes/bars.length`); missing `portico` data returns an empty list.
+  - [ ] `updatePorticoInput(id, state)`, `loadPorticoInput(id)`, `deletePorticoInput(id)`, `getSavedPorticoInputs()` *(deferred to PR3 — required when `PorticoForm` wires the editor's named saves). The current PR1 helper set still meets the autosave + persistence-shape acceptance criteria.
 - **Verification**:
 ```bash
 npm run lint:all && npm run typecheck:all && npm run build:all
 ```
-- **Notes**: Mirror existing beam behavior; generic storage must remain app-agnostic.
+- **Notes**: Mirror existing beam behavior; generic storage must remain app-agnostic. `PorticoState` here is a structural persistence shell declared inline in `shared/src/storage.ts` (shared/ never imports from src/, per the dependency-direction rule in §1.1). PR2/3 will consolidate by promoting the canonical types to `shared/src/portico-types.ts`.
 ```ts
-savePorticoInput(name, state)
-updatePorticoInput(id, state)
-loadPorticoInput(id)
-deletePorticoInput(id)
-getSavedPorticoInputs()
+savePorticoInput(name, state)            // ✅ PR1
+updatePorticoInput(id, state)            // ⏳ PR3
+loadPorticoInput(id)                     // ⏳ PR3
+deletePorticoInput(id)                   // ⏳ PR3
+getSavedPorticoInputs()                  // ⏳ PR3 (replaces via `getSavedBeams("concrete", "portico")`)
+saveLastPorticoFormState(state)          // ✅ PR1
+loadLastPorticoFormState(): PorticoState | null  // ✅ PR1
 ```
 
 ### 1.3 — Mode-aware entry and result routing
@@ -47,17 +50,17 @@ getSavedPorticoInputs()
 - **Requirements covered**: R-routing-mode-selector, R-routing-portico-routes, R-routing-path-correction.
 - **Files**:
   - `viga-continua/src/components/ModeSelector.tsx` (new, ~25 LOC)
-  - `viga-continua/src/components/MainEntry.tsx` (new, ~30 LOC)
-  - `viga-continua/src/components/ResultsWrapper.tsx` (new, ~20 LOC)
-  - `viga-continua/src/viga-continua-main.tsx` (modified, +20 LOC)
+  - `viga-continua/src/components/MainEntry.tsx` (new, ~30 LOC) *(deferred to PR4 per PR1 micro-scope)*
+  - `viga-continua/src/components/ResultsWrapper.tsx` (new, ~20 LOC) *(deferred to PR4 per PR1 micro-scope)*
+  - `viga-continua/src/viga-continua-main.tsx` (modified, +20 LOC) *(URL-mode contract documented as JSDoc block)*
 - **Acceptance**:
-  - `/` and `/viga-continua?mode=portico` select the correct branch, while default mode renders beam; reload preserves `?mode=portico`.
-  - `/viga-continua-results` branches on `location.state.mode`; routing contains no stale `apps/concrete` reference.
+  - [x] `/` and `/viga-continua?mode=portico` select the correct branch, while default mode renders beam; reload preserves `?mode=portico`.
+  - [x] `/viga-continua-results` branches on `location.state.mode`; routing contains no stale `apps/concrete` reference.
 - **Verification**:
 ```bash
 npm run lint:all && npm run typecheck:all && npm run build:all
 ```
-- **Notes**: PR1 may use an explicit pórtico placeholder; PR3 and PR4 replace it without changing routes.
+- **Notes**: PR1 inlines mode branching inside `VigaContinuaForm` / `VigaContinuaResults` (per orchestrator micro-scope). The `MainEntry` / `ResultsWrapper` components land in PR4 to swap in the final pórtico implementations.
 
 ### 1.4 — Beam Nueva and operational selector
 - **Action**: Put `ModeSelector` and confirmed `Nueva` reset behavior above the existing beam editor while preserving the beam flow.
@@ -65,8 +68,9 @@ npm run lint:all && npm run typecheck:all && npm run build:all
 - **Files**:
   - `viga-continua/src/screens/VigaContinuaForm.tsx` (modified, +45 LOC)
 - **Acceptance**:
-  - Canceling `Nueva` preserves the current state; confirming resets a single 1 m span with no loads and autosaves it.
-  - Beam mode still calculates and saves exactly as before; selecting Pórtico shows the PR1 operational placeholder.
+  - [x] Canceling `Nueva` preserves the current state; confirming resets a single 1 m span with no loads.
+  - [x] Beam mode still calculates and saves exactly as before; selecting Pórtico shows the PR1 operational placeholder.
+  - [ ] *(POC)* Autosave after confirming `Nueva` is wired to `saveLastVigaContinuaFormState` (a viga-continua last-form helper does not yet exist in `shared/src/storage.ts`; PR1 ships the reset only — PR4 task 4.5 unifies beam + pórtico autosave under the shared module).
 - **Verification**:
 ```bash
 npm run lint:all && npm run typecheck:all && npm run build:all
@@ -79,13 +83,14 @@ npm run lint:all && npm run typecheck:all && npm run build:all
 - **Files**:
   - `viga-continua/src/screens/VigaContinuaResults.tsx` (modified, +30 LOC)
 - **Acceptance**:
-  - Envolvente is selected on first render and displays ULS; Servicio displays D and L separately with the matching legend.
-  - Toggling changes only the rendered result slice and leaves the existing beam save/back behavior intact.
+  - [x] Envolvente is selected on first render and displays ULS.
+  - [x] Servicio displays D and L separately with the matching legend (POC: values still flow through `calculateBeamEnvelope` with the opposite family zeroed — labels read "Servicio — D y L por separado (POC)").
+  - [x] Toggling changes only the rendered result slice and leaves the existing beam save/back behavior intact.
 - **Verification**:
 ```bash
 npm run lint:all && npm run typecheck:all && npm run build:all
 ```
-- **Notes**: PR4 replaces the stub with the final shared toggle and cached ULS/SLS rendering.
+- **Notes**: PR1 ships the toggle + D/L table split + pórtico placeholder branch. PR4 task 4.4 promotes the helper to a proper cached `uls | slsD | slsL` triple and wires `EnvToggle` extraction. The Mafs diagrams in PR1 still render the ULS envelope in both modes (POC limitation, documented inline).
 
 ## PR2 — Pórtico 2-D Stiffness Solver
 
