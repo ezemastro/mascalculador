@@ -11,7 +11,8 @@
  *     se calcula fit-to-bbox + 18% padding.
  *
  * Convenciones (locked en design.md §3):
- *   - Y positivo hacia abajo (Mafs / world).
+ *   - Y positivo hacia abajo en el modelo; Mafs recibe `-Y` porque su eje
+ *     visual Y es positivo hacia arriba.
  *   - M+ = fibra inferior traccionada (perpendicular a +x̄_local según el
  *     signo de M).
  *   - Normales: tracción (+) en azul, compresión (-) en rojo.
@@ -69,8 +70,8 @@ function hingeTriangle(cx: number, cy: number): [number, number][] {
   return [
     // El vértice superior coincide exactamente con el nudo.
     [cx, cy],
-    [cx - SUPPORT_HALF_W, cy + h],
-    [cx + SUPPORT_HALF_W, cy + h],
+    [cx - SUPPORT_HALF_W, cy - h],
+    [cx + SUPPORT_HALF_W, cy - h],
   ];
 }
 
@@ -84,7 +85,7 @@ function computeFitViewBox(
   state: PorticoState,
 ): [number, number, number, number] {
   const xs = state.nodes.map((n) => n.x);
-  const ys = state.nodes.map((n) => n.y);
+  const ys = state.nodes.map((n) => -n.y);
   const xMin = xs.length ? Math.min(...xs) : -1;
   const xMax = xs.length ? Math.max(...xs) : 1;
   const yMin = ys.length ? Math.min(...ys) : -1;
@@ -300,9 +301,9 @@ function buildNArrows(
     out.push({
       barId: b.barId,
       x: tipX,
-      y: tipY,
+      y: -tipY,
       dx: ux * sign * len,
-      dy: uy * sign * len,
+      dy: -uy * sign * len,
       tension: meanN >= 0,
     });
   }
@@ -402,8 +403,8 @@ export default function PorticoDiagram({
       <Coordinates.Cartesian xAxis={{ lines: 4 }} yAxis={{ lines: 4 }} />
 
       {/* Ejes X y Y baseline */}
-      <Plot.OfX y={() => 0} domain={[xLo, xHi]} color="#374151" />
-      <Plot.OfY x={() => 0} domain={[yLo, yHi]} color="#374151" />
+      <Plot.OfX y={() => 0} domain={[xLo, xHi]} color="#94a3b8" />
+      <Plot.OfY x={() => 0} domain={[yLo, yHi]} color="#94a3b8" />
 
       {/* Barras indeformadas (siempre) */}
       {porticoState.bars.map((b) => {
@@ -413,7 +414,7 @@ export default function PorticoDiagram({
         return (
           <Plot.Parametric
             key={`bar-${b.id}`}
-            xy={(t) => [a.x + t * (c.x - a.x), a.y + t * (c.y - a.y)]}
+            xy={(t) => [a.x + t * (c.x - a.x), -(a.y + t * (c.y - a.y))]}
             domain={[0, 1]}
             color={COLOR_BAR}
             weight={4}
@@ -434,8 +435,8 @@ export default function PorticoDiagram({
             <Polygon
               key={`deform-${b.id}`}
               points={[
-                [a.x + disA.u * DEFORM_SCALE, a.y + disA.v * DEFORM_SCALE],
-                [c.x + disC.u * DEFORM_SCALE, c.y + disC.v * DEFORM_SCALE],
+                [a.x + disA.u * DEFORM_SCALE, -(a.y + disA.v * DEFORM_SCALE)],
+                [c.x + disC.u * DEFORM_SCALE, -(c.y + disC.v * DEFORM_SCALE)],
               ]}
               color={COLOR_DEFORM}
               fillOpacity={0}
@@ -463,9 +464,9 @@ export default function PorticoDiagram({
             <Plot.OfX
               key={`m-${pl.barId}-${idx}`}
               y={(t) => {
-                if (t < s.x0 || t > s.x1) return s.y0;
+                if (t < s.x0 || t > s.x1) return -s.y0;
                 const u = (t - s.x0) / (s.x1 - s.x0 || 1);
-                return s.y0 + u * (s.y1 - s.y0);
+                return -(s.y0 + u * (s.y1 - s.y0));
               }}
               domain={[Math.min(s.x0, s.x1), Math.max(s.x0, s.x1)]}
               color={COLOR_M}
@@ -480,9 +481,9 @@ export default function PorticoDiagram({
             <Plot.OfX
               key={`n-${seg.barId}-${idx}`}
               y={(t) => {
-                if (t < seg.x0 || t > seg.x1) return seg.y0;
+                if (t < seg.x0 || t > seg.x1) return -seg.y0;
                 const u = (t - seg.x0) / (seg.x1 - seg.x0 || 1);
-                return seg.y0 + u * (seg.y1 - seg.y0);
+                return -(seg.y0 + u * (seg.y1 - seg.y0));
               }}
               domain={[Math.min(seg.x0, seg.x1), Math.max(seg.x0, seg.x1)]}
               color={seg.tension ? COLOR_N_TENSION : COLOR_N_COMPRESSION}
@@ -543,7 +544,7 @@ export default function PorticoDiagram({
         return (
           <Polygon
             key={`sup-${sup.id}`}
-            points={hingeTriangle(n.x, n.y)}
+            points={hingeTriangle(n.x, -n.y)}
             color={COLOR_SUPPORT}
             fillOpacity={0.9}
             strokeOpacity={1}
@@ -573,18 +574,18 @@ export default function PorticoDiagram({
             // coloca en sentido contrario al vector, de modo que cada flecha
             // nace en la banda y termina sobre la barra.
             const ux = dx / L;
-            const uy = dy / L;
+            const uy = -dy / L;
             const angleRad = (l.angle * Math.PI) / 180;
             const forceX = Math.cos(angleRad);
-            const forceY = Math.sin(angleRad);
+            const forceY = -Math.sin(angleRad);
             const bandHeight = Math.max(0.35, widthSpan * 0.09);
             const p0: [number, number] = [
               a.x + (start / L) * dx,
-              a.y + (start / L) * dy,
+              -(a.y + (start / L) * dy),
             ];
             const p1: [number, number] = [
               a.x + (end / L) * dx,
-              a.y + (end / L) * dy,
+              -(a.y + (end / L) * dy),
             ];
             const q0: [number, number] = [
               p0[0] - forceX * bandHeight,
@@ -652,10 +653,10 @@ export default function PorticoDiagram({
 
           const angleRad = (l.angle * Math.PI) / 180;
           const fx = Math.cos(angleRad);
-          const fy = Math.sin(angleRad);
+          const fy = -Math.sin(angleRad);
           const len = Math.max(0.4, widthSpan * 0.07);
           const x = a.x + (start / L) * dx;
-          const y = a.y + (start / L) * dy;
+          const y = -(a.y + (start / L) * dy);
           const tailX = x - fx * len;
           const tailY = y - fy * len;
           const wing = len * 0.25;
@@ -693,7 +694,7 @@ export default function PorticoDiagram({
         <NodeGlyph
           key={`node-${n.id}`}
           x={n.x}
-          y={n.y}
+          y={-n.y}
           id={n.id}
           nx={n.x}
           ny={n.y}
