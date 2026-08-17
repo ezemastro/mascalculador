@@ -11,8 +11,9 @@ import {
   updateVigaContinuaInput,
   getSavedVigasContinuas,
 } from "../lib/storage";
+import EnvToggle, { type EnvMode } from "../components/EnvToggle";
+import PorticoResults from "./PorticoResults";
 
-type EnvMode = "envolvente" | "servicio";
 type LocationState = VigaContinuaState | { mode: "portico" } | null;
 
 function isPorticoLocationState(s: LocationState): s is { mode: "portico" } {
@@ -184,34 +185,10 @@ export default function VigaContinuaResults() {
     }
   }
 
-  // Pórtico placeholder branch (R-routing-portico-routes). The actual
-  // PorticoResults component ships in PR4 (task 4.x). The toggle is mounted
-  // here just so the screen reads as operational in both modes.
+  // Pórtico branch (R-routing-portico-routes). Delega en PorticoResults
+  // para mantener la lógica de render separada.
   if (isPorticoLocationState(raw)) {
-    return (
-      <MainLayout>
-        <header className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-text">Pórtico</h1>
-            <p className="text-sm text-text-muted">
-              Análisis estructural 2-D — placeholder
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <EnvToggle envMode={envMode} setEnvMode={setEnvMode} />
-            <button
-              onClick={() => navigate("/viga-continua")}
-              className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-3 py-1.5 rounded-lg"
-            >
-              ← Volver
-            </button>
-          </div>
-        </header>
-        <section className="bg-surface rounded-xl border border-border p-12 text-center text-text-muted">
-          Modo Pórtico: completar en PR3/PR4.
-        </section>
-      </MainLayout>
-    );
+    return <PorticoResults />;
   }
 
   const s = beamState;
@@ -678,46 +655,5 @@ export default function VigaContinuaResults() {
         </section>
       </div>
     </MainLayout>
-  );
-}
-
-function EnvToggle({
-  envMode,
-  setEnvMode,
-}: {
-  envMode: EnvMode;
-  setEnvMode: (m: EnvMode) => void;
-}) {
-  const opts: ReadonlyArray<{ id: EnvMode; label: string }> = [
-    { id: "envolvente", label: "Envolvente" },
-    { id: "servicio", label: "Servicio" },
-  ];
-  return (
-    <div
-      role="tablist"
-      aria-label="Modo de cálculo"
-      className="inline-flex p-1 bg-surface-alt rounded-lg"
-    >
-      {opts.map((opt) => {
-        const active = opt.id === envMode;
-        return (
-          <button
-            key={opt.id}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            onClick={() => setEnvMode(opt.id)}
-            className={
-              "px-3 py-1.5 text-sm font-medium rounded-md transition-colors " +
-              (active
-                ? "bg-primary text-white shadow-sm"
-                : "text-text-muted hover:text-text")
-            }
-          >
-            {opt.label}
-          </button>
-        );
-      })}
-    </div>
   );
 }

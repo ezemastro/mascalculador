@@ -228,7 +228,7 @@ npm run lint:all && npm run typecheck:all && npm run build:all
 
 ## PR4 — PorticoResults + Final Shared Toggle
 
-### 4.1 — Solve once and render result mode
+### 4.1 — Solve once and render result mode ✅ (applied 2026-08-17)
 - **Action**: Add the shared toggle, solve once to `{ uls, slsD, slsL }`, and render the selected slice with structured error handling.
 - **Requirements covered**: R-portico-results, R-portico-env-toggle-shared, R-portico-solver, R-routing-portico-routes.
 - **Files**:
@@ -249,7 +249,7 @@ solved.slsD;
 solved.slsL;
 ```
 
-### 4.2 — Mafs frame geometry and deformed shape
+### 4.2 — Mafs frame geometry and deformed shape ✅ (applied 2026-08-17)
 - **Action**: Render nodes, bars, support glyphs, load arrows, and ×50 exaggerated deformed geometry in a 700×400 Mafs view.
 - **Requirements covered**: R-portico-diagram, R-portico-y-axis, R-portico-supports, R-portico-results.
 - **Files**:
@@ -263,7 +263,7 @@ npm run lint:all && npm run typecheck:all && npm run build:all
 ```
 - **Notes**: Y increases down in both input hint and render call.
 
-### 4.3 — M+ overlay, reactions, and mandatory legends
+### 4.3 — M+ overlay, reactions, and mandatory legends ✅ (applied 2026-08-17)
 - **Action**: Plot each bar's 11-sample M+ curve on the tensioned side and add reaction/legend sections visible in the initial viewport.
 - **Requirements covered**: R-portico-results, R-portico-diagram, R-portico-m-plus-convention, R-portico-y-axis, R-portico-env-toggle-shared.
 - **Files**:
@@ -277,7 +277,7 @@ npm run lint:all && npm run typecheck:all && npm run build:all
 ```
 - **Notes**: Do not replace the JSDoc-required sign text with a vague “positive moment” label.
 
-### 4.4 — Apply the shared toggle to beam results
+### 4.4 — Apply the shared toggle to beam results ✅ (applied 2026-08-17)
 - **Action**: Add the service-result calculation to the envelope module and refactor beam results to cache ULS/D/L slices before rendering.
 - **Requirements covered**: R-beam-env-toggle, R-portico-env-toggle-shared.
 - **Files**:
@@ -293,7 +293,7 @@ npm run lint:all && npm run typecheck:all && npm run build:all
 ```
 - **Notes**: Reuse `calculateBeam`; do not add dependencies or rewrite its algorithm.
 
-### 4.5 — Replace placeholders and complete branch wiring
+### 4.5 — Replace placeholders and complete branch wiring ✅ (applied 2026-08-17)
 - **Action**: Replace the Pórtico placeholders with final form/results components and finalize the result-state branch.
 - **Requirements covered**: R-routing-portico-routes, R-routing-mode-selector, R-routing-path-correction.
 - **Files**:
