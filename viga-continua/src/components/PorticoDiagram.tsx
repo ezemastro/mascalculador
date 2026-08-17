@@ -64,6 +64,8 @@ export interface PorticoDiagramProps {
 // ---- Geometry helpers ----
 
 const SUPPORT_HALF_W = 0.22;
+const FIXED_SUPPORT_W = 0.28;
+const FIXED_SUPPORT_H = 0.32;
 
 function hingeTriangle(cx: number, cy: number): [number, number][] {
   const h = SUPPORT_HALF_W * 1.6;
@@ -72,6 +74,17 @@ function hingeTriangle(cx: number, cy: number): [number, number][] {
     [cx, cy],
     [cx - SUPPORT_HALF_W, cy - h],
     [cx + SUPPORT_HALF_W, cy - h],
+  ];
+}
+
+function fixedSupportBlock(cx: number, cy: number): [number, number][] {
+  // En Mafs la pantalla tiene Y positiva hacia arriba; debajo del nudo es
+  // cy - h. El bloque queda anclado exactamente al nudo.
+  return [
+    [cx - FIXED_SUPPORT_W, cy],
+    [cx + FIXED_SUPPORT_W, cy],
+    [cx + FIXED_SUPPORT_W, cy - FIXED_SUPPORT_H],
+    [cx - FIXED_SUPPORT_W, cy - FIXED_SUPPORT_H],
   ];
 }
 
@@ -541,10 +554,38 @@ export default function PorticoDiagram({
       {porticoState.supports.map((sup) => {
         const n = porticoState.nodes.find((nn) => nn.id === sup.nodeId);
         if (!n) return null;
+        const cy = -n.y;
+        if (sup.kind === "fixed") {
+          return (
+            <Fragment key={`sup-${sup.id}`}>
+              <Polygon
+                points={fixedSupportBlock(n.x, cy)}
+                color={COLOR_SUPPORT}
+                fillOpacity={0.9}
+                strokeOpacity={1}
+              />
+              {[0, 1, 2].map((i) => {
+                const x0 = n.x - FIXED_SUPPORT_W + i * FIXED_SUPPORT_W * 0.8;
+                return (
+                  <Plot.Parametric
+                    key={`sup-hatch-${sup.id}-${i}`}
+                    xy={(t) => [
+                      x0 + t * FIXED_SUPPORT_W * 0.55,
+                      cy - FIXED_SUPPORT_H + t * FIXED_SUPPORT_H * 0.45,
+                    ]}
+                    domain={[0, 1]}
+                    color="#f8fafc"
+                    weight={2}
+                  />
+                );
+              })}
+            </Fragment>
+          );
+        }
         return (
           <Polygon
             key={`sup-${sup.id}`}
-            points={hingeTriangle(n.x, -n.y)}
+            points={hingeTriangle(n.x, cy)}
             color={COLOR_SUPPORT}
             fillOpacity={0.9}
             strokeOpacity={1}
