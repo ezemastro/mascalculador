@@ -35,7 +35,7 @@ const M_SCALE = 50;
 const N_SCALE = 0.5;
 const V_SCALE = 0.5;
 
-export const COLOR_BAR = "#1f2937";
+export const COLOR_BAR = "#f8fafc";
 export const COLOR_DEFORM = "#3b82f6";
 export const COLOR_SUPPORT = "#10b981";
 export const COLOR_LOAD = "#f87171";
@@ -43,8 +43,8 @@ export const COLOR_M = "#fbbf24";
 export const COLOR_N_TENSION = "#3b82f6";
 export const COLOR_N_COMPRESSION = "#ef4444";
 export const COLOR_V = "#a855f7";
-export const COLOR_NODE = "#111827";
-export const COLOR_NODE_LABEL = "#111827";
+export const COLOR_NODE = "#fbbf24";
+export const COLOR_NODE_LABEL = "#f8fafc";
 
 // ---- Types ----
 
@@ -69,16 +69,6 @@ function hingeTriangle(cx: number, cy: number): [number, number][] {
     [cx, cy],
     [cx - SUPPORT_HALF_W, cy + SUPPORT_HALF_W * 1.8],
     [cx + SUPPORT_HALF_W, cy + SUPPORT_HALF_W * 1.8],
-  ];
-}
-
-function fixedHatchBox(cx: number, cy: number): [number, number][] {
-  const h = SUPPORT_HALF_W * 1.4;
-  return [
-    [cx - SUPPORT_HALF_W, cy],
-    [cx + SUPPORT_HALF_W, cy],
-    [cx + SUPPORT_HALF_W, cy + h],
-    [cx - SUPPORT_HALF_W, cy + h],
   ];
 }
 
@@ -329,17 +319,24 @@ interface NodeGlyphProps {
 }
 
 function NodeGlyph({ x, y, id, nx, ny, showCoords }: NodeGlyphProps) {
-  // Mafs no soporta SVG puro entre sus children (rompe el sistema de
-  // coordenadas). Usamos un único `<Text>` que combina símbolo + label.
-  // attach="ne" posiciona el bloque al nordeste del punto (x,y), dejando
-  // el "●" como marca del nodo y el ID + coords como texto adyacente.
-  const label = showCoords
-    ? `● ${id} (${nx.toFixed(2)}, ${ny.toFixed(2)})`
-    : `● ${id}`;
+  // Punto Mafs separado del label: el punto es amarillo y el texto claro
+  // queda desplazado para conservar legibilidad sobre el fondo oscuro.
+  const label = showCoords ? `${id} (${nx.toFixed(2)}, ${ny.toFixed(2)})` : id;
   return (
-    <Text x={x} y={y} size={14} color={COLOR_NODE} attach="ne">
-      {label}
-    </Text>
+    <>
+      <Text x={x} y={y} size={18} color={COLOR_NODE} attach="ne">
+        ●
+      </Text>
+      <Text
+        x={x + 0.16}
+        y={y - 0.16}
+        size={13}
+        color={COLOR_NODE_LABEL}
+        attach="sw"
+      >
+        {label}
+      </Text>
+    </>
   );
 }
 
@@ -410,16 +407,12 @@ export default function PorticoDiagram({
         const c = porticoState.nodes.find((n) => n.id === b.toNodeId);
         if (!a || !c) return null;
         return (
-          <Plot.OfX
+          <Plot.Parametric
             key={`bar-${b.id}`}
-            y={(t) => {
-              if (t < Math.min(a.x, c.x) || t > Math.max(a.x, c.x)) return a.y;
-              const u = (t - a.x) / (c.x - a.x || 1);
-              return a.y + u * (c.y - a.y);
-            }}
-            domain={[Math.min(a.x, c.x), Math.max(a.x, c.x)]}
+            xy={(t) => [a.x + t * (c.x - a.x), a.y + t * (c.y - a.y)]}
+            domain={[0, 1]}
             color={COLOR_BAR}
-            weight={2}
+            weight={4}
           />
         );
       })}
@@ -543,13 +536,12 @@ export default function PorticoDiagram({
       {porticoState.supports.map((sup) => {
         const n = porticoState.nodes.find((nn) => nn.id === sup.nodeId);
         if (!n) return null;
-        const isHinge = sup.kind === "hinge";
         return (
           <Polygon
             key={`sup-${sup.id}`}
-            points={isHinge ? hingeTriangle(n.x, n.y) : fixedHatchBox(n.x, n.y)}
+            points={hingeTriangle(n.x, n.y)}
             color={COLOR_SUPPORT}
-            fillOpacity={isHinge ? 1 : 0.25}
+            fillOpacity={0.9}
             strokeOpacity={1}
           />
         );
