@@ -32,9 +32,6 @@ import type { PorticoState, SolvedPortico } from "../lib/portico";
 // ---- Visual constants ----
 
 const DEFORM_SCALE = 50;
-const M_SCALE = 50;
-const N_SCALE = 0.5;
-const V_SCALE = 0.5;
 
 export const COLOR_BAR = "#f8fafc";
 export const COLOR_DEFORM = "#3b82f6";
@@ -169,6 +166,22 @@ function buildOffsetPolyline(
     .filter((x): x is NonNullable<typeof x> => x !== null);
 }
 
+function forceScale(
+  bars: SolvedPortico["bars"],
+  key: "N" | "M" | "V",
+  targetOffset: number,
+): number {
+  const max = bars.reduce(
+    (outer, bar) =>
+      Math.max(
+        outer,
+        ...bar.forces.samples.map((sample) => Math.abs(sample[key])),
+      ),
+    0,
+  );
+  return max > 1e-9 ? targetOffset / max : 0;
+}
+
 // ---- N-bar polylines (color depends on tension sign) ----
 
 interface NBarSegment {
@@ -183,6 +196,7 @@ interface NBarSegment {
 function buildNPolylines(
   state: PorticoState,
   bars: SolvedPortico["bars"],
+  scale: number,
 ): NBarSegment[] {
   const out: NBarSegment[] = [];
   for (const b of bars) {
@@ -202,10 +216,10 @@ function buildNPolylines(
       const p1 = b.forces.samples[i + 1];
       const n0 = p0.N;
       const n1 = p1.N;
-      const s0 = a.x + (p0.s / L) * dx + offX * n0 * N_SCALE;
-      const y0 = a.y + (p0.s / L) * dy + offY * n0 * N_SCALE;
-      const s1 = a.x + (p1.s / L) * dx + offX * n1 * N_SCALE;
-      const y1 = a.y + (p1.s / L) * dy + offY * n1 * N_SCALE;
+      const s0 = a.x + (p0.s / L) * dx + offX * n0 * scale;
+      const y0 = a.y + (p0.s / L) * dy + offY * n0 * scale;
+      const s1 = a.x + (p1.s / L) * dx + offX * n1 * scale;
+      const y1 = a.y + (p1.s / L) * dy + offY * n1 * scale;
       out.push({
         barId: b.barId,
         x0: s0,
@@ -233,6 +247,7 @@ interface VBarSegment {
 function buildVPolylines(
   state: PorticoState,
   bars: SolvedPortico["bars"],
+  scale: number,
 ): VBarSegment[] {
   const out: VBarSegment[] = [];
   for (const b of bars) {
@@ -254,10 +269,10 @@ function buildVPolylines(
       const v1 = p1.V;
       const sign0 = v0 >= 0 ? 1 : -1;
       const sign1 = v1 >= 0 ? 1 : -1;
-      const s0 = a.x + (p0.s / L) * dx + offX * sign0 * Math.abs(v0) * V_SCALE;
-      const y0 = a.y + (p0.s / L) * dy + offY * sign0 * Math.abs(v0) * V_SCALE;
-      const s1 = a.x + (p1.s / L) * dx + offX * sign1 * Math.abs(v1) * V_SCALE;
-      const y1 = a.y + (p1.s / L) * dy + offY * sign1 * Math.abs(v1) * V_SCALE;
+      const s0 = a.x + (p0.s / L) * dx + offX * sign0 * Math.abs(v0) * scale;
+      const y0 = a.y + (p0.s / L) * dy + offY * sign0 * Math.abs(v0) * scale;
+      const s1 = a.x + (p1.s / L) * dx + offX * sign1 * Math.abs(v1) * scale;
+      const y1 = a.y + (p1.s / L) * dy + offY * sign1 * Math.abs(v1) * scale;
       out.push({
         barId: b.barId,
         x0: s0,
@@ -378,22 +393,28 @@ export default function PorticoDiagram({
   const viewBox = viewBoxOverride ?? fitViewBox;
   const [xLo, xHi, yLo, yHi] = viewBox;
   const widthSpan = xHi - xLo;
+  const heightSpan = yHi - yLo;
+  const diagramSpan = Math.max(1, Math.min(widthSpan, heightSpan));
 
   // Memoize heavy derivatives
+  const mScale = solved ? forceScale(solved.bars, "M", diagramSpan * 0.2) : 0;
+  const nScale = solved ? forceScale(solved.bars, "N", diagramSpan * 0.16) : 0;
+  const vScale = solved ? forceScale(solved.bars, "V", diagramSpan * 0.16) : 0;
+
   const mPolylines = useMemo(
     () =>
       solved
-        ? buildOffsetPolyline(porticoState, solved.bars, "M", M_SCALE, true)
+        ? buildOffsetPolyline(porticoState, solved.bars, "M", mScale, true)
         : [],
-    [porticoState, solved],
+    [porticoState, solved, mScale],
   );
   const nPolylines = useMemo(
-    () => (solved ? buildNPolylines(porticoState, solved.bars) : []),
-    [porticoState, solved],
+    () => (solved ? buildNPolylines(porticoState, solved.bars, nScale) : []),
+    [porticoState, solved, nScale],
   );
   const vPolylines = useMemo(
-    () => (solved ? buildVPolylines(porticoState, solved.bars) : []),
-    [porticoState, solved],
+    () => (solved ? buildVPolylines(porticoState, solved.bars, vScale) : []),
+    [porticoState, solved, vScale],
   );
   const nArrows = useMemo(
     () => (solved ? buildNArrows(porticoState, solved.bars, viewBox) : []),
