@@ -35,7 +35,7 @@ const M_SCALE = 50;
 const N_SCALE = 0.5;
 const V_SCALE = 0.5;
 
-export const COLOR_BAR = "#6b7280";
+export const COLOR_BAR = "#1f2937";
 export const COLOR_DEFORM = "#3b82f6";
 export const COLOR_SUPPORT = "#10b981";
 export const COLOR_LOAD = "#f87171";
@@ -62,23 +62,23 @@ export interface PorticoDiagramProps {
 
 // ---- Geometry helpers ----
 
-const SUPPORT_HALF_W = 0.18;
+const SUPPORT_HALF_W = 0.32;
 
 function hingeTriangle(cx: number, cy: number): [number, number][] {
   return [
     [cx, cy],
-    [cx - SUPPORT_HALF_W, cy + SUPPORT_HALF_W * 1.5],
-    [cx + SUPPORT_HALF_W, cy + SUPPORT_HALF_W * 1.5],
+    [cx - SUPPORT_HALF_W, cy + SUPPORT_HALF_W * 1.8],
+    [cx + SUPPORT_HALF_W, cy + SUPPORT_HALF_W * 1.8],
   ];
 }
 
 function fixedHatchBox(cx: number, cy: number): [number, number][] {
-  const h = SUPPORT_HALF_W * 0.9;
+  const h = SUPPORT_HALF_W * 1.4;
   return [
     [cx - SUPPORT_HALF_W, cy],
     [cx + SUPPORT_HALF_W, cy],
-    [cx + SUPPORT_HALF_W, cy + h * 2],
-    [cx - SUPPORT_HALF_W, cy + h * 2],
+    [cx + SUPPORT_HALF_W, cy + h],
+    [cx - SUPPORT_HALF_W, cy + h],
   ];
 }
 
@@ -326,26 +326,20 @@ interface NodeGlyphProps {
   nx: number;
   ny: number;
   showCoords: boolean;
-  nodeSize: number;
 }
 
-function NodeGlyph({ x, y, id, nx, ny, showCoords, nodeSize }: NodeGlyphProps) {
-  // Pequeño círculo + label
-  const r = nodeSize / 2;
+function NodeGlyph({ x, y, id, nx, ny, showCoords }: NodeGlyphProps) {
+  // Mafs no soporta SVG puro entre sus children (rompe el sistema de
+  // coordenadas). Usamos un único `<Text>` que combina símbolo + label.
+  // attach="ne" posiciona el bloque al nordeste del punto (x,y), dejando
+  // el "●" como marca del nodo y el ID + coords como texto adyacente.
+  const label = showCoords
+    ? `● ${id} (${nx.toFixed(2)}, ${ny.toFixed(2)})`
+    : `● ${id}`;
   return (
-    <g>
-      <circle cx={x} cy={y} r={r} fill={COLOR_NODE} />
-      <Text
-        x={x + r + 0.05}
-        y={y - r - 0.05}
-        size={12}
-        color={COLOR_NODE_LABEL}
-        attach="sw"
-      >
-        {id}
-        {showCoords ? ` (${nx.toFixed(2)}, ${ny.toFixed(2)})` : ""}
-      </Text>
-    </g>
+    <Text x={x} y={y} size={14} color={COLOR_NODE} attach="ne">
+      {label}
+    </Text>
   );
 }
 
@@ -366,7 +360,6 @@ export default function PorticoDiagram({
   const viewBox = viewBoxOverride ?? fitViewBox;
   const [xLo, xHi, yLo, yHi] = viewBox;
   const widthSpan = xHi - xLo;
-  const heightSpan = yHi - yLo;
 
   // Memoize heavy derivatives
   const mPolylines = useMemo(
@@ -397,8 +390,6 @@ export default function PorticoDiagram({
     [solved],
   );
 
-  // Tamaños relativos al viewBox para que escalen con el zoom.
-  const nodeSize = Math.max(0.08, Math.min(widthSpan, heightSpan) * 0.02);
   const showCoords = mode === "geometria";
 
   return (
@@ -624,7 +615,6 @@ export default function PorticoDiagram({
           nx={n.x}
           ny={n.y}
           showCoords={showCoords}
-          nodeSize={nodeSize}
         />
       ))}
     </Mafs>
