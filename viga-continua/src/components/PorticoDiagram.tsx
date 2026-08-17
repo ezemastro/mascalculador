@@ -418,19 +418,17 @@ function PerpendicularTick({
 function DiagramValueLabel({
   x,
   y,
-  label,
   value,
   color,
 }: {
   x: number;
   y: number;
-  label: string;
   value: number;
   color: string;
 }) {
   return (
     <Text x={x} y={-y} size={11} color={color} attach="ne">
-      {`${label} ${value.toFixed(2)}`}
+      {value.toFixed(2)}
     </Text>
   );
 }
@@ -638,7 +636,6 @@ export default function PorticoDiagram({
                   key={`m-min-${pl.barId}`}
                   x={min.x}
                   y={min.y}
-                  label="mín"
                   value={min.value}
                   color={COLOR_M}
                 />,
@@ -646,7 +643,6 @@ export default function PorticoDiagram({
                   key={`m-max-${pl.barId}`}
                   x={max.x}
                   y={max.y}
-                  label="máx"
                   value={max.value}
                   color={COLOR_M}
                 />,
@@ -654,7 +650,6 @@ export default function PorticoDiagram({
                   key={`m-abs-${pl.barId}`}
                   x={abs.x}
                   y={abs.y}
-                  label="|máx|"
                   value={Math.abs(abs.value)}
                   color={COLOR_M}
                 />,
@@ -703,7 +698,6 @@ export default function PorticoDiagram({
                   key={`n-min-${barId}`}
                   x={extremes.min.x}
                   y={extremes.min.y}
-                  label="mín"
                   value={extremes.min.value}
                   color={COLOR_N_TENSION}
                 />,
@@ -711,7 +705,6 @@ export default function PorticoDiagram({
                   key={`n-max-${barId}`}
                   x={extremes.max.x}
                   y={extremes.max.y}
-                  label="máx"
                   value={extremes.max.value}
                   color={COLOR_N_TENSION}
                 />,
@@ -719,7 +712,6 @@ export default function PorticoDiagram({
                   key={`n-abs-${barId}`}
                   x={extremes.abs.x}
                   y={extremes.abs.y}
-                  label="|máx|"
                   value={Math.abs(extremes.abs.value)}
                   color={COLOR_N_TENSION}
                 />,
@@ -798,7 +790,6 @@ export default function PorticoDiagram({
                 key={`v-min-${barId}`}
                 x={extremes.min.x}
                 y={extremes.min.y}
-                label="mín"
                 value={extremes.min.value}
                 color={COLOR_V}
               />,
@@ -806,7 +797,6 @@ export default function PorticoDiagram({
                 key={`v-max-${barId}`}
                 x={extremes.max.x}
                 y={extremes.max.y}
-                label="máx"
                 value={extremes.max.value}
                 color={COLOR_V}
               />,
@@ -814,7 +804,6 @@ export default function PorticoDiagram({
                 key={`v-abs-${barId}`}
                 x={extremes.abs.x}
                 y={extremes.abs.y}
-                label="|máx|"
                 value={Math.abs(extremes.abs.value)}
                 color={COLOR_V}
               />,
