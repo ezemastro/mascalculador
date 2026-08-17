@@ -24,7 +24,7 @@
  *     coordenadas (en geometría son grandes; en otros son sutiles).
  */
 
-import { useMemo } from "react";
+import { Fragment, useMemo } from "react";
 import { Coordinates, Mafs, Plot, Polygon, Text } from "mafs";
 import type { PorticoState, SolvedPortico } from "../lib/portico";
 
@@ -62,13 +62,15 @@ export interface PorticoDiagramProps {
 
 // ---- Geometry helpers ----
 
-const SUPPORT_HALF_W = 0.32;
+const SUPPORT_HALF_W = 0.22;
 
 function hingeTriangle(cx: number, cy: number): [number, number][] {
+  const h = SUPPORT_HALF_W * 1.6;
   return [
-    [cx, cy],
-    [cx - SUPPORT_HALF_W, cy + SUPPORT_HALF_W * 1.8],
-    [cx + SUPPORT_HALF_W, cy + SUPPORT_HALF_W * 1.8],
+    // Vértice arriba, como pidió el usuario; la base queda debajo del nudo.
+    [cx, cy - h],
+    [cx - SUPPORT_HALF_W, cy + h * 0.45],
+    [cx + SUPPORT_HALF_W, cy + h * 0.45],
   ];
 }
 
@@ -393,7 +395,9 @@ export default function PorticoDiagram({
     <Mafs
       viewBox={{ x: [xLo, xHi], y: [yLo, yHi] }}
       height={height}
-      preserveAspectRatio={false}
+      // Mantener escala física igual en X/Y. Puede quedar espacio libre en
+      // uno de los ejes, pero una barra de 1 m siempre mide lo mismo en ambos.
+      preserveAspectRatio="contain"
     >
       <Coordinates.Cartesian xAxis={{ lines: 4 }} yAxis={{ lines: 4 }} />
 
@@ -549,7 +553,7 @@ export default function PorticoDiagram({
 
       {/* Flechas de carga (solo en geometría) */}
       {mode === "geometria" &&
-        porticoState.loads.map((l) => {
+        porticoState.loads.flatMap((l) => {
           const bar = porticoState.bars.find((b) => b.id === l.barId);
           const a = porticoState.nodes.find((n) => n.id === bar?.fromNodeId);
           const bN = porticoState.nodes.find((n) => n.id === bar?.toNodeId);
@@ -558,43 +562,54 @@ export default function PorticoDiagram({
           const dy = bN.y - a.y;
           const L = Math.hypot(dx, dy);
           if (L < 1e-9) return null;
-          const aPos = Math.max(0, Math.min(l.a, L));
-          const x = a.x + (aPos / L) * dx;
-          const y = a.y + (aPos / L) * dy;
           const angleRad = (l.angle * Math.PI) / 180;
           const fx = Math.cos(angleRad);
           const fy = Math.sin(angleRad);
           const len = Math.max(0.4, widthSpan * 0.07);
-          const tailX = x - fx * len;
-          const tailY = y - fy * len;
-          const wing = len * 0.25;
-          const wingX1 = tailX + -fy * wing;
-          const wingY1 = tailY + fx * wing;
-          const wingX2 = tailX - -fy * wing;
-          const wingY2 = tailY - fx * wing;
-          return (
-            <g key={`load-${l.id}`}>
-              <Polygon
-                points={[
-                  [x, y],
-                  [tailX, tailY],
-                  [wingX1, wingY1],
-                  [wingX2, wingY2],
-                ]}
-                color={COLOR_LOAD}
-                fillOpacity={1}
-              />
-              <Text
-                x={tailX - fx * len * 0.2}
-                y={tailY - fy * len * 0.2}
-                size={14}
-                color={COLOR_LOAD}
-                attach="e"
-              >
-                {`${Math.round(l.D)}D+${Math.round(l.L)}L`}
-              </Text>
-            </g>
-          );
+          const start = Math.max(0, Math.min(l.a, L));
+          const end =
+            l.kind === "distributed"
+              ? Math.max(start, Math.min(l.b ?? L, L))
+              : start;
+          const arrowCount = l.kind === "distributed" ? 5 : 1;
+          return Array.from({ length: arrowCount }, (_, i) => {
+            const ratio = arrowCount === 1 ? 0 : i / (arrowCount - 1);
+            const aPos = start + ratio * (end - start);
+            const x = a.x + (aPos / L) * dx;
+            const y = a.y + (aPos / L) * dy;
+            const tailX = x - fx * len;
+            const tailY = y - fy * len;
+            const wing = len * 0.25;
+            const wingX1 = tailX + -fy * wing;
+            const wingY1 = tailY + fx * wing;
+            const wingX2 = tailX - -fy * wing;
+            const wingY2 = tailY - fx * wing;
+            return (
+              <Fragment key={`load-${l.id}-${i}`}>
+                <Polygon
+                  points={[
+                    [x, y],
+                    [tailX, tailY],
+                    [wingX1, wingY1],
+                    [wingX2, wingY2],
+                  ]}
+                  color={COLOR_LOAD}
+                  fillOpacity={1}
+                />
+                {i === Math.floor(arrowCount / 2) && (
+                  <Text
+                    x={tailX - fx * len * 0.2}
+                    y={tailY - fy * len * 0.2}
+                    size={14}
+                    color={COLOR_LOAD}
+                    attach="e"
+                  >
+                    {`${Math.round(l.D)}D+${Math.round(l.L)}L`}
+                  </Text>
+                )}
+              </Fragment>
+            );
+          });
         })}
 
       {/* Nodos con ID (siempre); coords solo en geometría */}
