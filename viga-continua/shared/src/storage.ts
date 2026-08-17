@@ -587,11 +587,23 @@ export function getSavedPorticoInputs(): SavedBeam[] {
 }
 
 /** Auto-save the in-progress portico form state. Silently ignores quota errors. */
-export function saveLastPorticoFormState(state: PorticoState): void {
+export interface PorticoLastFormState extends PorticoState {
+  loadedSaveId?: string;
+  loadedSaveName?: string;
+}
+
+export function saveLastPorticoFormState(
+  state: PorticoState,
+  saveContext?: { loadedSaveId: string | null; loadedSaveName: string | null },
+): void {
   try {
     localStorage.setItem(
       key("concrete", PORTICO_LAST_FORM_STATE_KEY),
-      JSON.stringify(state),
+      JSON.stringify({
+        ...state,
+        loadedSaveId: saveContext?.loadedSaveId ?? null,
+        loadedSaveName: saveContext?.loadedSaveName ?? null,
+      }),
     );
   } catch {
     /* quota exceeded, ignore */
@@ -599,7 +611,7 @@ export function saveLastPorticoFormState(state: PorticoState): void {
 }
 
 /** Load the auto-saved portico form state; null if absent or unparseable. */
-export function loadLastPorticoFormState(): PorticoState | null {
+export function loadLastPorticoFormState(): PorticoLastFormState | null {
   try {
     const raw = localStorage.getItem(
       key("concrete", PORTICO_LAST_FORM_STATE_KEY),

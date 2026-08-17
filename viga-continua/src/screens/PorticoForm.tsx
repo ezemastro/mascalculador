@@ -53,8 +53,9 @@ export default function PorticoForm() {
   // shared/ — clonamos superficial para soltar la inmutabilidad y poder
   // mutar en setState (las forms usan Set/Patch en vez de inmutabilidad
   // estricta por ergonomía).
+  const [lastForm] = useState(() => loadLastPorticoFormState());
   const [state, setState] = useState<PorticoState>(() => {
-    const last = loadLastPorticoFormState();
+    const last = lastForm;
     if (last && Array.isArray(last.nodes) && last.nodes.length > 0) {
       return {
         nodes: last.nodes.map((n) => ({ ...n })),
@@ -66,14 +67,18 @@ export default function PorticoForm() {
     return createDefaultPorticoState();
   });
 
-  const [loadedSaveId, setLoadedSaveId] = useState<string | null>(null);
-  const [loadedSaveName, setLoadedSaveName] = useState<string | null>(null);
+  const [loadedSaveId, setLoadedSaveId] = useState<string | null>(
+    lastForm?.loadedSaveId ?? null,
+  );
+  const [loadedSaveName, setLoadedSaveName] = useState<string | null>(
+    lastForm?.loadedSaveName ?? null,
+  );
   const [error, setError] = useState<string | null>(null);
 
   // Auto-persist (silencioso si no hay localStorage).
   useEffect(() => {
-    saveLastPorticoFormState(state);
-  }, [state]);
+    saveLastPorticoFormState(state, { loadedSaveId, loadedSaveName });
+  }, [state, loadedSaveId, loadedSaveName]);
 
   // ---- Manipuladores de filas (cap 5/5/5/5) ----
 

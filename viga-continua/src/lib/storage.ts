@@ -21,6 +21,7 @@ export type {
   DirectionResult,
   EdgeCondition,
   PorticoState,
+  PorticoLastFormState,
   PorticoSavedData,
   VigaContinuaInput,
   VigaContinuaSavedData,
