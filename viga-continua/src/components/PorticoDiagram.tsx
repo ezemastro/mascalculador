@@ -115,6 +115,7 @@ interface BarSamplePoint {
   s: number;
   x: number;
   y: number;
+  value: number;
 }
 
 function buildOffsetPolyline(
@@ -147,6 +148,7 @@ function buildOffsetPolyline(
           s: s.s,
           x: a.x + (s.s / L) * dx + offX * sign * Math.abs(forceVal) * scale,
           y: a.y + (s.s / L) * dy + offY * sign * Math.abs(forceVal) * scale,
+          value: forceVal,
         };
       });
       return { barId: b.barId, samples };
@@ -182,6 +184,8 @@ interface NBarSegment {
   baseY0: number;
   baseX1: number;
   baseY1: number;
+  value0: number;
+  value1: number;
   tension: boolean;
 }
 
@@ -222,6 +226,8 @@ function buildNPolylines(
         baseY0: a.y + (p0.s / L) * dy,
         baseX1: a.x + (p1.s / L) * dx,
         baseY1: a.y + (p1.s / L) * dy,
+        value0: n0,
+        value1: n1,
         tension: (n0 + n1) / 2 >= 0,
       });
     }
@@ -241,6 +247,8 @@ interface VBarSegment {
   baseY0: number;
   baseX1: number;
   baseY1: number;
+  value0: number;
+  value1: number;
   sign: number;
 }
 
@@ -283,6 +291,8 @@ function buildVPolylines(
         baseY0: a.y + (p0.s / L) * dy,
         baseX1: a.x + (p1.s / L) * dx,
         baseY1: a.y + (p1.s / L) * dy,
+        value0: v0,
+        value1: v1,
         sign: (sign0 + sign1) / 2,
       });
     }
@@ -403,6 +413,49 @@ function PerpendicularTick({
       weight={weight}
     />
   );
+}
+
+function DiagramValueLabel({
+  x,
+  y,
+  label,
+  value,
+  color,
+}: {
+  x: number;
+  y: number;
+  label: string;
+  value: number;
+  color: string;
+}) {
+  return (
+    <Text x={x} y={-y} size={11} color={color} attach="ne">
+      {`${label} ${value.toFixed(2)}`}
+    </Text>
+  );
+}
+
+function segmentExtremes(
+  segments: Array<{
+    x0: number;
+    y0: number;
+    x1: number;
+    y1: number;
+    value0: number;
+    value1: number;
+  }>,
+) {
+  const points = segments.flatMap((segment) => [
+    { x: segment.x0, y: segment.y0, value: segment.value0 },
+    { x: segment.x1, y: segment.y1, value: segment.value1 },
+  ]);
+  if (points.length === 0) return null;
+  const min = points.reduce((a, b) => (b.value < a.value ? b : a));
+  const max = points.reduce((a, b) => (b.value > a.value ? b : a));
+  const abs = points.reduce((a, b) =>
+    Math.abs(b.value) > Math.abs(a.value) ? b : a,
+  );
+  return { min, max, abs };
 }
 
 // ---- Main component ----
@@ -570,6 +623,43 @@ export default function PorticoDiagram({
                 weight={idx === 0 || idx === pl.samples.length - 1 ? 2.5 : 1.25}
               />
             )),
+            ...(() => {
+              const min = pl.samples.reduce((a, b) =>
+                b.value < a.value ? b : a,
+              );
+              const max = pl.samples.reduce((a, b) =>
+                b.value > a.value ? b : a,
+              );
+              const abs = pl.samples.reduce((a, b) =>
+                Math.abs(b.value) > Math.abs(a.value) ? b : a,
+              );
+              return [
+                <DiagramValueLabel
+                  key={`m-min-${pl.barId}`}
+                  x={min.x}
+                  y={min.y}
+                  label="mín"
+                  value={min.value}
+                  color={COLOR_M}
+                />,
+                <DiagramValueLabel
+                  key={`m-max-${pl.barId}`}
+                  x={max.x}
+                  y={max.y}
+                  label="máx"
+                  value={max.value}
+                  color={COLOR_M}
+                />,
+                <DiagramValueLabel
+                  key={`m-abs-${pl.barId}`}
+                  x={abs.x}
+                  y={abs.y}
+                  label="|máx|"
+                  value={Math.abs(abs.value)}
+                  color={COLOR_M}
+                />,
+              ];
+            })(),
           ];
         })}
 
@@ -602,6 +692,40 @@ export default function PorticoDiagram({
               />
             </Fragment>
           ))}
+          {Array.from(new Set(nPolylines.map((seg) => seg.barId))).flatMap(
+            (barId) => {
+              const extremes = segmentExtremes(
+                nPolylines.filter((seg) => seg.barId === barId),
+              );
+              if (!extremes) return [];
+              return [
+                <DiagramValueLabel
+                  key={`n-min-${barId}`}
+                  x={extremes.min.x}
+                  y={extremes.min.y}
+                  label="mín"
+                  value={extremes.min.value}
+                  color={COLOR_N_TENSION}
+                />,
+                <DiagramValueLabel
+                  key={`n-max-${barId}`}
+                  x={extremes.max.x}
+                  y={extremes.max.y}
+                  label="máx"
+                  value={extremes.max.value}
+                  color={COLOR_N_TENSION}
+                />,
+                <DiagramValueLabel
+                  key={`n-abs-${barId}`}
+                  x={extremes.abs.x}
+                  y={extremes.abs.y}
+                  label="|máx|"
+                  value={Math.abs(extremes.abs.value)}
+                  color={COLOR_N_TENSION}
+                />,
+              ];
+            },
+          )}
           {/* Flechas axiales para visualizar tracción/compresión */}
           {nArrows.map((a, idx) => {
             const tipX = a.x;
@@ -662,6 +786,41 @@ export default function PorticoDiagram({
             />
           </Fragment>
         ))}
+      {mode === "corte" &&
+        Array.from(new Set(vPolylines.map((seg) => seg.barId))).flatMap(
+          (barId) => {
+            const extremes = segmentExtremes(
+              vPolylines.filter((seg) => seg.barId === barId),
+            );
+            if (!extremes) return [];
+            return [
+              <DiagramValueLabel
+                key={`v-min-${barId}`}
+                x={extremes.min.x}
+                y={extremes.min.y}
+                label="mín"
+                value={extremes.min.value}
+                color={COLOR_V}
+              />,
+              <DiagramValueLabel
+                key={`v-max-${barId}`}
+                x={extremes.max.x}
+                y={extremes.max.y}
+                label="máx"
+                value={extremes.max.value}
+                color={COLOR_V}
+              />,
+              <DiagramValueLabel
+                key={`v-abs-${barId}`}
+                x={extremes.abs.x}
+                y={extremes.abs.y}
+                label="|máx|"
+                value={Math.abs(extremes.abs.value)}
+                color={COLOR_V}
+              />,
+            ];
+          },
+        )}
 
       {/* Glyphs de apoyo */}
       {porticoState.supports.map((sup) => {
