@@ -358,10 +358,11 @@ function buildF(
       if (b0 > a0) {
         const N = 20;
         const step = (b0 - a0) / N;
-        // Pesos Simpson: 1, 4, 2, 4, ..., 4, 1.
+        // Regla de puntos medios compuesta. Para una carga uniforme, esta
+        // integración conserva exactamente la resultante y su primer
+        // momento; no mezclar pesos Simpson con puntos medios.
         for (let i = 0; i < N; i++) {
-          const weight = i % 2 === 1 ? 4 : 2;
-          const subMag = (mag * step * weight) / 3;
+          const subMag = mag * step;
           const sPos = a0 + (i + 0.5) * step;
           addGlobalLoad(F, map, bar, sPos, Lbar, c, sG, subMag, load.angle);
         }
@@ -466,9 +467,10 @@ function buildLocalLoadVectors(
         if (b0 > a0) {
           const N = 20;
           const step = (b0 - a0) / N;
+          // Puntos medios: exacto para resultante y primer momento de una
+          // carga uniforme; evita el Simpson incorrecto sobre midpoints.
           for (let i = 0; i < N; i++) {
-            const weight = i % 2 === 1 ? 4 : 2;
-            const subMag = (w * step * weight) / 3;
+            const subMag = w * step;
             const sPos = a0 + (i + 0.5) * step;
             accumulateLocalLoad(
               out.get(bar.id)!,

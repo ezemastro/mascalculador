@@ -67,6 +67,51 @@ function isPorticoNavState(s: unknown): s is PorticoNavState {
   );
 }
 
+interface LoadResultant {
+  Fx: number;
+  Fy: number;
+  Mz: number;
+}
+
+function calculateLoadResultant(
+  state: PorticoState,
+  dFactor: number,
+  lFactor: number,
+): LoadResultant {
+  let Fx = 0;
+  let Fy = 0;
+  let Mz = 0;
+  for (const load of state.loads) {
+    const bar = state.bars.find((item) => item.id === load.barId);
+    if (!bar) continue;
+    const a = state.nodes.find((node) => node.id === bar.fromNodeId);
+    const b = state.nodes.find((node) => node.id === bar.toNodeId);
+    if (!a || !b) continue;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const length = Math.hypot(dx, dy);
+    if (length < 1e-9) continue;
+    const start = Math.max(0, Math.min(load.a, length));
+    const end =
+      load.kind === "distributed"
+        ? Math.max(start, Math.min(load.b ?? length, length))
+        : start;
+    const magnitude = dFactor * load.D + lFactor * load.L;
+    const total =
+      load.kind === "distributed" ? magnitude * (end - start) : magnitude;
+    const position = load.kind === "distributed" ? (start + end) / 2 : start;
+    const x = a.x + (position / length) * dx;
+    const y = a.y + (position / length) * dy;
+    const angle = (load.angle * Math.PI) / 180;
+    const fx = total * Math.cos(angle);
+    const fy = total * Math.sin(angle);
+    Fx += fx;
+    Fy += fy;
+    Mz += x * fy - y * fx;
+  }
+  return { Fx, Fy, Mz };
+}
+
 // ---- Estética de soporte (movida a PorticoDiagram.tsx) ----
 // Las constantes SUPPORT_HALF_W, hingeTriangle, fixedHatchBox, DEFORM_SCALE,
 // M_SCALE, buildBarPolylines, sinL, cosL y la interface BarSamplePoint
@@ -140,6 +185,22 @@ export default function PorticoResults() {
   );
 
   const active: SolvedPortico = envMode === "envolvente" ? uls : slsD;
+  const loadAccounts = useMemo(
+    () => ({
+      uls: calculateLoadResultant(porticoState, 1.2, 1.6),
+      d: calculateLoadResultant(porticoState, 1, 0),
+      l: calculateLoadResultant(porticoState, 0, 1),
+    }),
+    [porticoState],
+  );
+  const activeReactionTotals = active.reactions.reduce(
+    (totals, reaction) => ({
+      Fx: totals.Fx + reaction.Fx,
+      Fy: totals.Fy + reaction.Fy,
+      Mz: totals.Mz + reaction.Mz,
+    }),
+    { Fx: 0, Fy: 0, Mz: 0 },
+  );
 
   // ---- Zoom helpers ----
   // Mantienen el centro del viewBox y escalan los spans. Cuando el override
@@ -274,6 +335,100 @@ export default function PorticoResults() {
           />
         )}
       </section>
+
+      <details className="bg-surface rounded-xl border border-border p-5">
+        <summary className="cursor-pointer text-sm font-semibold text-text">
+          Ver cuentas del pórtico
+        </summary>
+        <div className="mt-4 flex flex-col gap-4 text-xs text-text-muted">
+          <div>
+            <h3 className="font-semibold text-text mb-2">
+              Resultantes de cargas respecto del origen A
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {(
+                [
+                  ["D", loadAccounts.d],
+                  ["L", loadAccounts.l],
+                  ["U = 1.2D + 1.6L", loadAccounts.uls],
+                ] as const
+              ).map(([label, result]) => (
+                <div key={label} className="bg-surface-alt rounded-lg p-3">
+                  <p className="font-semibold text-text mb-1">{label}</p>
+                  <p>ΣFx = {result.Fx.toFixed(3)} kN</p>
+                  <p>ΣFy = {result.Fy.toFixed(3)} kN</p>
+                  <p>ΣMz,A = {result.Mz.toFixed(3)} kN·m</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-text mb-2">
+              Equilibrio del modo mostrado
+            </h3>
+            <p>
+              Convención del informe: las reacciones compensatorias se comparan
+              con las cargas aplicadas, por eso se verifica R − P ≈ 0.
+            </p>
+            <p>
+              ΣFx: {activeReactionTotals.Fx.toFixed(3)} −{" "}
+              {(envMode === "envolvente"
+                ? loadAccounts.uls.Fx
+                : loadAccounts.d.Fx
+              ).toFixed(3)}{" "}
+              ={" "}
+              {(
+                activeReactionTotals.Fx -
+                (envMode === "envolvente"
+                  ? loadAccounts.uls.Fx
+                  : loadAccounts.d.Fx)
+              ).toFixed(3)}{" "}
+              kN
+            </p>
+            <p>
+              ΣFy: {activeReactionTotals.Fy.toFixed(3)} −{" "}
+              {(envMode === "envolvente"
+                ? loadAccounts.uls.Fy
+                : loadAccounts.d.Fy
+              ).toFixed(3)}{" "}
+              ={" "}
+              {(
+                activeReactionTotals.Fy -
+                (envMode === "envolvente"
+                  ? loadAccounts.uls.Fy
+                  : loadAccounts.d.Fy)
+              ).toFixed(3)}{" "}
+              kN
+            </p>
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-text mb-2">
+              Fuerzas de extremo por barra
+            </h3>
+            <div className="flex flex-col gap-2">
+              {active.bars.map((bar) => (
+                <div key={bar.barId} className="bg-surface-alt rounded-lg p-3">
+                  <p className="font-semibold text-text mb-1">
+                    Barra {bar.barId}
+                  </p>
+                  <p>
+                    Inicio: N={bar.forces.start.N.toFixed(3)} kN · V=
+                    {bar.forces.start.V.toFixed(3)} kN · M=
+                    {bar.forces.start.M.toFixed(3)} kN·m
+                  </p>
+                  <p>
+                    Fin: N={bar.forces.end.N.toFixed(3)} kN · V=
+                    {bar.forces.end.V.toFixed(3)} kN · M=
+                    {bar.forces.end.M.toFixed(3)} kN·m
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </details>
 
       {/* Diagrama Mafs */}
       <section className="bg-surface rounded-xl border border-border overflow-hidden">
