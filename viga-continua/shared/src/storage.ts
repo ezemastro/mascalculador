@@ -500,6 +500,12 @@ export function deleteSlab(id: string): void {
  * Structural minimum of `PorticoState` (viga-continua/src/lib/portico.ts).
  * Used only as the persistence-shape argument for the portico helpers below.
  * Read-only accessors make this interface accept the mutable domain shape.
+ *
+ * Note: `loads[].a`/`b` use the new `(id, barId, kind, D, L, angle, a, b?)`
+ * shape introduced in PR2; PR1 used `(barId, intensity, angleDeg, distanceFromOrigin)`
+ * — auto-saved JSON from a PR1 session is structurally incompatible and
+ * `loadLastPorticoFormState` returns null on parse failure, so the form
+ * safely resets to defaults.
  */
 export interface PorticoState {
   readonly nodes: ReadonlyArray<{
@@ -511,14 +517,22 @@ export interface PorticoState {
     readonly id: string;
     readonly fromNodeId: string;
     readonly toNodeId: string;
+    readonly E: number;
+    readonly A: number;
+    readonly I: number;
   }>;
   readonly loads: ReadonlyArray<{
+    readonly id: string;
     readonly barId: string;
-    readonly intensity: number;
-    readonly angleDeg: number;
-    readonly distanceFromOrigin: number;
+    readonly kind: "point" | "distributed";
+    readonly D: number;
+    readonly L: number;
+    readonly angle: number;
+    readonly a: number;
+    readonly b?: number;
   }>;
   readonly supports: ReadonlyArray<{
+    readonly id: string;
     readonly nodeId: string;
     readonly kind: "hinge" | "fixed";
   }>;
