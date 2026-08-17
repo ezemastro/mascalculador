@@ -4,9 +4,9 @@
  * Props:
  *   - porticoState: estado del pórtico (nodos, barras, cargas, apoyos).
  *   - solved?: resultado del solver. Requerido para los modos
- *     "normales" | "momentos" | "corte". En "geometría" se puede omitir
- *     (no se muestra deformada ni diagramas).
- *   - mode: "geometria" | "normales" | "momentos" | "corte".
+ *     "deformada" | "normales" | "momentos" | "corte". En "geometría" se
+ *     puede omitir.
+ *   - mode: "geometria" | "deformada" | "normales" | "momentos" | "corte".
  *   - viewBoxOverride?: [xMin, xMax, yMin, yMax] para zoom. Si se omite,
  *     se calcula fit-to-bbox + 18% padding.
  *
@@ -49,7 +49,12 @@ export const COLOR_NODE_LABEL = "#f8fafc";
 
 // ---- Types ----
 
-export type DiagramMode = "geometria" | "normales" | "momentos" | "corte";
+export type DiagramMode =
+  | "geometria"
+  | "deformada"
+  | "normales"
+  | "momentos"
+  | "corte";
 
 export interface PorticoDiagramProps {
   porticoState: PorticoState;
@@ -435,8 +440,8 @@ export default function PorticoDiagram({
         );
       })}
 
-      {/* Geometría deformada (solo en modo "geometria") */}
-      {mode === "geometria" &&
+      {/* Deformada en su propia vista; geometría queda indeformada. */}
+      {mode === "deformada" &&
         solved &&
         porticoState.bars.map((b) => {
           const a = porticoState.nodes.find((n) => n.id === b.fromNodeId);
@@ -474,14 +479,13 @@ export default function PorticoDiagram({
             segs.push({ x0: p0.x, x1: p1.x, y0: p0.y, y1: p1.y });
           }
           return segs.map((s, idx) => (
-            <Plot.OfX
+            <Plot.Parametric
               key={`m-${pl.barId}-${idx}`}
-              y={(t) => {
-                if (t < s.x0 || t > s.x1) return -s.y0;
-                const u = (t - s.x0) / (s.x1 - s.x0 || 1);
-                return -(s.y0 + u * (s.y1 - s.y0));
-              }}
-              domain={[Math.min(s.x0, s.x1), Math.max(s.x0, s.x1)]}
+              xy={(t) => [
+                s.x0 + t * (s.x1 - s.x0),
+                -(s.y0 + t * (s.y1 - s.y0)),
+              ]}
+              domain={[0, 1]}
               color={COLOR_M}
               weight={2.5}
             />
@@ -491,14 +495,13 @@ export default function PorticoDiagram({
       {mode === "normales" && (
         <>
           {nPolylines.map((seg, idx) => (
-            <Plot.OfX
+            <Plot.Parametric
               key={`n-${seg.barId}-${idx}`}
-              y={(t) => {
-                if (t < seg.x0 || t > seg.x1) return -seg.y0;
-                const u = (t - seg.x0) / (seg.x1 - seg.x0 || 1);
-                return -(seg.y0 + u * (seg.y1 - seg.y0));
-              }}
-              domain={[Math.min(seg.x0, seg.x1), Math.max(seg.x0, seg.x1)]}
+              xy={(t) => [
+                seg.x0 + t * (seg.x1 - seg.x0),
+                -(seg.y0 + t * (seg.y1 - seg.y0)),
+              ]}
+              domain={[0, 1]}
               color={seg.tension ? COLOR_N_TENSION : COLOR_N_COMPRESSION}
               weight={2.5}
             />
@@ -537,14 +540,13 @@ export default function PorticoDiagram({
 
       {mode === "corte" &&
         vPolylines.map((seg, idx) => (
-          <Plot.OfX
+          <Plot.Parametric
             key={`v-${seg.barId}-${idx}`}
-            y={(t) => {
-              if (t < seg.x0 || t > seg.x1) return seg.y0;
-              const u = (t - seg.x0) / (seg.x1 - seg.x0 || 1);
-              return seg.y0 + u * (seg.y1 - seg.y0);
-            }}
-            domain={[Math.min(seg.x0, seg.x1), Math.max(seg.x0, seg.x1)]}
+            xy={(t) => [
+              seg.x0 + t * (seg.x1 - seg.x0),
+              -(seg.y0 + t * (seg.y1 - seg.y0)),
+            ]}
+            domain={[0, 1]}
             color={COLOR_V}
             weight={2.5}
           />

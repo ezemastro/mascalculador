@@ -1,7 +1,7 @@
 /**
  * DiagramModeToggle — selector de modo para PorticoDiagram.
  *
- * Tabs: Geometría / Normales / Momentos / Corte.
+ * Tabs: Geometría / Deformada / Normales / Momentos / Corte.
  * Patrón visual mirror del EnvToggle (segmented control).
  */
 
@@ -9,6 +9,7 @@ import type { DiagramMode } from "./PorticoDiagram";
 
 const OPTIONS: ReadonlyArray<{ id: DiagramMode; label: string }> = [
   { id: "geometria", label: "Geometría" },
+  { id: "deformada", label: "Deformada" },
   { id: "normales", label: "Normales" },
   { id: "momentos", label: "Momentos" },
   { id: "corte", label: "Corte" },

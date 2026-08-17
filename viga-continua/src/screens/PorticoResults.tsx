@@ -333,6 +333,15 @@ export default function PorticoResults() {
               </span>
             </>
           )}
+          {diagramMode === "deformada" && (
+            <span>
+              <span
+                className="inline-block w-3 h-3 rounded-full align-middle mr-1"
+                style={{ background: COLOR_DEFORM }}
+              />
+              Deformada ×50
+            </span>
+          )}
           {diagramMode === "normales" && (
             <>
               <span>
