@@ -28,7 +28,7 @@
 
 import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { MainLayout, formatMoment } from "@mascalculador/shared";
+import { MainLayout } from "@mascalculador/shared";
 import { solvePortico } from "../lib/portico-analysis";
 import type {
   PorticoNode,
@@ -201,6 +201,14 @@ export default function PorticoResults() {
     }),
     { Fx: 0, Fy: 0, Mz: 0 },
   );
+  const characteristicKey =
+    diagramMode === "normales"
+      ? "N"
+      : diagramMode === "momentos"
+        ? "M"
+        : diagramMode === "corte"
+          ? "V"
+          : null;
 
   // ---- Zoom helpers ----
   // Mantienen el centro del viewBox y escalan los spans. Cuando el override
@@ -536,36 +544,54 @@ export default function PorticoResults() {
         </div>
       </section>
 
-      {/* Resumen de momentos máximos por barra */}
-      <section className="bg-surface rounded-xl border border-border p-5">
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
-          {envMode === "servicio"
-            ? "Momentos (D y L por separado)"
-            : "Momentos U"}
-        </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {active.bars.map((b) => {
-            const maxM = b.forces.samples.reduce(
-              (m, s) => Math.max(m, Math.abs(s.M)),
-              Math.max(Math.abs(b.forces.start.M), Math.abs(b.forces.end.M)),
-            );
-            return (
-              <div
-                key={`m-card-${b.barId}`}
-                className="bg-surface rounded-xl border border-border p-3"
-              >
-                <p className="text-xs text-text-muted">Barra {b.barId}</p>
-                <p className="text-sm">
-                  |M|<sub>max</sub> ={" "}
-                  <span className="font-semibold text-text">
-                    {formatMoment(maxM)}
-                  </span>
-                </p>
-              </div>
-            );
-          })}
-        </div>
-      </section>
+      {characteristicKey && (
+        <section className="bg-surface rounded-xl border border-border p-5">
+          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
+            Extremos por barra — {characteristicKey}
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {active.bars.map((b) => {
+              const values = [
+                b.forces.start[characteristicKey],
+                ...b.forces.samples.map((sample) => sample[characteristicKey]),
+                b.forces.end[characteristicKey],
+              ];
+              const min = Math.min(...values);
+              const max = Math.max(...values);
+              const maxAbs = Math.max(Math.abs(min), Math.abs(max));
+              return (
+                <div
+                  key={`force-card-${characteristicKey}-${b.barId}`}
+                  className="bg-surface rounded-xl border border-border p-3"
+                >
+                  <p className="text-xs text-text-muted">Barra {b.barId}</p>
+                  <p className="text-sm">
+                    Mín ={" "}
+                    <span className="font-semibold text-text">
+                      {min.toFixed(3)}
+                    </span>
+                    {characteristicKey === "M" ? " kN·m" : " kN"}
+                  </p>
+                  <p className="text-sm">
+                    Máx ={" "}
+                    <span className="font-semibold text-text">
+                      {max.toFixed(3)}
+                    </span>
+                    {characteristicKey === "M" ? " kN·m" : " kN"}
+                  </p>
+                  <p className="text-sm">
+                    |Máx| ={" "}
+                    <span className="font-semibold text-text">
+                      {maxAbs.toFixed(3)}
+                    </span>
+                    {characteristicKey === "M" ? " kN·m" : " kN"}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
     </MainLayout>
   );
 }

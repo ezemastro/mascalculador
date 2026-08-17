@@ -112,6 +112,7 @@ function computeFitViewBox(
 // ---- Force polyline builders ----
 
 interface BarSamplePoint {
+  s: number;
   x: number;
   y: number;
 }
@@ -121,7 +122,6 @@ function buildOffsetPolyline(
   bars: SolvedPortico["bars"],
   sampleKey: "M" | "N" | "V",
   scale: number,
-  flipSignForTensionBelow: boolean,
 ): Array<{ barId: string; samples: BarSamplePoint[] }> {
   return bars
     .map((b) => {
@@ -140,18 +140,11 @@ function buildOffsetPolyline(
       const offY = dx / L;
       const samples: BarSamplePoint[] = b.forces.samples.map((s) => {
         const forceVal = s[sampleKey];
-        // Para M usamos tensión abajo (mean sign); para N/V usamos el signo
-        // instantáneo para que la línea quede del lado correcto.
-        const sign = flipSignForTensionBelow
-          ? b.forces.samples.reduce((acc, p) => acc + p[sampleKey], 0) /
-              Math.max(1, b.forces.samples.length) >=
-            0
-            ? 1
-            : -1
-          : forceVal >= 0
-            ? 1
-            : -1;
+        // Cada punto conserva su propio signo. Usar el signo medio de la
+        // barra ocultaba los cambios de signo del momento en el nudo A.
+        const sign = forceVal >= 0 ? 1 : -1;
         return {
+          s: s.s,
           x: a.x + (s.s / L) * dx + offX * sign * Math.abs(forceVal) * scale,
           y: a.y + (s.s / L) * dy + offY * sign * Math.abs(forceVal) * scale,
         };
@@ -185,6 +178,10 @@ interface NBarSegment {
   y0: number;
   x1: number;
   y1: number;
+  baseX0: number;
+  baseY0: number;
+  baseX1: number;
+  baseY1: number;
   tension: boolean;
 }
 
@@ -221,6 +218,10 @@ function buildNPolylines(
         y0,
         x1: s1,
         y1,
+        baseX0: a.x + (p0.s / L) * dx,
+        baseY0: a.y + (p0.s / L) * dy,
+        baseX1: a.x + (p1.s / L) * dx,
+        baseY1: a.y + (p1.s / L) * dy,
         tension: (n0 + n1) / 2 >= 0,
       });
     }
@@ -236,6 +237,10 @@ interface VBarSegment {
   y0: number;
   x1: number;
   y1: number;
+  baseX0: number;
+  baseY0: number;
+  baseX1: number;
+  baseY1: number;
   sign: number;
 }
 
@@ -274,6 +279,10 @@ function buildVPolylines(
         y0,
         x1: s1,
         y1,
+        baseX0: a.x + (p0.s / L) * dx,
+        baseY0: a.y + (p0.s / L) * dy,
+        baseX1: a.x + (p1.s / L) * dx,
+        baseY1: a.y + (p1.s / L) * dy,
         sign: (sign0 + sign1) / 2,
       });
     }
@@ -371,6 +380,31 @@ function NodeGlyph({ x, y, id, nx, ny, showCoords }: NodeGlyphProps) {
   );
 }
 
+function PerpendicularTick({
+  baseX,
+  baseY,
+  tipX,
+  tipY,
+  color,
+  weight = 1.5,
+}: {
+  baseX: number;
+  baseY: number;
+  tipX: number;
+  tipY: number;
+  color: string;
+  weight?: number;
+}) {
+  return (
+    <Plot.Parametric
+      xy={(t) => [baseX + t * (tipX - baseX), -(baseY + t * (tipY - baseY))]}
+      domain={[0, 1]}
+      color={color}
+      weight={weight}
+    />
+  );
+}
+
 // ---- Main component ----
 
 export default function PorticoDiagram({
@@ -407,9 +441,7 @@ export default function PorticoDiagram({
 
   const mPolylines = useMemo(
     () =>
-      solved
-        ? buildOffsetPolyline(porticoState, solved.bars, "M", mScale, true)
-        : [],
+      solved ? buildOffsetPolyline(porticoState, solved.bars, "M", mScale) : [],
     [porticoState, solved, mScale],
   );
   const nPolylines = useMemo(
@@ -503,33 +535,72 @@ export default function PorticoDiagram({
             const p1 = pl.samples[i + 1];
             segs.push({ x0: p0.x, x1: p1.x, y0: p0.y, y1: p1.y });
           }
-          return segs.map((s, idx) => (
-            <Plot.Parametric
-              key={`m-${pl.barId}-${idx}`}
-              xy={(t) => [
-                s.x0 + t * (s.x1 - s.x0),
-                -(s.y0 + t * (s.y1 - s.y0)),
-              ]}
-              domain={[0, 1]}
-              color={COLOR_M}
-              weight={2.5}
-            />
-          ));
+          const bar = porticoState.bars.find((item) => item.id === pl.barId);
+          const a = bar
+            ? porticoState.nodes.find((node) => node.id === bar.fromNodeId)
+            : undefined;
+          const c = bar
+            ? porticoState.nodes.find((node) => node.id === bar.toNodeId)
+            : undefined;
+          if (!a || !c) return [];
+          const dx = c.x - a.x;
+          const dy = c.y - a.y;
+          const length = Math.hypot(dx, dy);
+          return [
+            ...segs.map((s, idx) => (
+              <Plot.Parametric
+                key={`m-${pl.barId}-${idx}`}
+                xy={(t) => [
+                  s.x0 + t * (s.x1 - s.x0),
+                  -(s.y0 + t * (s.y1 - s.y0)),
+                ]}
+                domain={[0, 1]}
+                color={COLOR_M}
+                weight={2.5}
+              />
+            )),
+            ...pl.samples.map((sample, idx) => (
+              <PerpendicularTick
+                key={`m-tick-${pl.barId}-${idx}`}
+                baseX={a.x + (sample.s / length) * dx}
+                baseY={a.y + (sample.s / length) * dy}
+                tipX={sample.x}
+                tipY={sample.y}
+                color={COLOR_M}
+                weight={idx === 0 || idx === pl.samples.length - 1 ? 2.5 : 1.25}
+              />
+            )),
+          ];
         })}
 
       {mode === "normales" && (
         <>
           {nPolylines.map((seg, idx) => (
-            <Plot.Parametric
-              key={`n-${seg.barId}-${idx}`}
-              xy={(t) => [
-                seg.x0 + t * (seg.x1 - seg.x0),
-                -(seg.y0 + t * (seg.y1 - seg.y0)),
-              ]}
-              domain={[0, 1]}
-              color={seg.tension ? COLOR_N_TENSION : COLOR_N_COMPRESSION}
-              weight={2.5}
-            />
+            <Fragment key={`n-${seg.barId}-${idx}`}>
+              <Plot.Parametric
+                xy={(t) => [
+                  seg.x0 + t * (seg.x1 - seg.x0),
+                  -(seg.y0 + t * (seg.y1 - seg.y0)),
+                ]}
+                domain={[0, 1]}
+                color={seg.tension ? COLOR_N_TENSION : COLOR_N_COMPRESSION}
+                weight={2.5}
+              />
+              <PerpendicularTick
+                baseX={seg.baseX0}
+                baseY={seg.baseY0}
+                tipX={seg.x0}
+                tipY={seg.y0}
+                color={seg.tension ? COLOR_N_TENSION : COLOR_N_COMPRESSION}
+              />
+              <PerpendicularTick
+                baseX={seg.baseX1}
+                baseY={seg.baseY1}
+                tipX={seg.x1}
+                tipY={seg.y1}
+                color={seg.tension ? COLOR_N_TENSION : COLOR_N_COMPRESSION}
+              />
+            </Fragment>
           ))}
           {/* Flechas axiales para visualizar tracción/compresión */}
           {nArrows.map((a, idx) => {
@@ -565,16 +636,31 @@ export default function PorticoDiagram({
 
       {mode === "corte" &&
         vPolylines.map((seg, idx) => (
-          <Plot.Parametric
-            key={`v-${seg.barId}-${idx}`}
-            xy={(t) => [
-              seg.x0 + t * (seg.x1 - seg.x0),
-              -(seg.y0 + t * (seg.y1 - seg.y0)),
-            ]}
-            domain={[0, 1]}
-            color={COLOR_V}
-            weight={2.5}
-          />
+          <Fragment key={`v-${seg.barId}-${idx}`}>
+            <Plot.Parametric
+              xy={(t) => [
+                seg.x0 + t * (seg.x1 - seg.x0),
+                -(seg.y0 + t * (seg.y1 - seg.y0)),
+              ]}
+              domain={[0, 1]}
+              color={COLOR_V}
+              weight={2.5}
+            />
+            <PerpendicularTick
+              baseX={seg.baseX0}
+              baseY={seg.baseY0}
+              tipX={seg.x0}
+              tipY={seg.y0}
+              color={COLOR_V}
+            />
+            <PerpendicularTick
+              baseX={seg.baseX1}
+              baseY={seg.baseY1}
+              tipX={seg.x1}
+              tipY={seg.y1}
+              color={COLOR_V}
+            />
+          </Fragment>
         ))}
 
       {/* Glyphs de apoyo */}
