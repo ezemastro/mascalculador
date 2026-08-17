@@ -281,6 +281,8 @@ export default function PorticoForm() {
       state: {
         mode: "portico",
         state,
+        loadedSaveId: loadedSaveId ?? undefined,
+        loadedSaveName: loadedSaveName ?? undefined,
       },
     });
   }

@@ -30,6 +30,7 @@ import { useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import { solvePortico } from "../lib/portico-analysis";
+import { savePorticoInput, updatePorticoInput } from "../lib/storage";
 import type {
   PorticoNode,
   PorticoReaction,
@@ -55,6 +56,8 @@ import ZoomControls from "../components/ZoomControls";
 interface PorticoNavState {
   mode: "portico";
   state: PorticoState;
+  loadedSaveId?: string;
+  loadedSaveName?: string;
 }
 
 function isPorticoNavState(s: unknown): s is PorticoNavState {
@@ -124,6 +127,12 @@ export default function PorticoResults() {
   const raw: unknown = location.state;
 
   const [envMode, setEnvMode] = useState<EnvMode>("envolvente");
+  const [loadedSaveId, setLoadedSaveId] = useState<string | null>(() =>
+    isPorticoNavState(raw) ? (raw.loadedSaveId ?? null) : null,
+  );
+  const [loadedSaveName, setLoadedSaveName] = useState<string | null>(() =>
+    isPorticoNavState(raw) ? (raw.loadedSaveName ?? null) : null,
+  );
   const [diagramMode, setDiagramMode] = useState<DiagramMode>("geometria");
   const [viewBoxOverride, setViewBoxOverride] = useState<
     [number, number, number, number] | null
@@ -201,6 +210,30 @@ export default function PorticoResults() {
     }),
     { Fx: 0, Fy: 0, Mz: 0 },
   );
+
+  function handleSave() {
+    if (loadedSaveId) {
+      try {
+        updatePorticoInput(loadedSaveId, {
+          name: loadedSaveName ?? "Sin nombre",
+          input: porticoState,
+        });
+      } catch (err: unknown) {
+        alert(err instanceof Error ? err.message : "Error al guardar");
+      }
+      return;
+    }
+
+    const name = prompt("Nombre para guardar este pórtico:");
+    if (!name) return;
+    try {
+      const saved = savePorticoInput({ name, input: porticoState });
+      setLoadedSaveId(saved.id);
+      setLoadedSaveName(name);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Error al guardar");
+    }
+  }
   const characteristicKey =
     diagramMode === "normales"
       ? "N"
@@ -289,6 +322,13 @@ export default function PorticoResults() {
             className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-3 py-1.5 rounded-lg"
           >
             ← Volver
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            className="bg-primary text-white font-semibold px-4 py-1.5 rounded-lg hover:bg-primary-hover transition-colors"
+          >
+            {loadedSaveId ? "Guardar corrección" : "Guardar"}
           </button>
         </div>
       </header>
