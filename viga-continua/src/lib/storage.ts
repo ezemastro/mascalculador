@@ -50,6 +50,10 @@ export const saveCompat = shared.saveCompat;
 export const getSavedCompats = shared.getSavedCompats;
 export const deleteCompat = shared.deleteCompat;
 export const savePorticoInput = shared.savePorticoInput;
+export const updatePorticoInput = shared.updatePorticoInput;
+export const loadPorticoInput = shared.loadPorticoInput;
+export const deletePorticoInput = shared.deletePorticoInput;
+export const getSavedPorticoInputs = shared.getSavedPorticoInputs;
 export const saveLastPorticoFormState = shared.saveLastPorticoFormState;
 export const loadLastPorticoFormState = shared.loadLastPorticoFormState;
 // Viga continua-specific

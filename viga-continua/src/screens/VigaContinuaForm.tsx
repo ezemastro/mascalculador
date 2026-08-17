@@ -12,6 +12,7 @@ import {
 } from "../lib/storage";
 import type { AnalysisLoad, VigaContinuaState } from "../lib/viga-continua";
 import ModeSelector, { type Mode } from "../components/ModeSelector";
+import PorticoForm from "./PorticoForm";
 
 function readMode(raw: string | null): Mode {
   return raw === "portico" ? "portico" : "viga-continua";
@@ -242,9 +243,7 @@ export default function VigaContinuaForm() {
       </div>
 
       {mode === "portico" ? (
-        <section className="bg-surface rounded-xl border border-border p-12 text-center text-text-muted">
-          Modo Pórtico: completar en PR3.
-        </section>
+        <PorticoForm />
       ) : (
         <form
           onSubmit={(e) => e.preventDefault()}

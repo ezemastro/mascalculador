@@ -559,6 +559,33 @@ export function savePorticoInput(data: PorticoSavedData): SavedBeam {
   return saveBeam("concrete", data.name, "portico", payload);
 }
 
+/** Update an existing pórtico save (by id). Preserves original id + name. */
+export function updatePorticoInput(
+  id: string,
+  data: PorticoSavedData,
+): SavedBeam | null {
+  const payload: Record<string, unknown> = {
+    name: data.name,
+    input: data.input,
+  };
+  return updateSave("concrete", id, payload);
+}
+
+/** Load a pórtico save by id; null if not found. */
+export function loadPorticoInput(id: string): SavedBeam | null {
+  return getSavedBeams("concrete", "portico").find((s) => s.id === id) ?? null;
+}
+
+/** Delete a pórtico save by id. */
+export function deletePorticoInput(id: string): void {
+  deleteSave("concrete", id);
+}
+
+/** List all pórtico saves (newest first via getSavedBeams ordering). */
+export function getSavedPorticoInputs(): SavedBeam[] {
+  return getSavedBeams("concrete", "portico");
+}
+
 /** Auto-save the in-progress portico form state. Silently ignores quota errors. */
 export function saveLastPorticoFormState(state: PorticoState): void {
   try {

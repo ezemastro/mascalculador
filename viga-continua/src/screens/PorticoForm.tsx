@@ -25,6 +25,7 @@ import {
   loadLastPorticoFormState,
   saveLastPorticoFormState,
   savePorticoInput,
+  updatePorticoInput,
 } from "../lib/storage";
 import {
   validatePorticoState,
@@ -279,6 +280,21 @@ export default function PorticoForm() {
   }
 
   function handleSave() {
+    // [R-portico-persistence + BasesForm-bug-free] Branch on loadedSaveId:
+    // first-save prompts and sets BOTH setters; re-save updates silently.
+    if (loadedSaveId) {
+      // Already editing a saved pórtico — overwrite the same record. Do NOT
+      // re-prompt; the user has already named this pórtico. Renames go
+      // through SavedBeams → Eliminar + a fresh save.
+      try {
+        const name = loadedSaveName ?? "Sin nombre";
+        updatePorticoInput(loadedSaveId, { name, input: state });
+      } catch (err: unknown) {
+        alert(err instanceof Error ? err.message : "Error al guardar");
+      }
+      return;
+    }
+
     const name = prompt("Nombre para guardar este pórtico:");
     if (!name) return;
     try {
