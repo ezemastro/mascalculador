@@ -1,9 +1,12 @@
 import { useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { Coordinates, Mafs, Plot, Text } from "mafs";
+import { Coordinates, Mafs, Plot, Polygon, Text } from "mafs";
 import { MainLayout } from "@mascalculador/shared";
-import { calculateBeam, formatForce } from "@mascalculador/shared";
+import { formatForce } from "@mascalculador/shared";
 import { designConcreteDetailed } from "../lib/concrete-design";
+import { saveBeam, updateSave } from "../lib/storage";
+import { CONCRETE_DENSITY } from "../lib/constants";
+import { calculateBeamEnvelope } from "../lib/beam-envelope";
 import type { ConcreteState } from "./ConcreteForm";
 
 function sanitizeDecimal(val: string): string {
@@ -22,20 +25,267 @@ const BAR_AREA: Record<number, number> = {
   25: 491,
 };
 
+// Helpers
+function arr<T>(n: number, fill: T): T[] {
+  return Array.from({ length: n }, () => fill);
+}
+
+/** Extiende/recorta un arreglo a la longitud n (para arrays por tramo). */
+function ensure<T>(a: T[], n: number, fill: T): T[] {
+  return a.length >= n ? a.slice(0, n) : [...a, ...arr(n - a.length, fill)];
+}
+
+/** Copia un arreglo escribiendo la posición i (rellena hasta i+1 con fill). */
+function patchArr(
+  base: number[],
+  i: number,
+  fill: number,
+  v: number,
+): number[] {
+  const nxt =
+    base.length >= i + 1
+      ? [...base]
+      : [...base, ...arr(i + 1 - base.length, fill)];
+  nxt[i] = v;
+  return nxt;
+}
+
+function peak(
+  fn: (x: number) => number,
+  pts: number[],
+  x0: number,
+  x1: number,
+  steps = 300,
+): { x: number; v: number } {
+  let bx = x0;
+  let bv = -Infinity;
+  for (const x of pts) {
+    if (x < x0 || x > x1) continue;
+    const v = fn(x);
+    if (v > bv) {
+      bv = v;
+      bx = x;
+    }
+  }
+  for (let k = 0; k <= steps; k++) {
+    const x = x0 + (k / steps) * (x1 - x0);
+    const v = fn(x);
+    if (v > bv) {
+      bv = v;
+      bx = x;
+    }
+  }
+  return { x: bx, v: bv };
+}
+
+function supportTriangle(x: number, h: number, w: number): [number, number][] {
+  return [
+    [x, 0],
+    [x - w, -h],
+    [x + w, -h],
+  ];
+}
+
 export default function ConcreteResults() {
   const location = useLocation();
   const navigate = useNavigate();
   const s = location.state as ConcreteState | null;
 
-  const [barQty, setBarQty] = useState(3);
-  const [barDiam, setBarDiam] = useState(16);
-  const [stirrupLegs, setStirrupLegs] = useState(2);
-  const [stirrupDiam, setStirrupDiam] = useState(8);
-  const [stirrupSpacing, setStirrupSpacing] = useState(200);
-  const [supportWidths, setSupportWidths] = useState<number[]>([]);
-  const [directSupport, setDirectSupport] = useState(true);
-  const [flexChecked, setFlexChecked] = useState(false);
-  const [shearChecked, setShearChecked] = useState(false);
+  const nSpans = s?.spans.length ?? 1;
+  const nInterior = Math.max(0, nSpans - 1);
+  const nSupports = nSpans + 1;
+
+  // ---- Estado de armaduras por tramo (arrays; acepta escalares de guardados viejos) ----
+  const [barQty, setBarQty] = useState<number[]>(() => {
+    const v = s?.barQty;
+    return v != null ? (Array.isArray(v) ? v : arr(nSpans, v)) : arr(nSpans, 3);
+  });
+  const [barDiam, setBarDiam] = useState<number[]>(() => {
+    const v = s?.barDiam;
+    return v != null
+      ? Array.isArray(v)
+        ? v
+        : arr(nSpans, v)
+      : arr(nSpans, 16);
+  });
+  const [compBarQty, setCompBarQty] = useState<number[]>(() => {
+    const v = s?.compBarQty;
+    return v != null ? (Array.isArray(v) ? v : arr(nSpans, v)) : arr(nSpans, 0);
+  });
+  const [compBarDiam, setCompBarDiam] = useState<number[]>(() => {
+    const v = s?.compBarDiam;
+    return v != null
+      ? Array.isArray(v)
+        ? v
+        : arr(nSpans, v)
+      : arr(nSpans, 12);
+  });
+  const [stirrupLegs, setStirrupLegs] = useState<number[]>(() => {
+    const v = s?.stirrupLegs;
+    return v != null ? (Array.isArray(v) ? v : arr(nSpans, v)) : arr(nSpans, 2);
+  });
+  const [stirrupDiam, setStirrupDiam] = useState<number[]>(() => {
+    const v = s?.stirrupDiam;
+    return v != null ? (Array.isArray(v) ? v : arr(nSpans, v)) : arr(nSpans, 8);
+  });
+  const [stirrupSpacing, setStirrupSpacing] = useState<number[]>(() => {
+    const v = s?.stirrupSpacing;
+    return v != null
+      ? Array.isArray(v)
+        ? v
+        : arr(nSpans, v)
+      : arr(nSpans, 200);
+  });
+  // Armadura de apoyo (momentos negativos) — flexión únicamente
+  const [supBarQty, setSupBarQty] = useState<number[]>(() => {
+    const v = s?.supBarQty;
+    return v != null
+      ? Array.isArray(v)
+        ? v
+        : arr(nInterior, v)
+      : arr(nInterior, 3);
+  });
+  const [supBarDiam, setSupBarDiam] = useState<number[]>(() => {
+    const v = s?.supBarDiam;
+    return v != null
+      ? Array.isArray(v)
+        ? v
+        : arr(nInterior, v)
+      : arr(nInterior, 16);
+  });
+  const [supportWidths, setSupportWidths] = useState<number[]>(
+    () => s?.supportWidths ?? [],
+  );
+  const [directSupport, setDirectSupport] = useState(s?.directSupport ?? true);
+  const [savedId, setSavedId] = useState<string | null>(
+    s?.loadedSaveId ?? null,
+  );
+  const [savedName, setSavedName] = useState<string | null>(
+    s?.loadedSaveName ?? null,
+  );
+
+  // ---- Memoización (antes del early return: orden de hooks estable) ----
+  // Payload estable para la envolvente
+  const envelopeLoads = useMemo(
+    () =>
+      (s?.concreteLoads ?? []).map((cl) => ({
+        type: cl.type,
+        D: cl.D,
+        L: cl.L,
+        position: cl.position,
+        start: cl.start,
+        end: cl.end,
+      })),
+    [s?.concreteLoads],
+  );
+
+  // Peso propio: (bw·h / 1e6) × γ_hormigón [kN/m], en mm.
+  // Const plana: el número es un dep estable por valor para los useMemo.
+  const selfWeight = s?.includeSelfWeight
+    ? ((s.bw * s.h) / 1e6) * CONCRETE_DENSITY
+    : 0;
+
+  // Carga uniforme (para reducción de corte) — incluye peso propio
+  const qu = useMemo(() => {
+    if (!s) return 0;
+    return (
+      s.concreteLoads
+        .filter((l) => l.type === "distributed")
+        .reduce((sum, l) => sum + 1.2 * l.D + 1.6 * l.L, 0) +
+      (selfWeight > 0 ? 1.2 * selfWeight : 0)
+    );
+  }, [s, selfWeight]);
+
+  // Envolvente (cargas alternadas): M/V últimos máximos, reacciones D y L
+  const envelope = useMemo(() => {
+    if (!s) return null;
+    return calculateBeamEnvelope(
+      s.spans,
+      s.supportTypes,
+      envelopeLoads,
+      selfWeight,
+    );
+  }, [s, envelopeLoads, selfWeight]);
+
+  // Diseño por tramo (todo en mm)
+  const spanResults = useMemo(() => {
+    if (!s || !envelope) return null;
+    const supportPositions: number[] = [0];
+    for (const sp of s.spans)
+      supportPositions.push(supportPositions[supportPositions.length - 1] + sp);
+    return s.spans.map((_sp, i) => {
+      const Mu = envelope.spanMuPos[i];
+      const Vu = envelope.spanVu[i];
+      const c = ensure(supportWidths, supportPositions.length, 300)[i]; // mm
+      const crReq = designConcreteDetailed({
+        bw: s.bw,
+        h: s.h,
+        d: 0,
+        dp: 0,
+        cover: s.cover,
+        fc: s.fc,
+        fy: s.fy,
+        Mu,
+        Vu,
+        qu,
+        c,
+        directSupport,
+        As: 0,
+        Av: 0,
+        nLegs: 0,
+        s: 0,
+      });
+      return { Mu, Vu, crReq, c };
+    });
+  }, [s, envelope, qu, supportWidths, directSupport]);
+
+  // Verificación de corte por tramo (en vivo, con armaduras colocadas)
+  const shearChecks = useMemo(() => {
+    if (!s || !spanResults) return null;
+    return spanResults.map((sr, i) => {
+      const AsT =
+        (ensure(barQty, nSpans, 3)[i] || 0) *
+        (BAR_AREA[ensure(barDiam, nSpans, 16)[i]] || 0);
+      const AsC =
+        (ensure(compBarQty, nSpans, 0)[i] || 0) *
+        (BAR_AREA[ensure(compBarDiam, nSpans, 12)[i]] || 0);
+      const Av1 = BAR_AREA[ensure(stirrupDiam, nSpans, 8)[i]] || 0;
+      const sSpacing = ensure(stirrupSpacing, nSpans, 200)[i] || 200; // mm
+      const sLegs = ensure(stirrupLegs, nSpans, 2)[i] || 2;
+      const chk = designConcreteDetailed({
+        bw: s.bw,
+        h: s.h,
+        d: 0,
+        dp: 0,
+        cover: s.cover,
+        fc: s.fc,
+        fy: s.fy,
+        Mu: sr.Mu,
+        Vu: sr.Vu,
+        qu,
+        c: sr.c,
+        directSupport,
+        As: AsT + AsC,
+        Av: Av1,
+        nLegs: sLegs,
+        s: sSpacing,
+      });
+      return { AsT, AsC, Av1, sSpacing, sLegs, chk };
+    });
+  }, [
+    s,
+    spanResults,
+    qu,
+    directSupport,
+    nSpans,
+    barQty,
+    barDiam,
+    compBarQty,
+    compBarDiam,
+    stirrupLegs,
+    stirrupDiam,
+    stirrupSpacing,
+  ]);
 
   if (!s) {
     return (
@@ -53,18 +303,20 @@ export default function ConcreteResults() {
     );
   }
 
-  const { spans, supportTypes, concreteLoads, bw, h, cover, fc, fy } = s;
-  const beamConfig: BeamConfig = { spans, supportTypes };
-  const L = spans.reduce((a, b) => a + b, 0);
+  if (!envelope || !spanResults || !shearChecks) return null;
 
-  const ultimateLoads: Load[] = concreteLoads.map((cl) => ({
-    id: cl.id,
-    type: cl.type,
-    magnitude: 1.2 * cl.D + 1.6 * cl.L,
-    position: cl.position,
-    start: cl.start,
-    end: cl.end,
-  }));
+  const {
+    spans,
+    supportTypes,
+    concreteLoads,
+    bw,
+    h,
+    cover,
+    fc,
+    fy,
+    includeSelfWeight,
+  } = s;
+  const L = spans.reduce((a, b) => a + b, 0);
 
   const supportPositions: number[] = [0];
   for (const sp of spans)
@@ -74,158 +326,148 @@ export default function ConcreteResults() {
     type: supportTypes[i],
   }));
 
-  // Init support widths
-  if (supportWidths.length !== supports.length) {
-    setSupportWidths(new Array(supports.length).fill(300));
-  }
+  const {
+    momentPos,
+    momentNeg,
+    shearPos,
+    shearNeg,
+    shearMax,
+    criticalPoints,
+    supportMuNeg,
+    reactionsD,
+    reactionsL,
+  } = envelope;
 
-  const results = calculateBeam(beamConfig, ultimateLoads);
-  const { reactions, shearForce, bendingMoment, criticalPoints } = results;
+  const spanDomains = spans.map((_s, i) => ({
+    start: supportPositions[i],
+    end: supportPositions[i + 1],
+    length: spans[i],
+  }));
 
-  let maxM = 0,
-    maxV2 = 0;
+  // ---- Extremos globales para los diagramas ----
+  let globalMaxM = 0,
+    globalMaxV = 0;
   for (let k = 0; k <= 500; k++) {
     const x = (k / 500) * L;
-    maxM = Math.max(maxM, Math.abs(bendingMoment(x)));
-    maxV2 = Math.max(maxV2, Math.abs(shearForce(x)));
+    globalMaxM = Math.max(globalMaxM, momentPos(x), momentNeg(x));
+    globalMaxV = Math.max(globalMaxV, shearMax(x));
   }
   for (const x of criticalPoints) {
-    maxM = Math.max(maxM, Math.abs(bendingMoment(x)));
-    maxV2 = Math.max(maxV2, Math.abs(shearForce(x)));
+    globalMaxM = Math.max(globalMaxM, momentPos(x), momentNeg(x));
+    globalMaxV = Math.max(globalMaxV, shearMax(x));
   }
-  const maxMomentAbs = Math.max(maxM, 1);
-  const Mu = maxM;
+  const globalMaxMomentAbs = Math.max(globalMaxM, 1);
   const xMin = -L * 0.08,
     xMax = L * 1.08;
 
-  // Uniform load (for shear reduction)
-  const qu = concreteLoads
-    .filter((l) => l.type === "distributed")
-    .reduce((sum, l) => sum + 1.2 * l.D + 1.6 * l.L, 0);
-
-  // Find critical support (max shear)
-  let VuSupport = 0,
-    critIdx = 0;
-  for (let i = 0; i < supports.length; i++) {
-    const v = Math.abs(shearForce(supportPositions[i] + 0.001));
-    if (v > VuSupport) {
-      VuSupport = v;
-      critIdx = i;
-    }
-  }
-  const c = supportWidths[critIdx] || 300;
-
-  const crReq = designConcreteDetailed({
-    bw,
-    h,
-    d: 0,
-    dp: 0,
-    cover,
-    fc,
-    fy,
-    Mu,
-    Vu: VuSupport,
-    qu,
-    c,
-    directSupport,
-    As: 0,
-    Av: 0,
-    nLegs: 0,
-    s: 0,
-  });
-  const As = barQty * (BAR_AREA[barDiam] || 0);
-  const Av1 = BAR_AREA[stirrupDiam] || 0;
-
-  const flexResult = useMemo(() => {
-    if (!flexChecked) return null;
-    return designConcreteDetailed({
-      bw,
-      h,
-      d: 0,
-      dp: 0,
-      cover,
-      fc,
-      fy,
-      Mu,
-      Vu: VuSupport,
-      qu,
-      c,
-      directSupport,
-      As,
-      Av: Av1,
-      nLegs: stirrupLegs,
-      s: stirrupSpacing,
-    });
-  }, [flexChecked, As, Av1, stirrupLegs, stirrupSpacing]);
-
-  const shearResult = shearChecked
-    ? designConcreteDetailed({
-        bw,
-        h,
-        d: 0,
-        dp: 0,
-        cover,
-        fc,
-        fy,
-        Mu,
-        Vu: VuSupport,
-        qu,
-        c,
-        directSupport,
-        As: 0,
-        Av: Av1,
-        nLegs: stirrupLegs,
-        s: stirrupSpacing,
-      })
-    : null;
+  // Posiciones/valores para etiquetas de los diagramas
+  const eps = 0.001;
+  const spanMpos = spans.map((_s, i) =>
+    peak(
+      momentPos,
+      criticalPoints,
+      supportPositions[i],
+      supportPositions[i + 1],
+    ),
+  );
+  const supportMneg = supportPositions.slice(1, nSpans).map((p) => ({
+    x: p,
+    v: momentNeg(p),
+  }));
+  const supportV = supportPositions.map((p, i) => ({
+    x: p,
+    vLeft: i > 0 && supportTypes[i] !== "free" ? shearNeg(p - eps) : null,
+    vRight: i < nSpans && supportTypes[i] !== "free" ? shearPos(p + eps) : null,
+  }));
+  const clampX = (x: number) => Math.min(Math.max(x, L * 0.05), L * 0.95);
+  const labelH = (x: number) => (x < L * 0.5 ? "e" : "w");
 
   return (
     <MainLayout>
+      {/* Header */}
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-text">Viga</h1>
+          <h1 className="text-xl font-semibold text-text">
+            {savedName ? `Viga: ${savedName}` : "Viga H° A°"}
+          </h1>
           <p className="text-sm text-text-muted">
-            {bw}×{h} mm &middot; f'c={fc} MPa &middot; L={L} m
+            {bw}×{h} mm &middot; f'c={fc} MPa &middot; L={L} m &middot; {nSpans}{" "}
+            tramo{nSpans > 1 ? "s" : ""}
           </p>
         </div>
-        <button
-          onClick={() => navigate("/concrete", { state: s })}
-          className="text-sm bg-surface-alt border-border hover:bg-surface text-text-muted"
-        >
-          ← Volver
-        </button>
+        <div className="flex gap-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              const data: Record<string, unknown> = {
+                spans,
+                supportTypes,
+                concreteLoads,
+                bw,
+                h,
+                cover,
+                fc,
+                fy,
+                includeSelfWeight,
+                directSupport,
+                barQty,
+                barDiam,
+                compBarQty,
+                compBarDiam,
+                stirrupLegs,
+                stirrupDiam,
+                stirrupSpacing,
+                supportWidths,
+                supBarQty,
+                supBarDiam,
+              };
+              if (savedId) {
+                updateSave(savedId, data);
+                return;
+              }
+              const name = prompt("Nombre para guardar los resultados:");
+              if (!name) return;
+              try {
+                const saved = saveBeam(name, "hormigon", data);
+                setSavedId(saved.id);
+                setSavedName(name);
+              } catch (err: unknown) {
+                alert(err instanceof Error ? err.message : "Error al guardar");
+              }
+            }}
+            className="text-sm bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
+          >
+            Guardar resultados
+          </button>
+          <button
+            onClick={() =>
+              navigate("/concrete", {
+                state: {
+                  ...s,
+                  loadedSaveId: savedId,
+                  loadedSaveName: savedName,
+                  barQty,
+                  barDiam,
+                  compBarQty,
+                  compBarDiam,
+                  stirrupLegs,
+                  stirrupDiam,
+                  stirrupSpacing,
+                  supportWidths,
+                  supBarQty,
+                  supBarDiam,
+                  directSupport,
+                },
+              })
+            }
+            className="text-sm bg-surface-alt border-border hover:bg-surface text-text-muted"
+          >
+            ← Volver
+          </button>
+        </div>
       </header>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <div className="bg-surface rounded-xl border border-border p-3">
-          <span className="text-xs text-text-muted">
-            M<sub>u</sub>
-          </span>
-          <p className="text-sm font-bold text-primary">{Mu.toFixed(1)} kN·m</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-3">
-          <span className="text-xs text-text-muted">
-            V<sub>u</sub> apoyo
-          </span>
-          <p className="text-sm font-bold text-primary">
-            {VuSupport.toFixed(1)} kN
-          </p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-3">
-          <span className="text-xs text-text-muted">
-            A<sub>s</sub> req
-          </span>
-          <p className="text-sm font-bold text-warning">{crReq.AsReq} mm²</p>
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-3">
-          <span className="text-xs text-text-muted">
-            A<sub>s</sub> mín
-          </span>
-          <p className="text-sm font-bold">{crReq.AsMin} mm²</p>
-        </div>
-      </div>
-
-      {/* Support widths */}
+      {/* Anchos de apoyo */}
       <section className="bg-surface rounded-xl border border-border p-5">
         <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
           Anchos de apoyo (mm)
@@ -242,14 +484,14 @@ export default function ConcreteResults() {
               </span>
               <input
                 type="text"
-                defaultValue={supportWidths[i] ?? 300}
-                key={`cr-sup-${i}-${supportWidths[i]}`}
+                value={String(ensure(supportWidths, nSupports, 300)[i] ?? 0)}
                 onChange={(e) => {
                   const raw = sanitizeDecimal(e.target.value);
                   const num = parseFloat(raw);
-                  const nw = [...supportWidths];
-                  nw[i] = isNaN(num) ? 0 : num;
-                  setSupportWidths(nw);
+                  // Si el parseo falla, conservar el valor previo (no escribir 0)
+                  if (!isNaN(num)) {
+                    setSupportWidths(patchArr(supportWidths, i, 300, num));
+                  }
                 }}
                 className="w-20"
               />
@@ -266,7 +508,7 @@ export default function ConcreteResults() {
         </div>
       </section>
 
-      {/* Reactions */}
+      {/* Reacciones (D y L por separado) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {supports.map((sup, i) => (
           <div
@@ -280,350 +522,573 @@ export default function ConcreteResults() {
                   : "Apoyo B"
                 : `Apoyo ${i + 1}`}
             </span>
-            <p className="text-sm font-bold text-primary">
-              {sup.type === "free" ? "—" : formatForce(reactions[i])}
-            </p>
+            {sup.type === "free" ? (
+              <p className="text-sm font-bold text-primary">—</p>
+            ) : (
+              <div className="text-sm">
+                <p className="text-text-muted">
+                  D:{" "}
+                  <span className="font-semibold text-text">
+                    {formatForce(reactionsD[i])}
+                  </span>
+                </p>
+                <p className="text-text-muted">
+                  L:{" "}
+                  <span className="font-semibold text-text">
+                    {formatForce(reactionsL[i])}
+                  </span>
+                </p>
+              </div>
+            )}
           </div>
         ))}
       </div>
 
-      {/* Armadura longitudinal */}
-      <section className="bg-surface rounded-xl border border-border p-5">
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
-          Armadura longitudinal
-        </h2>
-        <p className="text-xs text-text-muted mb-2">
-          Necesaria: <strong>{crReq.AsReq} mm²</strong> (mín: {crReq.AsMin} mm²)
-          {crReq.AspReq > 0 && (
-            <span>
-              {" "}
-              + A<sub>s</sub>' = {crReq.AspReq} mm²
-            </span>
-          )}
-        </p>
-        <div className="flex gap-3 items-end mb-3">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-text-muted">Cantidad</span>
-            <input
-              type="text"
-              defaultValue={barQty ?? ""}
-              key={`cr-barqty-${barQty}`}
-              onChange={(e) => {
-                const raw = sanitizeDecimal(e.target.value);
-                const num = parseFloat(raw);
-                setBarQty(isNaN(num) ? 0 : num);
-              }}
-              className="w-20"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-text-muted">Diámetro</span>
-            <select
-              value={barDiam}
-              onChange={(e) => setBarDiam(Number(e.target.value))}
+      {/* Una sección por tramo */}
+      {spans.map((_spanLen, i) => {
+        const sr = spanResults[i];
+        const dom = spanDomains[i];
+        const sc = shearChecks[i];
+
+        const AsT = sc.AsT;
+        const AsC = sc.AsC;
+        const Av1 = sc.Av1;
+        const sSpacing = sc.sSpacing; // mm
+        const sLegs = sc.sLegs;
+
+        const cr = sr.crReq;
+        // En armadura doble, AsReq ya incluye AspReq: la tracción total es AsReq
+        const AsReqT = cr.AsReq;
+        const AsReqC = cr.AspReq;
+
+        const flexTensionOK = AsT >= Math.max(AsReqT, cr.AsMin);
+        const flexCompressionOK = AsReqC > 0 ? AsC >= AsReqC : true;
+        const flexOK = flexTensionOK && flexCompressionOK;
+
+        // Verificación de corte en vivo (mm directo)
+        const shearChk = sc.chk;
+
+        return (
+          <section
+            key={i}
+            className="bg-surface rounded-xl border border-border p-5"
+          >
+            <h2 className="text-sm font-semibold text-primary uppercase tracking-wider mb-3">
+              Tramo {i + 1} — {dom.length.toFixed(2)} m
+            </h2>
+
+            {/* Tarjetas resumen */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+              <div className="bg-surface-alt rounded-lg p-2">
+                <span className="text-xs text-text-muted">
+                  M<sub>u</sub>
+                </span>
+                <p className="text-sm font-bold text-primary">
+                  {sr.Mu.toFixed(1)} kN·m
+                </p>
+              </div>
+              <div className="bg-surface-alt rounded-lg p-2">
+                <span className="text-xs text-text-muted">
+                  V<sub>u</sub>
+                </span>
+                <p className="text-sm font-bold text-primary">
+                  {sr.Vu.toFixed(1)} kN
+                </p>
+              </div>
+              <div className="bg-surface-alt rounded-lg p-2">
+                <span className="text-xs text-text-muted">
+                  A<sub>s</sub> req
+                </span>
+                <p className="text-sm font-bold text-warning">
+                  {cr.AsReq.toFixed(0)} mm²
+                </p>
+              </div>
+              <div className="bg-surface-alt rounded-lg p-2">
+                <span className="text-xs text-text-muted">
+                  A<sub>s</sub> mín
+                </span>
+                <p className="text-sm font-bold">{cr.AsMin.toFixed(0)} mm²</p>
+              </div>
+            </div>
+
+            {/* Requerimiento */}
+            <p className="text-xs text-text-muted mb-2">
+              Necesaria: <strong>{AsReqT.toFixed(0)} mm²</strong> (mín:{" "}
+              {cr.AsMin.toFixed(0)} mm²)
+              {AsReqC > 0 && (
+                <span>
+                  {" "}
+                  + A<sub>s</sub>' = {AsReqC.toFixed(0)} mm² (compresión)
+                </span>
+              )}
+            </p>
+
+            {/* Tracción */}
+            <div className="flex flex-wrap gap-3 items-end mb-1">
+              <span className="text-xs text-text-muted font-semibold w-16">
+                Tracción
+              </span>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-text-muted">Cantidad</span>
+                <input
+                  type="text"
+                  value={ensure(barQty, nSpans, 3)[i] || ""}
+                  onChange={(e) => {
+                    const raw = sanitizeDecimal(e.target.value);
+                    const num = parseFloat(raw);
+                    setBarQty(patchArr(barQty, i, 3, isNaN(num) ? 0 : num));
+                  }}
+                  className="w-20"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-text-muted">Diámetro</span>
+                <select
+                  value={ensure(barDiam, nSpans, 16)[i]}
+                  onChange={(e) =>
+                    setBarDiam(patchArr(barDiam, i, 16, Number(e.target.value)))
+                  }
+                >
+                  {BAR_DIAMETERS.map((d) => (
+                    <option key={d} value={d}>
+                      Ø{d} ({BAR_AREA[d]} mm²)
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <span className="text-sm pb-2">
+                = <strong>{AsT.toFixed(0)} mm²</strong>
+              </span>
+              <span
+                className={`text-xs font-bold ${flexTensionOK ? "text-success" : "text-danger"}`}
+              >
+                {flexTensionOK ? "✓" : "✗"}
+              </span>
+            </div>
+
+            {/* Compresión (doble armadura) */}
+            {AsReqC > 0 && (
+              <div className="flex flex-wrap gap-3 items-end mb-2">
+                <span className="text-xs text-text-muted font-semibold w-16">
+                  Compresión
+                </span>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">Cantidad</span>
+                  <input
+                    type="text"
+                    value={ensure(compBarQty, nSpans, 0)[i] || ""}
+                    onChange={(e) => {
+                      const raw = sanitizeDecimal(e.target.value);
+                      const num = parseFloat(raw);
+                      setCompBarQty(
+                        patchArr(compBarQty, i, 0, isNaN(num) ? 0 : num),
+                      );
+                    }}
+                    className="w-20"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">Diámetro</span>
+                  <select
+                    value={ensure(compBarDiam, nSpans, 12)[i]}
+                    onChange={(e) =>
+                      setCompBarDiam(
+                        patchArr(compBarDiam, i, 12, Number(e.target.value)),
+                      )
+                    }
+                  >
+                    {BAR_DIAMETERS.map((d) => (
+                      <option key={d} value={d}>
+                        Ø{d} ({BAR_AREA[d]} mm²)
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <span className="text-sm pb-2">
+                  = <strong>{AsC.toFixed(0)} mm²</strong>
+                </span>
+                <span
+                  className={`text-xs font-bold ${flexCompressionOK ? "text-success" : "text-danger"}`}
+                >
+                  {flexCompressionOK ? "✓" : "✗"}
+                </span>
+              </div>
+            )}
+
+            <div
+              className={`p-2 rounded-lg text-sm font-bold mb-3 ${flexOK ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}
             >
-              {BAR_DIAMETERS.map((d) => (
-                <option key={d} value={d}>
-                  Ø{d} ({BAR_AREA[d]} mm²)
-                </option>
-              ))}
-            </select>
-          </label>
-          <span className="text-sm pb-2">
-            = <strong>{As} mm²</strong>
-          </span>
-          <button
-            type="button"
-            onClick={() => setFlexChecked(true)}
-            className="text-sm bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary-hover"
-          >
-            Comprobar
-          </button>
+              {flexOK ? "✓ Verifica flexión" : "✗ No verifica flexión"} —{" "}
+              {AsReqC > 0
+                ? `tracción: ${AsT.toFixed(0)} vs ${Math.max(AsReqT, cr.AsMin).toFixed(0)} mm², compresión: ${AsC.toFixed(0)} vs ${AsReqC.toFixed(0)} mm²`
+                : `${AsT.toFixed(0)} vs ${Math.max(cr.AsReq, cr.AsMin).toFixed(0)} mm²`}
+            </div>
+
+            {/* Estribos */}
+            <div>
+              <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
+                Estribos
+              </span>
+              <p className="text-xs text-text-muted mt-1 mb-2">
+                V<sub>u</sub> = {sr.Vu.toFixed(1)} kN &middot; V<sub>c</sub> ={" "}
+                {cr.Vc.toFixed(1)} kN &middot; V<sub>s</sub> req ={" "}
+                {cr.VsReq.toFixed(1)} kN &middot; A<sub>v</sub>/s mín ={" "}
+                {cr.AvSMin.toFixed(1)} mm²/m &middot; s<sub>máx</sub> ={" "}
+                {cr.sMax.toFixed(0)} mm
+              </p>
+              <div className="flex flex-wrap gap-3 items-end mb-2">
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">Ramas</span>
+                  <input
+                    type="text"
+                    value={sLegs || ""}
+                    onChange={(e) => {
+                      const raw = sanitizeDecimal(e.target.value);
+                      const num = parseFloat(raw);
+                      setStirrupLegs(
+                        patchArr(stirrupLegs, i, 2, isNaN(num) ? 0 : num),
+                      );
+                    }}
+                    className="w-16"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">Diámetro</span>
+                  <select
+                    value={ensure(stirrupDiam, nSpans, 8)[i]}
+                    onChange={(e) =>
+                      setStirrupDiam(
+                        patchArr(stirrupDiam, i, 8, Number(e.target.value)),
+                      )
+                    }
+                  >
+                    {BAR_DIAMETERS.filter((d) => d <= 12).map((d) => (
+                      <option key={d} value={d}>
+                        Ø{d} ({BAR_AREA[d]} mm²)
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">
+                    Separación (mm)
+                  </span>
+                  <input
+                    type="text"
+                    value={sSpacing || ""}
+                    onChange={(e) => {
+                      const raw = sanitizeDecimal(e.target.value);
+                      const num = parseFloat(raw);
+                      setStirrupSpacing(
+                        patchArr(stirrupSpacing, i, 200, isNaN(num) ? 0 : num),
+                      );
+                    }}
+                    className="w-24"
+                  />
+                </label>
+                <span className="text-sm pb-2">
+                  A<sub>v</sub>/s ={" "}
+                  <strong>
+                    {(((sLegs * Av1) / (sSpacing || 1)) * 1000).toFixed(1)}{" "}
+                    mm²/m
+                  </strong>
+                </span>
+              </div>
+              <div
+                className={`p-2 rounded-lg text-sm font-bold ${shearChk.shearOK ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}
+              >
+                {shearChk.shearOK ? "✓ Verifica corte" : "✗ No verifica corte"}{" "}
+                &middot; V<sub>s</sub> colocado = {shearChk.VsProv.toFixed(1)}{" "}
+                kN
+              </div>
+            </div>
+
+            {/* Cuentas */}
+            <details className="mt-3">
+              <summary className="cursor-pointer text-xs text-text-muted hover:text-text">
+                Ver cuentas
+              </summary>
+              <pre className="mt-2 p-3 bg-surface-alt rounded-lg text-xs text-text-muted font-mono whitespace-pre-wrap overflow-x-auto">
+                {shearChk.steps.join("\n")}
+              </pre>
+            </details>
+          </section>
+        );
+      })}
+
+      {/* Apoyos interiores (armadura de flexión por momento negativo) */}
+      {nInterior > 0 && (
+        <div className="space-y-4">
+          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
+            Armadura de apoyo (momento negativo)
+          </h2>
+          {Array.from({ length: nInterior }, (_v, j) => {
+            const supportIdx = j + 1; // índice de apoyo interior (1..nSpans-1)
+            const Mneg = supportMuNeg[supportIdx] ?? 0;
+            const c = ensure(supportWidths, nSupports, 300)[supportIdx];
+
+            // Diseño a flexión por momento negativo (tracción superior)
+            const supDesign = designConcreteDetailed({
+              bw,
+              h,
+              d: 0,
+              dp: 0,
+              cover,
+              fc,
+              fy,
+              Mu: Mneg,
+              Vu: 0,
+              qu,
+              c,
+              directSupport,
+              As: 0,
+              Av: 0,
+              nLegs: 0,
+              s: 0,
+            });
+
+            // En armadura doble, AsReq ya incluye AspReq: la tracción total es AsReq
+            const supAsReqT = supDesign.AsReq;
+            const supAsReqC = supDesign.AspReq;
+
+            const qty = ensure(supBarQty, nInterior, 3)[j];
+            const diam = ensure(supBarDiam, nInterior, 16)[j];
+            const supAsProv = (qty || 0) * (BAR_AREA[diam] || 0);
+            const supCompAs = 0;
+
+            const supTensionOK =
+              supAsProv >= Math.max(supAsReqT, supDesign.AsMin);
+            const supCompOK = supAsReqC > 0 ? supCompAs >= supAsReqC : true;
+            const supOK = supTensionOK && supCompOK;
+
+            return (
+              <section
+                key={supportIdx}
+                className="bg-surface rounded-xl border border-border p-5"
+              >
+                <h3 className="text-sm font-semibold text-primary uppercase tracking-wider mb-3">
+                  Apoyo {supportIdx} — M<sub>u,apoyo</sub> = {Mneg.toFixed(1)}{" "}
+                  kN·m
+                </h3>
+                <p className="text-xs text-text-muted mb-2">
+                  Necesaria: <strong>{supAsReqT.toFixed(0)} mm²</strong> (mín:{" "}
+                  {supDesign.AsMin.toFixed(0)} mm²)
+                  {supAsReqC > 0 && (
+                    <span>
+                      {" "}
+                      + A<sub>s</sub>' = {supAsReqC.toFixed(0)} mm² (compresión)
+                    </span>
+                  )}
+                </p>
+                <div className="flex flex-wrap gap-3 items-end mb-2">
+                  <span className="text-xs text-text-muted font-semibold w-16">
+                    Superior
+                  </span>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs text-text-muted">Cantidad</span>
+                    <input
+                      type="text"
+                      value={qty || ""}
+                      onChange={(e) => {
+                        const raw = sanitizeDecimal(e.target.value);
+                        const num = parseFloat(raw);
+                        setSupBarQty(
+                          patchArr(supBarQty, j, 3, isNaN(num) ? 0 : num),
+                        );
+                      }}
+                      className="w-20"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs text-text-muted">Diámetro</span>
+                    <select
+                      value={diam}
+                      onChange={(e) =>
+                        setSupBarDiam(
+                          patchArr(supBarDiam, j, 16, Number(e.target.value)),
+                        )
+                      }
+                    >
+                      {BAR_DIAMETERS.map((d) => (
+                        <option key={d} value={d}>
+                          Ø{d} ({BAR_AREA[d]} mm²)
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <span className="text-sm pb-2">
+                    = <strong>{supAsProv.toFixed(0)} mm²</strong>
+                  </span>
+                  <span
+                    className={`text-xs font-bold ${supTensionOK ? "text-success" : "text-danger"}`}
+                  >
+                    {supTensionOK ? "✓" : "✗"}
+                  </span>
+                </div>
+                <div
+                  className={`p-2 rounded-lg text-sm font-bold ${supOK ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}
+                >
+                  {supOK ? "✓ Verifica flexión" : "✗ No verifica flexión"} —{" "}
+                  {supAsProv.toFixed(0)} vs{" "}
+                  {Math.max(supAsReqT, supDesign.AsMin).toFixed(0)} mm²
+                </div>
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-xs text-text-muted hover:text-text">
+                    Ver cuentas
+                  </summary>
+                  <pre className="mt-2 p-3 bg-surface-alt rounded-lg text-xs text-text-muted font-mono whitespace-pre-wrap overflow-x-auto">
+                    {supDesign.steps.join("\n")}
+                  </pre>
+                </details>
+              </section>
+            );
+          })}
         </div>
-        {flexResult && (
-          <div
-            className={`p-3 rounded-lg text-sm font-bold ${flexResult.AsOK ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}
-          >
-            {flexResult.AsOK ? "✓ Verifica" : "✗ No verifica"} — {As} mm² vs{" "}
-            {Math.max(crReq.AsReq, crReq.AsMin)} mm² necesarios
-          </div>
-        )}
-      </section>
+      )}
 
-      {/* Estribos */}
-      <section className="bg-surface rounded-xl border border-border p-5">
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
-          Estribos
-        </h2>
-        <p className="text-xs text-text-muted mb-2">
-          V<sub>u</sub> apoyo = {VuSupport.toFixed(1)} kN &middot; V<sub>c</sub>{" "}
-          = {crReq.Vc.toFixed(1)} kN &middot; V<sub>s</sub> req ={" "}
-          {crReq.VsReq.toFixed(1)} kN &middot; A<sub>v</sub>/s mín ={" "}
-          {crReq.AvSMin.toFixed(1)} mm²/m &middot; s<sub>máx</sub> ={" "}
-          {crReq.sMax} mm
-        </p>
-        <div className="flex gap-3 items-end mb-3">
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-text-muted">Ramas</span>
-            <input
-              type="text"
-              defaultValue={stirrupLegs ?? ""}
-              key={`cr-legs-${stirrupLegs}`}
-              onChange={(e) => {
-                const raw = sanitizeDecimal(e.target.value);
-                const num = parseFloat(raw);
-                setStirrupLegs(isNaN(num) ? 0 : num);
-              }}
-              className="w-16"
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-text-muted">Diámetro</span>
-            <select
-              value={stirrupDiam}
-              onChange={(e) => setStirrupDiam(Number(e.target.value))}
-            >
-              {BAR_DIAMETERS.filter((d) => d <= 12).map((d) => (
-                <option key={d} value={d}>
-                  Ø{d} ({BAR_AREA[d]} mm²)
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-text-muted">Separación (mm)</span>
-            <input
-              type="text"
-              defaultValue={stirrupSpacing ?? ""}
-              key={`cr-spacing-${stirrupSpacing}`}
-              onChange={(e) => {
-                const raw = sanitizeDecimal(e.target.value);
-                const num = parseFloat(raw);
-                setStirrupSpacing(isNaN(num) ? 0 : num);
-              }}
-              className="w-24"
-            />
-          </label>
-          <span className="text-sm pb-2">
-            A<sub>v</sub>/s ={" "}
-            <strong>
-              {((stirrupLegs * Av1 * 1000) / stirrupSpacing).toFixed(1)} mm²/m
-            </strong>
-          </span>
-          <button
-            type="button"
-            onClick={() => setShearChecked(true)}
-            className="text-sm bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary-hover"
-          >
-            Comprobar
-          </button>
-        </div>
-        {shearResult && (
-          <div
-            className={`p-3 rounded-lg text-sm font-bold ${shearResult.shearOK ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}
-          >
-            {shearResult.shearOK ? "✓ Verifica corte" : "✗ No verifica corte"}{" "}
-            &middot; V<sub>s</sub> colocado = {shearResult.VsProv.toFixed(1)} kN
-          </div>
-        )}
-      </section>
-
-      {/* Steps */}
-      <details className="bg-surface rounded-xl border border-border p-5">
-        <summary className="cursor-pointer text-sm font-semibold text-text-muted uppercase tracking-wider">
-          Ver cuentas completas
-        </summary>
-        <pre className="mt-3 p-3 bg-surface-alt rounded-lg text-xs text-text-muted font-mono whitespace-pre-wrap overflow-x-auto">
-          {(shearResult || crReq).steps.join("\n")}
-        </pre>
-      </details>
-
-      {/* Diagrams */}
+      {/* Diagramas globales (envolvente) */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <section className="bg-surface rounded-xl border border-border overflow-hidden">
           <div className="px-4 py-2 border-b border-border">
             <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider">
-              Cortante
-            </h3>
-          </div>
-          <div className="p-1">
-            <Mafs
-              viewBox={{ x: [xMin, xMax], y: [-maxV2 * 1.15, maxV2 * 1.15] }}
-              height={200}
-              preserveAspectRatio={false}
-            >
-              <Coordinates.Cartesian xAxis={{ lines: 4 }} yAxis={false} />
-              <Plot.OfX y={() => 0} domain={[xMin, xMax]} color="#6b7280" />
-              {(() => {
-                const yVals = [-maxV2, -maxV2 / 2, 0, maxV2 / 2, maxV2];
-                const els: React.ReactNode[] = [];
-                yVals.forEach((yv, i) => {
-                  els.push(
-                    <Plot.OfX
-                      key={`yline-v-${i}`}
-                      y={() => yv}
-                      domain={[xMin, xMax]}
-                      color="#ffffff10"
-                    />,
-                  );
-                  els.push(
-                    <Text
-                      key={`ytxt-v-${i}`}
-                      x={xMax}
-                      y={yv}
-                      attach="e"
-                      size={9}
-                      color="#6b7280"
-                    >
-                      {yv.toFixed(1)}
-                    </Text>,
-                  );
-                });
-                return els;
-              })()}
-              <Text
-                x={xMin + L * 0.02}
-                y={maxV2 * 1.05}
-                attach="w"
-                color="#f87171"
-                size={10}
-              >
-                V_max = {maxV2.toFixed(1)} kN
-              </Text>
-              <Text
-                x={xMin + L * 0.02}
-                y={maxV2 * 1.05}
-                attach="w"
-                color="#f87171"
-                size={10}
-              >
-                V_max = {maxV2.toFixed(1)} kN
-              </Text>
-              {(() => {
-                const eps = 0.001;
-                const isJump = (pos: number) =>
-                  supports.some((x) => Math.abs(x.position - pos) < eps) ||
-                  ultimateLoads.some(
-                    (l) =>
-                      l.type === "point" &&
-                      Math.abs((l.position ?? 0) - pos) < eps,
-                  );
-                const els: React.ReactNode[] = [];
-                for (let i = 1; i < criticalPoints.length; i++) {
-                  const px = criticalPoints[i - 1],
-                    cx = criticalPoints[i];
-                  let sv: number;
-                  if (isJump(px)) {
-                    const vb = shearForce(px - eps),
-                      va = shearForce(px + eps);
-                    els.push(
-                      <Plot.OfY
-                        key={`vj-${px}`}
-                        x={() => px}
-                        domain={[Math.min(vb, va), Math.max(vb, va)]}
-                        color="#f87171"
-                      />,
-                    );
-                    sv = va;
-                  } else sv = shearForce(px);
-                  const ev = isJump(cx) ? shearForce(cx - eps) : shearForce(cx);
-                  els.push(
-                    <Plot.OfX
-                      key={`vs-${px}-${cx}`}
-                      y={(t) => sv + ((ev - sv) / (cx - px)) * (t - px)}
-                      domain={[px, cx]}
-                      color="#f87171"
-                    />,
-                  );
-                }
-                const last = criticalPoints[criticalPoints.length - 1];
-                if (isJump(last)) {
-                  const vb = shearForce(last - eps),
-                    va = shearForce(last + eps);
-                  els.push(
-                    <Plot.OfY
-                      key="vj-last"
-                      x={() => last}
-                      domain={[Math.min(vb, va), Math.max(vb, va)]}
-                      color="#f87171"
-                    />,
-                  );
-                }
-                return els;
-              })()}
-            </Mafs>
-          </div>
-        </section>
-        <section className="bg-surface rounded-xl border border-border overflow-hidden">
-          <div className="px-4 py-2 border-b border-border">
-            <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider">
-              Momento
+              Cortante (envolvente)
             </h3>
           </div>
           <div className="p-1">
             <Mafs
               viewBox={{
                 x: [xMin, xMax],
-                y: [-maxMomentAbs * 1.15, maxMomentAbs * 1.15],
+                y: [-globalMaxV * 1.3, globalMaxV * 1.3],
               }}
-              height={200}
+              height={220}
               preserveAspectRatio={false}
             >
               <Coordinates.Cartesian xAxis={{ lines: 4 }} yAxis={false} />
               <Plot.OfX y={() => 0} domain={[xMin, xMax]} color="#6b7280" />
-              {(() => {
-                const yVals = [
-                  -maxMomentAbs,
-                  -maxMomentAbs / 2,
-                  0,
-                  maxMomentAbs / 2,
-                  maxMomentAbs,
-                ];
-                const els: React.ReactNode[] = [];
-                yVals.forEach((yv, i) => {
-                  els.push(
-                    <Plot.OfX
-                      key={`ylm-${i}`}
-                      y={() => yv}
-                      domain={[xMin, xMax]}
-                      color="#ffffff10"
-                    />,
-                  );
-                  els.push(
-                    <Text
-                      key={`ytm-${i}`}
-                      x={xMax}
-                      y={yv}
-                      attach="e"
-                      size={9}
-                      color="#6b7280"
-                    >
-                      {yv.toFixed(1)}
-                    </Text>,
-                  );
-                });
-                return els;
-              })()}
-              <Text
-                x={xMin + L * 0.02}
-                y={maxMomentAbs * 1.05}
-                attach="w"
-                color="#fbbf24"
-                size={10}
-              >
-                M_max = {maxM.toFixed(1)} kN·m
-              </Text>
-              {criticalPoints.map((x, i) => {
-                if (i === 0) return null;
-                return (
-                  <Plot.OfX
-                    key={x}
-                    y={(t) => -bendingMoment(t)}
-                    domain={[criticalPoints[i - 1], x]}
-                    color="#fbbf24"
+              <Plot.OfX
+                y={(t) => shearPos(t)}
+                domain={[0, L]}
+                color="#f87171"
+              />
+              <Plot.OfX
+                y={(t) => shearNeg(t)}
+                domain={[0, L]}
+                color="#f87171"
+              />
+              {supports
+                .filter((sp) => sp.type !== "free")
+                .map((sp, i) => (
+                  <Polygon
+                    key={`vsup-${i}`}
+                    points={supportTriangle(
+                      sp.position,
+                      globalMaxV * 0.09,
+                      L * 0.02,
+                    )}
+                    color="#6b7280"
+                    fillOpacity={1}
+                    strokeOpacity={0}
                   />
-                );
-              })}
+                ))}
+              {supportV.map(
+                (sv, i) =>
+                  sv.vRight != null && (
+                    <Text
+                      key={`vr-${i}`}
+                      x={clampX(sv.x)}
+                      y={sv.vRight + globalMaxV * 0.07}
+                      attach={`n${labelH(sv.x)}`}
+                      size={16}
+                      color="#f87171"
+                    >
+                      V⁺ = {sv.vRight.toFixed(1)}
+                    </Text>
+                  ),
+              )}
+              {supportV.map(
+                (sv, i) =>
+                  sv.vLeft != null && (
+                    <Text
+                      key={`vl-${i}`}
+                      x={clampX(sv.x)}
+                      y={sv.vLeft - globalMaxV * 0.07}
+                      attach={`s${labelH(sv.x)}`}
+                      size={16}
+                      color="#f87171"
+                    >
+                      V⁻ = {sv.vLeft.toFixed(1)}
+                    </Text>
+                  ),
+              )}
+            </Mafs>
+          </div>
+        </section>
+        <section className="bg-surface rounded-xl border border-border overflow-hidden">
+          <div className="px-4 py-2 border-b border-border">
+            <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider">
+              Momento (envolvente)
+            </h3>
+          </div>
+          <div className="p-1">
+            <Mafs
+              viewBox={{
+                x: [xMin, xMax],
+                y: [-globalMaxMomentAbs * 1.3, globalMaxMomentAbs * 1.3],
+              }}
+              height={220}
+              preserveAspectRatio={false}
+            >
+              <Coordinates.Cartesian xAxis={{ lines: 4 }} yAxis={false} />
+              <Plot.OfX y={() => 0} domain={[xMin, xMax]} color="#6b7280" />
+              <Plot.OfX
+                y={(t) => -momentPos(t)}
+                domain={[0, L]}
+                color="#fbbf24"
+              />
+              <Plot.OfX
+                y={(t) => momentNeg(t)}
+                domain={[0, L]}
+                color="#fbbf24"
+              />
+              {supports
+                .filter((sp) => sp.type !== "free")
+                .map((sp, i) => (
+                  <Polygon
+                    key={`msup-${i}`}
+                    points={supportTriangle(
+                      sp.position,
+                      globalMaxMomentAbs * 0.09,
+                      L * 0.02,
+                    )}
+                    color="#6b7280"
+                    fillOpacity={1}
+                    strokeOpacity={0}
+                  />
+                ))}
+              {spanMpos.map((m, i) => (
+                <Text
+                  key={`mp-${i}`}
+                  x={clampX(m.x)}
+                  y={-m.v - globalMaxMomentAbs * 0.07}
+                  attach={`s${labelH(m.x)}`}
+                  size={16}
+                  color="#fbbf24"
+                >
+                  {nSpans > 1 ? `M⁺ tramo ${i + 1}` : "M⁺"} = {m.v.toFixed(1)}
+                </Text>
+              ))}
+              {supportMneg.map((m, i) => (
+                <Text
+                  key={`mn-${i}`}
+                  x={clampX(m.x)}
+                  y={m.v + globalMaxMomentAbs * 0.07}
+                  attach={`n${labelH(m.x)}`}
+                  size={16}
+                  color="#fbbf24"
+                >
+                  M⁻ = {m.v.toFixed(1)}
+                </Text>
+              ))}
             </Mafs>
           </div>
         </section>

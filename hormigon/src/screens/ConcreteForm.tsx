@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import { SavedBeams } from "@mascalculador/shared";
@@ -7,6 +7,7 @@ import { calculateBeam } from "@mascalculador/shared";
 import { DecimalInput } from "@mascalculador/shared";
 import { hasSlabDL, slabReactionToBeamLoad } from "../lib/slab-to-beam";
 import type { SlabEdge } from "../lib/slab-to-beam";
+import { CONCRETE_DENSITY } from "../lib/constants";
 
 interface ConcreteLoad {
   id: string;
@@ -41,6 +42,22 @@ export interface ConcreteState {
   cover: number;
   fc: number;
   fy: number;
+  includeSelfWeight?: boolean;
+  directSupport?: boolean;
+  loadedSaveId?: string | null;
+  loadedSaveName?: string | null;
+  // Armaduras elegidas por tramo (desde resultados guardados).
+  // Pueden venir como escalar en guardados viejos; resultados las normaliza.
+  barQty?: number[] | number;
+  barDiam?: number[] | number;
+  compBarQty?: number[] | number;
+  compBarDiam?: number[] | number;
+  stirrupLegs?: number[] | number;
+  stirrupDiam?: number[] | number;
+  stirrupSpacing?: number[] | number;
+  supBarQty?: number[] | number;
+  supBarDiam?: number[] | number;
+  supportWidths?: number[];
 }
 
 export default function ConcreteForm() {
@@ -111,24 +128,48 @@ export default function ConcreteForm() {
   const [fc, setFc] = useState(state?.fc ?? 25);
   const [fy, setFy] = useState(state?.fy ?? 420);
 
-  const [loadedSaveId, setLoadedSaveId] = useState<string | null>(null);
-  const [loadedSaveName, setLoadedSaveName] = useState<string | null>(null);
+  const [loadedSaveId, setLoadedSaveId] = useState<string | null>(
+    state?.loadedSaveId ?? null,
+  );
+  const [loadedSaveName, setLoadedSaveName] = useState<string | null>(
+    state?.loadedSaveName ?? null,
+  );
+  const [includeSelfWeight, setIncludeSelfWeight] = useState(
+    state?.includeSelfWeight ?? true,
+  );
+
+  // Armaduras elegidas en resultados (se pasan de vuelta al calcular)
+  const savedReinf = useRef<Record<string, unknown>>({});
 
   const totalLength = spanLengths.reduce((a, b) => a + b, 0);
 
-  const ultimateLoads: Load[] = useMemo(
-    () =>
-      concreteLoads.map((cl) => ({
-        id: cl.id,
-        // En modo importación la carga es distribuida (0 → luz total por defecto)
-        type: cl.importMode ? "distributed" : cl.type,
-        magnitude: 1.2 * cl.D + 1.6 * cl.L,
-        position: cl.position,
-        start: cl.start,
-        end: cl.end,
-      })),
-    [concreteLoads],
+  // Peso propio auto-calculado: (bw·h / 1e6) × γ_hormigón [kN/m], en mm
+  const selfWeightD = useMemo(
+    () => (includeSelfWeight ? ((bw * h) / 1e6) * CONCRETE_DENSITY : 0),
+    [bw, h, includeSelfWeight],
   );
+
+  const ultimateLoads: Load[] = useMemo(() => {
+    const loads: Load[] = concreteLoads.map((cl) => ({
+      id: cl.id,
+      // En modo importación la carga es distribuida (0 → luz total por defecto)
+      type: cl.importMode ? "distributed" : cl.type,
+      magnitude: 1.2 * cl.D + 1.6 * cl.L,
+      position: cl.position,
+      start: cl.start,
+      end: cl.end,
+    }));
+    if (includeSelfWeight && selfWeightD > 0) {
+      loads.push({
+        id: "__selfweight__",
+        type: "distributed",
+        magnitude: 1.2 * selfWeightD, // L = 0 → 1.2·D
+        start: 0,
+        end: totalLength,
+      });
+    }
+    return loads;
+  }, [concreteLoads, includeSelfWeight, selfWeightD, totalLength]);
 
   // Preview Mu/Vu
   const preview = useMemo(() => {
@@ -238,6 +279,9 @@ export default function ConcreteForm() {
       cover,
       fc,
       fy,
+      includeSelfWeight,
+      // Conservar armaduras/resultados guardados al corregir la viga
+      ...savedReinf.current,
     };
 
     if (loadedSaveId) {
@@ -248,7 +292,8 @@ export default function ConcreteForm() {
     const name = prompt("Nombre para guardar esta viga:");
     if (!name) return;
     try {
-      saveBeam(name, "hormigon", data);
+      const saved = saveBeam(name, "hormigon", data);
+      setLoadedSaveId(saved.id);
       setLoadedSaveName(name);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Error al guardar");
@@ -267,6 +312,27 @@ export default function ConcreteForm() {
         cover,
         fc,
         fy,
+        includeSelfWeight,
+        loadedSaveId,
+        loadedSaveName,
+        // Armaduras de un guardado cargado...
+        ...savedReinf.current,
+        // ...o de la navegación ← Volver (tienen prioridad)
+        ...(state
+          ? {
+              barQty: state.barQty,
+              barDiam: state.barDiam,
+              compBarQty: state.compBarQty,
+              compBarDiam: state.compBarDiam,
+              stirrupLegs: state.stirrupLegs,
+              stirrupDiam: state.stirrupDiam,
+              stirrupSpacing: state.stirrupSpacing,
+              supportWidths: state.supportWidths,
+              supBarQty: state.supBarQty,
+              supBarDiam: state.supBarDiam,
+              directSupport: state.directSupport,
+            }
+          : {}),
       } as ConcreteState,
     });
   }
@@ -274,7 +340,7 @@ export default function ConcreteForm() {
   const valid =
     spanLengths.every((l) => l > 0) &&
     supportTypes.some((t) => t !== "free") &&
-    concreteLoads.length > 0 &&
+    (concreteLoads.length > 0 || includeSelfWeight) &&
     concreteLoads.every((l) => l.D + l.L > 0 && !l.importMode);
 
   return (
@@ -324,6 +390,22 @@ export default function ConcreteForm() {
           if (typeof d.cover === "number") setCover(d.cover);
           if (typeof d.fc === "number") setFc(d.fc);
           if (typeof d.fy === "number") setFy(d.fy);
+          if (typeof d.includeSelfWeight === "boolean")
+            setIncludeSelfWeight(d.includeSelfWeight);
+          // Guardar armaduras elegidas para pasarlas a resultados
+          savedReinf.current = {
+            barQty: d.barQty,
+            barDiam: d.barDiam,
+            compBarQty: d.compBarQty,
+            compBarDiam: d.compBarDiam,
+            stirrupLegs: d.stirrupLegs,
+            stirrupDiam: d.stirrupDiam,
+            stirrupSpacing: d.stirrupSpacing,
+            supportWidths: d.supportWidths,
+            supBarQty: d.supBarQty,
+            supBarDiam: d.supBarDiam,
+            directSupport: d.directSupport,
+          };
         }}
       />
 
@@ -730,6 +812,25 @@ export default function ConcreteForm() {
                   </div>
                 );
               })}
+            </div>
+            {/* Peso propio */}
+            <div className="mt-3 pt-3 border-t border-border flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="includeSelfWeight"
+                checked={includeSelfWeight}
+                onChange={(e) => setIncludeSelfWeight(e.target.checked)}
+                className="w-4 h-4 accent-primary"
+              />
+              <label
+                htmlFor="includeSelfWeight"
+                className="text-xs text-text-muted cursor-pointer"
+              >
+                Incluir peso propio
+              </label>
+              <span className="text-xs text-text-muted">
+                ({selfWeightD.toFixed(2)} kN/m)
+              </span>
             </div>
           </section>
         </div>
