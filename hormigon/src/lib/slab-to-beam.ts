@@ -3,15 +3,24 @@ import type { Load } from "@mascalculador/shared";
 
 export type SlabEdge = "izq" | "der" | "arr" | "aba";
 
-/** Returns true if the slab result has unfactored D/L reactions (not a legacy slab). */
+/** Returns true if the slab result has unfactored D/L reactions for all four edges (not a legacy slab). */
 export function hasSlabDL(r: SlabResult): boolean {
-  return r.RD_izq !== undefined && r.RL_izq !== undefined;
+  return (
+    r.RD_izq !== undefined &&
+    r.RL_izq !== undefined &&
+    r.RD_der !== undefined &&
+    r.RL_der !== undefined &&
+    r.RD_arr !== undefined &&
+    r.RL_arr !== undefined &&
+    r.RD_aba !== undefined &&
+    r.RL_aba !== undefined
+  );
 }
 
 /**
  * Converts a slab result's per-edge reaction into a distributed `Load` for use in a beam.
  * Returns `null` for legacy slabs (RD/RL undefined), when both D and L clamp to 0, or when
- * either value is not finite. The `id` is generated internally via `crypto.randomUUID()`.
+ * either value is not finite. The `id` is generated internally (same pattern as storage.ts).
  */
 export function slabReactionToBeamLoad(
   result: SlabResult,
@@ -31,7 +40,7 @@ export function slabReactionToBeamLoad(
   if (deadLoad === 0 && liveLoad === 0) return null;
   if (!Number.isFinite(deadLoad) || !Number.isFinite(liveLoad)) return null;
   return {
-    id: crypto.randomUUID(),
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     type: "distributed",
     deadLoad,
     liveLoad,

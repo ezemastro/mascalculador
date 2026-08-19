@@ -2,9 +2,11 @@ import { useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import { SavedBeams } from "@mascalculador/shared";
-import { saveBeam, updateSave } from "../lib/storage";
+import { saveBeam, updateSave, getSavedSlabs, loadSlab } from "../lib/storage";
 import { calculateBeam } from "@mascalculador/shared";
 import { DecimalInput } from "@mascalculador/shared";
+import { hasSlabDL, slabReactionToBeamLoad } from "../lib/slab-to-beam";
+import type { SlabEdge } from "../lib/slab-to-beam";
 
 interface ConcreteLoad {
   id: string;
@@ -14,7 +16,21 @@ interface ConcreteLoad {
   position?: number;
   start?: number;
   end?: number;
+  // Modo "Importar de losa" (editor de fila): solo presente mientras
+  // el editor está abierto; al confirmar se convierte en carga distribuida
+  importMode?: boolean;
+  slabId?: string;
+  slabEdge?: SlabEdge;
+  // Nota identificatoria para cargas importadas (p. ej. "Losa Terraza — Izquierdo")
+  note?: string;
 }
+
+const EDGE_LABELS: Record<SlabEdge, string> = {
+  izq: "Izquierdo",
+  der: "Derecho",
+  arr: "Arriba",
+  aba: "Abajo",
+};
 
 export interface ConcreteState {
   spans: number[];
@@ -30,21 +46,70 @@ export interface ConcreteState {
 export default function ConcreteForm() {
   const location = useLocation();
   const navigate = useNavigate();
-  const saved = (location.state as ConcreteState | null) || undefined;
+  const state = location.state as
+    | (ConcreteState & {
+        slabImport?: {
+          slabId: string;
+          savedName: string;
+          edge: SlabEdge;
+          deadLoad: number;
+          liveLoad: number;
+        };
+      })
+    | null;
 
-  const [spanCount, setSpanCount] = useState(saved?.spans?.length ?? 1);
-  const [spanLengths, setSpanLengths] = useState<number[]>(saved?.spans ?? [6]);
+  // Luz inicial: se usa para ubicar la carga importada (0 → luz total),
+  // igual que la versión original
+  const initialSpanLengths = state?.spans ?? [6];
+  const initialTotalLength = initialSpanLengths.reduce((a, b) => a + b, 0);
+
+  const [spanCount, setSpanCount] = useState(initialSpanLengths.length);
+  const [spanLengths, setSpanLengths] = useState<number[]>(initialSpanLengths);
   const [supportTypes, setSupportTypes] = useState<SupportType[]>(
-    saved?.supportTypes ?? ["simple", "simple"],
+    state?.supportTypes ?? ["simple", "simple"],
   );
-  const [concreteLoads, setConcreteLoads] = useState<ConcreteLoad[]>(
-    saved?.concreteLoads ?? [],
-  );
-  const [bw, setBw] = useState(saved?.bw ?? 200);
-  const [h, setH] = useState(saved?.h ?? 500);
-  const [cover, setCover] = useState(saved?.cover ?? 30);
-  const [fc, setFc] = useState(saved?.fc ?? 25);
-  const [fy, setFy] = useState(saved?.fy ?? 420);
+  // slabImport tiene prioridad sobre cualquier estado restaurado (criterio original)
+  const [concreteLoads, setConcreteLoads] = useState<ConcreteLoad[]>(() => {
+    if (state?.slabImport) {
+      const imp = state.slabImport;
+      const note = `Losa ${imp.savedName || "sin nombre"} — ${EDGE_LABELS[imp.edge]}`;
+      const data = loadSlab(imp.slabId);
+      const dl = data
+        ? slabReactionToBeamLoad(data.result, imp.edge, 0, initialTotalLength)
+        : null;
+      if (dl) {
+        return [
+          {
+            id: dl.id,
+            type: "distributed",
+            D: dl.deadLoad ?? 0,
+            L: dl.liveLoad ?? 0,
+            start: 0,
+            end: initialTotalLength,
+            note,
+          },
+        ];
+      }
+      // Losa no encontrada o sin reacciones D/L: usar los valores del payload
+      return [
+        {
+          id: crypto.randomUUID(),
+          type: "distributed",
+          D: imp.deadLoad,
+          L: imp.liveLoad,
+          start: 0,
+          end: initialTotalLength,
+          note,
+        },
+      ];
+    }
+    return state?.concreteLoads ?? [];
+  });
+  const [bw, setBw] = useState(state?.bw ?? 200);
+  const [h, setH] = useState(state?.h ?? 500);
+  const [cover, setCover] = useState(state?.cover ?? 30);
+  const [fc, setFc] = useState(state?.fc ?? 25);
+  const [fy, setFy] = useState(state?.fy ?? 420);
 
   const [loadedSaveId, setLoadedSaveId] = useState<string | null>(null);
   const [loadedSaveName, setLoadedSaveName] = useState<string | null>(null);
@@ -55,7 +120,8 @@ export default function ConcreteForm() {
     () =>
       concreteLoads.map((cl) => ({
         id: cl.id,
-        type: cl.type,
+        // En modo importación la carga es distribuida (0 → luz total por defecto)
+        type: cl.importMode ? "distributed" : cl.type,
         magnitude: 1.2 * cl.D + 1.6 * cl.L,
         position: cl.position,
         start: cl.start,
@@ -126,6 +192,42 @@ export default function ConcreteForm() {
     );
   }
 
+  // ---- Importar carga de losa (editor dentro de la fila) ----
+
+  /** Convierte una fila en modo importación en una carga distribuida normal */
+  function confirmSlabImport(id: string) {
+    const load = concreteLoads.find((l) => l.id === id);
+    if (!load || !load.slabId || load.slabEdge === undefined) return;
+    const edge = load.slabEdge;
+    // Rango editado por el usuario en la fila (Inicio/Fin)
+    const start = load.start ?? 0;
+    const end = load.end ?? totalLength;
+    const data = loadSlab(load.slabId);
+    if (!data || !hasSlabDL(data.result)) return;
+    const dl = slabReactionToBeamLoad(data.result, edge, start, end);
+    if (!dl) return;
+    const slabName =
+      getSavedSlabs().find((s) => s.id === load.slabId)?.name ?? "";
+    setConcreteLoads((prev) =>
+      prev.map((l) =>
+        l.id === id
+          ? {
+              ...l,
+              importMode: false,
+              type: "distributed",
+              D: dl.deadLoad ?? 0,
+              L: dl.liveLoad ?? 0,
+              start,
+              end,
+              note: `Losa ${slabName || "sin nombre"} — ${EDGE_LABELS[edge]}`,
+              slabId: undefined,
+              slabEdge: undefined,
+            }
+          : l,
+      ),
+    );
+  }
+
   function handleSave() {
     const data: Record<string, unknown> = {
       spans: spanLengths,
@@ -173,7 +275,7 @@ export default function ConcreteForm() {
     spanLengths.every((l) => l > 0) &&
     supportTypes.some((t) => t !== "free") &&
     concreteLoads.length > 0 &&
-    concreteLoads.every((l) => l.D + l.L > 0);
+    concreteLoads.every((l) => l.D + l.L > 0 && !l.importMode);
 
   return (
     <MainLayout>
@@ -341,87 +443,293 @@ export default function ConcreteForm() {
               </p>
             )}
             <div className="flex flex-col gap-2">
-              {concreteLoads.map((load) => (
-                <div
-                  key={load.id}
-                  className="flex flex-wrap items-end gap-2 p-2 bg-surface-alt rounded-lg"
-                >
-                  <label className="flex flex-col gap-0.5">
-                    <span className="text-xs text-text-muted">Tipo</span>
-                    <select
-                      value={load.type}
-                      onChange={(e) =>
-                        updateLoad(load.id, {
-                          type: e.target.value as "point" | "distributed",
-                        })
-                      }
-                      className="w-24"
-                    >
-                      <option value="point">Puntual</option>
-                      <option value="distributed">Distribuida</option>
-                    </select>
-                  </label>
-                  <label className="flex flex-col gap-0.5">
-                    <span className="text-xs text-text-muted">
-                      D (kN{load.type === "distributed" ? "/m" : ""})
-                    </span>
-                    <DecimalInput
-                      value={load.D ?? 0}
-                      onChange={(n) => updateLoad(load.id, { D: n })}
-                      className="w-20"
-                    />
-                  </label>
-                  <label className="flex flex-col gap-0.5">
-                    <span className="text-xs text-text-muted">
-                      L (kN{load.type === "distributed" ? "/m" : ""})
-                    </span>
-                    <DecimalInput
-                      value={load.L ?? 0}
-                      onChange={(n) => updateLoad(load.id, { L: n })}
-                      className="w-20"
-                    />
-                  </label>
-                  <span className="text-xs text-text-muted pb-2">
-                    U={(1.2 * load.D + 1.6 * load.L).toFixed(1)}
-                  </span>
-                  {load.type === "point" ? (
-                    <label className="flex flex-col gap-0.5">
-                      <span className="text-xs text-text-muted">Pos (m)</span>
-                      <DecimalInput
-                        value={load.position ?? 0}
-                        onChange={(n) => updateLoad(load.id, { position: n })}
-                        className="w-20"
-                      />
-                    </label>
-                  ) : (
-                    <>
-                      <label className="flex flex-col gap-0.5">
-                        <span className="text-xs text-text-muted">Inicio</span>
-                        <DecimalInput
-                          value={load.start ?? 0}
-                          onChange={(n) => updateLoad(load.id, { start: n })}
-                          className="w-20"
-                        />
-                      </label>
-                      <label className="flex flex-col gap-0.5">
-                        <span className="text-xs text-text-muted">Fin</span>
-                        <DecimalInput
-                          value={load.end ?? 0}
-                          onChange={(n) => updateLoad(load.id, { end: n })}
-                          className="w-20"
-                        />
-                      </label>
-                    </>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => removeLoad(load.id)}
-                    className="ml-auto text-danger hover:bg-danger/10 border-danger/20 text-sm px-2 py-1"
+              {concreteLoads.map((load) => {
+                // Avisos del modo importación (misma lógica que SlabResults)
+                const slabData = load.slabId ? loadSlab(load.slabId) : null;
+                const slabWarning = (() => {
+                  if (!load.importMode || !load.slabId) return null;
+                  if (!slabData || !hasSlabDL(slabData.result))
+                    return "Recalcular primero — D/L no disponible";
+                  if (
+                    load.slabEdge !== undefined &&
+                    slabReactionToBeamLoad(
+                      slabData.result,
+                      load.slabEdge,
+                      0,
+                      0,
+                    ) === null
+                  )
+                    return "Este borde no transfiere carga";
+                  return null;
+                })();
+                return (
+                  <div
+                    key={load.id}
+                    className="flex flex-wrap items-end gap-2 p-2 bg-surface-alt rounded-lg"
                   >
-                    ✕
-                  </button>
-                </div>
-              ))}
+                    <label className="flex flex-col gap-0.5">
+                      <span className="text-xs text-text-muted">Tipo</span>
+                      <select
+                        value={load.importMode ? "slab" : load.type}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "slab") {
+                            // Entrar al modo importación: por defecto la
+                            // carga cubre toda la luz de la viga
+                            setConcreteLoads((prev) =>
+                              prev.map((l) =>
+                                l.id === load.id
+                                  ? {
+                                      ...l,
+                                      importMode: true,
+                                      start: l.start ?? 0,
+                                      end: l.end ?? totalLength,
+                                    }
+                                  : l,
+                              ),
+                            );
+                            return;
+                          }
+                          // Salir del modo importación: queda como carga
+                          // manual conservando los valores ya definidos
+                          setConcreteLoads((prev) =>
+                            prev.map((l) =>
+                              l.id === load.id
+                                ? {
+                                    ...l,
+                                    importMode: false,
+                                    type: val as "point" | "distributed",
+                                    slabId: undefined,
+                                    slabEdge: undefined,
+                                  }
+                                : l,
+                            ),
+                          );
+                        }}
+                        className="w-28"
+                      >
+                        <option value="point">Puntual</option>
+                        <option value="distributed">Distribuida</option>
+                        <option value="slab">Importar de losa</option>
+                      </select>
+                    </label>
+                    {load.importMode ? (
+                      <>
+                        <label className="flex flex-col gap-0.5">
+                          <span className="text-xs text-text-muted">Losa</span>
+                          <select
+                            value={load.slabId ?? ""}
+                            onChange={(e) => {
+                              const slabId = e.target.value;
+                              setConcreteLoads((prev) =>
+                                prev.map((l) => {
+                                  if (l.id !== load.id) return l;
+                                  // Si ya hay un borde elegido, recalcular
+                                  // D/L con la losa recién seleccionada
+                                  const data = slabId ? loadSlab(slabId) : null;
+                                  const dl =
+                                    data && l.slabEdge && hasSlabDL(data.result)
+                                      ? slabReactionToBeamLoad(
+                                          data.result,
+                                          l.slabEdge,
+                                          0,
+                                          0,
+                                        )
+                                      : null;
+                                  return {
+                                    ...l,
+                                    slabId: slabId || undefined,
+                                    D: dl ? (dl.deadLoad ?? 0) : 0,
+                                    L: dl ? (dl.liveLoad ?? 0) : 0,
+                                  };
+                                }),
+                              );
+                            }}
+                            className="w-36"
+                          >
+                            <option value="">— Seleccionar —</option>
+                            {getSavedSlabs().map((s) => (
+                              <option key={s.id} value={s.id}>
+                                {s.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="flex flex-col gap-0.5">
+                          <span className="text-xs text-text-muted">Borde</span>
+                          <select
+                            value={load.slabEdge ?? ""}
+                            onChange={(e) => {
+                              const edge = e.target.value
+                                ? (e.target.value as SlabEdge)
+                                : undefined;
+                              const data = load.slabId
+                                ? loadSlab(load.slabId)
+                                : null;
+                              const dl =
+                                data && edge && hasSlabDL(data.result)
+                                  ? slabReactionToBeamLoad(
+                                      data.result,
+                                      edge,
+                                      0,
+                                      0,
+                                    )
+                                  : null;
+                              setConcreteLoads((prev) =>
+                                prev.map((l) =>
+                                  l.id === load.id
+                                    ? {
+                                        ...l,
+                                        slabEdge: edge,
+                                        D: dl ? (dl.deadLoad ?? 0) : 0,
+                                        L: dl ? (dl.liveLoad ?? 0) : 0,
+                                      }
+                                    : l,
+                                ),
+                              );
+                            }}
+                            disabled={!load.slabId}
+                            className="w-24"
+                          >
+                            <option value="">— Seleccionar —</option>
+                            <option value="izq">Izquierdo</option>
+                            <option value="der">Derecho</option>
+                            <option value="arr">Arriba</option>
+                            <option value="aba">Abajo</option>
+                          </select>
+                        </label>
+                        <label className="flex flex-col gap-0.5">
+                          <span className="text-xs text-text-muted">
+                            Inicio
+                          </span>
+                          <DecimalInput
+                            value={load.start ?? 0}
+                            onChange={(n) => updateLoad(load.id, { start: n })}
+                            className="w-20"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-0.5">
+                          <span className="text-xs text-text-muted">Fin</span>
+                          <DecimalInput
+                            value={load.end ?? 0}
+                            onChange={(n) => updateLoad(load.id, { end: n })}
+                            className="w-20"
+                          />
+                        </label>
+                        <span className="text-xs text-text-muted pb-2">
+                          D = {load.D.toFixed(2)} kN/m
+                        </span>
+                        <span className="text-xs text-text-muted pb-2">
+                          L = {load.L.toFixed(2)} kN/m
+                        </span>
+                        {slabWarning && (
+                          <span className="w-full text-xs text-warning">
+                            {slabWarning}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => confirmSlabImport(load.id)}
+                          disabled={
+                            !load.slabId ||
+                            load.slabEdge === undefined ||
+                            !!slabWarning
+                          }
+                          className="text-sm bg-primary/10 text-primary border-primary/20 hover:bg-primary/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          Agregar carga
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeLoad(load.id)}
+                          className="ml-auto text-danger hover:bg-danger/10 border-danger/20 text-sm px-2 py-1"
+                        >
+                          ✕
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <label className="flex flex-col gap-0.5">
+                          <span className="text-xs text-text-muted">
+                            D (kN{load.type === "distributed" ? "/m" : ""})
+                          </span>
+                          <DecimalInput
+                            value={load.D ?? 0}
+                            onChange={(n) => updateLoad(load.id, { D: n })}
+                            className="w-20"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-0.5">
+                          <span className="text-xs text-text-muted">
+                            L (kN{load.type === "distributed" ? "/m" : ""})
+                          </span>
+                          <DecimalInput
+                            value={load.L ?? 0}
+                            onChange={(n) => updateLoad(load.id, { L: n })}
+                            className="w-20"
+                          />
+                        </label>
+                        <span className="text-xs text-text-muted pb-2">
+                          U={(1.2 * load.D + 1.6 * load.L).toFixed(1)}
+                        </span>
+                        {load.note && (
+                          <span className="text-xs text-text-muted pb-2">
+                            {load.note}
+                          </span>
+                        )}
+                        {load.type === "point" ? (
+                          <label className="flex flex-col gap-0.5">
+                            <span className="text-xs text-text-muted">
+                              Pos (m)
+                            </span>
+                            <DecimalInput
+                              value={load.position ?? 0}
+                              onChange={(n) =>
+                                updateLoad(load.id, { position: n })
+                              }
+                              className="w-20"
+                            />
+                          </label>
+                        ) : (
+                          <>
+                            <label className="flex flex-col gap-0.5">
+                              <span className="text-xs text-text-muted">
+                                Inicio
+                              </span>
+                              <DecimalInput
+                                value={load.start ?? 0}
+                                onChange={(n) =>
+                                  updateLoad(load.id, { start: n })
+                                }
+                                className="w-20"
+                              />
+                            </label>
+                            <label className="flex flex-col gap-0.5">
+                              <span className="text-xs text-text-muted">
+                                Fin
+                              </span>
+                              <DecimalInput
+                                value={load.end ?? 0}
+                                onChange={(n) =>
+                                  updateLoad(load.id, { end: n })
+                                }
+                                className="w-20"
+                              />
+                            </label>
+                          </>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => removeLoad(load.id)}
+                          className="ml-auto text-danger hover:bg-danger/10 border-danger/20 text-sm px-2 py-1"
+                        >
+                          ✕
+                        </button>
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </section>
         </div>
