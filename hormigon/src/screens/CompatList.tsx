@@ -87,16 +87,25 @@ function CompatCard({ data, supportDesign, onDelete }: {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs mb-3">
           <div>
             <span className="text-text-muted">As apoyo necesario</span>
-            <p className="font-bold text-primary">{requiredAs} mm²/m</p>
+            <p className="font-bold text-primary">
+              {(requiredAs / 100).toFixed(2)} cm²/m
+            </p>
           </div>
           <div>
             <span className="text-text-muted">As disponible (barras dobladas)</span>
-            <p className="font-bold text-text">{Math.round(availableFromSpan)} mm²/m</p>
-            <span className="text-text-muted/60">= 50% × avg({adoptedA}, {adoptedB})</span>
+            <p className="font-bold text-text">
+              {(availableFromSpan / 100).toFixed(2)} cm²/m
+            </p>
+            <span className="text-text-muted/60">
+              = 50% × avg({(adoptedA / 100).toFixed(2)},{" "}
+              {(adoptedB / 100).toFixed(2)}) cm²/m
+            </span>
           </div>
           <div>
             <span className="text-text-muted">As adicional</span>
-            <p className="font-bold text-warning">{additionalNeeded} mm²/m</p>
+            <p className="font-bold text-warning">
+              {(additionalNeeded / 100).toFixed(2)} cm²/m
+            </p>
             <span className="text-text-muted/60">= máx(0, nec − 50%·adopt)</span>
           </div>
         </div>
@@ -111,21 +120,30 @@ function CompatCard({ data, supportDesign, onDelete }: {
             </select>
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-text-muted">Sep (mm)</span>
+            <span className="text-xs text-text-muted">Sep (cm)</span>
             <input
               type="text"
-              value={sep}
-              onChange={(e) => setSep(Number(e.target.value) || 0)}
+              value={sep ? sep / 10 : ""}
+              onChange={(e) => {
+                const raw = e.target.value.replace(/,/g, ".");
+                const num = parseFloat(raw);
+                // Entrada en cm → estado en mm (unidad del motor)
+                setSep(isNaN(num) ? 0 : num * 10);
+              }}
               className="w-20 bg-surface border border-border rounded px-2 py-1 text-text text-sm"
             />
           </label>
           <div className="flex flex-col gap-1">
             <span className="text-xs text-text-muted">Provisto</span>
-            <p className="text-sm font-bold text-text">{providedAs} mm²/m</p>
+            <p className="text-sm font-bold text-text">
+              {(providedAs / 100).toFixed(2)} cm²/m
+            </p>
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-xs text-text-muted">Total</span>
-            <p className="text-sm font-bold text-primary">{totalAs} mm²/m</p>
+            <p className="text-sm font-bold text-primary">
+              {(totalAs / 100).toFixed(2)} cm²/m
+            </p>
           </div>
           <span className={`text-sm font-semibold pb-1 ${ok ? "text-success" : "text-warning"}`}>
             {ok ? "✓" : "✗"}
@@ -270,19 +288,29 @@ export default function CompatList() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                   <div className="bg-surface-alt rounded-lg p-3">
                     <span className="text-text-muted">As apoyo necesario</span>
-                    <p className="text-lg font-bold text-primary">{supportAsReq} mm²/m</p>
-                    <p className="text-text-muted/60">s<sub>máx</sub> = {supportDesign.sMax} mm</p>
+                    <p className="text-lg font-bold text-primary">
+                      {(supportAsReq / 100).toFixed(2)} cm²/m
+                    </p>
+                    <p className="text-text-muted/60">
+                      s<sub>máx</sub> = {(supportDesign.sMax / 10).toFixed(1)}{" "}
+                      cm
+                    </p>
                   </div>
                   <div className="bg-surface-alt rounded-lg p-3">
                     <span className="text-text-muted">As disponible (barras dobladas)</span>
-                    <p className="text-lg font-bold text-text mt-1">{Math.round(availableFromSpan)} mm²/m</p>
+                    <p className="text-lg font-bold text-text mt-1">
+                      {(availableFromSpan / 100).toFixed(2)} cm²/m
+                    </p>
                     <p className="text-text-muted/60">
-                      = 50% × {adoptedSpanAs} mm²/m (adoptado)
+                      = 50% × {(adoptedSpanAs / 100).toFixed(2)} cm²/m
+                      (adoptado)
                     </p>
                   </div>
                   <div className="bg-surface-alt rounded-lg p-3">
                     <span className="text-text-muted">As adicional necesario</span>
-                    <p className="text-lg font-bold text-warning">{additionalAsNeeded} mm²/m</p>
+                    <p className="text-lg font-bold text-warning">
+                      {(additionalAsNeeded / 100).toFixed(2)} cm²/m
+                    </p>
                     <p className="text-text-muted/60">= máx(0, nec − disp)</p>
                   </div>
                 </div>
@@ -305,23 +333,32 @@ export default function CompatList() {
                       </select>
                     </label>
                     <label className="flex flex-col gap-1">
-                      <span className="text-xs text-text-muted">Sep (mm)</span>
+                      <span className="text-xs text-text-muted">Sep (cm)</span>
                       <input
                         type="text"
-                        value={supSep}
-                        onChange={(e) => setSupSep(Number(e.target.value) || 0)}
+                        value={supSep ? supSep / 10 : ""}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/,/g, ".");
+                          const num = parseFloat(raw);
+                          // Entrada en cm → estado en mm (unidad del motor)
+                          setSupSep(isNaN(num) ? 0 : num * 10);
+                        }}
                         className="w-20 bg-surface border border-border rounded px-2 py-1 text-text text-sm"
                       />
                     </label>
                     <div className="flex flex-col gap-1">
                       <span className="text-xs text-text-muted">Provisto</span>
-                      <p className="text-sm font-bold text-text">{supProvided} mm²/m</p>
+                      <p className="text-sm font-bold text-text">
+                        {(supProvided / 100).toFixed(2)} cm²/m
+                      </p>
                     </div>
                   </div>
                   <div className="mt-2 pt-2 border-t border-border">
                     <p className="text-sm">
                       <span className="text-text-muted">Total apoyo:</span>{" "}
-                      <strong className="text-primary">{totalSupportAs} mm²/m</strong>
+                      <strong className="text-primary">
+                        {(totalSupportAs / 100).toFixed(2)} cm²/m
+                      </strong>
                       <span className={`text-xs ml-2 ${totalSupportAs >= supportAsReq ? "text-success" : "text-warning"}`}>
                         {totalSupportAs >= supportAsReq ? "✓ Cumple" : "✗ No cumple"}
                       </span>

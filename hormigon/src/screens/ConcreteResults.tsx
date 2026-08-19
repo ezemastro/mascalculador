@@ -14,6 +14,47 @@ function sanitizeDecimal(val: string): string {
   return val.replace(/,/g, ".");
 }
 
+/** Convierte los pasos del motor (mm) a cm para su visualización.
+ *  Solo se protegen los diámetros de barras (designación comercial en mm)
+ *  y el ratio mm²/mm (el patrón mm²/m matchea dentro de "mm²/mm").
+ *  La geometría lineal también pasa a cm. */
+function postSteps(steps: string[]): string[] {
+  const PROTECT_PATTERNS: RegExp[] = [
+    /Ø\s*[\d.,]+\s*mm/g,
+    /diámetro[^\n]*?mm/g,
+    /[\d.,]+\s*mm²\/mm/g,
+  ];
+
+  return steps.map((line) => {
+    const saved: string[] = [];
+    let out = line;
+    for (const re of PROTECT_PATTERNS) {
+      out = out.replace(re, (m) => {
+        saved.push(m);
+        return `@@P${saved.length - 1}@@`;
+      });
+    }
+    out = out
+      .replace(
+        /(\d+\.?\d*)\s*mm²\/m/g,
+        (_m: string, n: string) => `${(Number(n) / 100).toFixed(2)} cm²/m`,
+      )
+      .replace(
+        /(\d+\.?\d*)\s*mm²(?!\/)/g,
+        (_m: string, n: string) => `${(Number(n) / 100).toFixed(2)} cm²`,
+      )
+      .replace(
+        /(\d+\.?\d*)\s*mm(?!²)/g,
+        (_m: string, n: string) => `${(Number(n) / 10).toFixed(1)} cm`,
+      );
+    // Restaurar los tokens protegidos
+    for (let i = 0; i < saved.length; i++) {
+      out = out.replace(`@@P${i}@@`, () => saved[i]);
+    }
+    return out;
+  });
+}
+
 const BAR_DIAMETERS = [6, 8, 10, 12, 16, 20, 25];
 const BAR_AREA: Record<number, number> = {
   6: 28,
@@ -391,8 +432,8 @@ export default function ConcreteResults() {
             {savedName ? `Viga: ${savedName}` : "Viga H° A°"}
           </h1>
           <p className="text-sm text-text-muted">
-            {bw}×{h} mm &middot; f'c={fc} MPa &middot; L={L} m &middot; {nSpans}{" "}
-            tramo{nSpans > 1 ? "s" : ""}
+            {(bw / 10).toFixed(0)}×{(h / 10).toFixed(0)} cm &middot; f'c={fc}{" "}
+            MPa &middot; L={L} m &middot; {nSpans} tramo{nSpans > 1 ? "s" : ""}
           </p>
         </div>
         <div className="flex gap-1.5">
@@ -470,7 +511,7 @@ export default function ConcreteResults() {
       {/* Anchos de apoyo */}
       <section className="bg-surface rounded-xl border border-border p-5">
         <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
-          Anchos de apoyo (mm)
+          Anchos de apoyo (cm)
         </h2>
         <div className="flex flex-wrap gap-2 items-end">
           {supports.map((_sup, i) => (
@@ -484,13 +525,15 @@ export default function ConcreteResults() {
               </span>
               <input
                 type="text"
-                value={String(ensure(supportWidths, nSupports, 300)[i] ?? 0)}
+                value={String(
+                  (ensure(supportWidths, nSupports, 300)[i] ?? 0) / 10,
+                )}
                 onChange={(e) => {
                   const raw = sanitizeDecimal(e.target.value);
                   const num = parseFloat(raw);
-                  // Si el parseo falla, conservar el valor previo (no escribir 0)
+                  // Entrada en cm → estado/guardado en mm (unidad del motor)
                   if (!isNaN(num)) {
-                    setSupportWidths(patchArr(supportWidths, i, 300, num));
+                    setSupportWidths(patchArr(supportWidths, i, 300, num * 10));
                   }
                 }}
                 className="w-20"
@@ -600,25 +643,28 @@ export default function ConcreteResults() {
                   A<sub>s</sub> req
                 </span>
                 <p className="text-sm font-bold text-warning">
-                  {cr.AsReq.toFixed(0)} mm²
+                  {(cr.AsReq / 100).toFixed(2)} cm²
                 </p>
               </div>
               <div className="bg-surface-alt rounded-lg p-2">
                 <span className="text-xs text-text-muted">
                   A<sub>s</sub> mín
                 </span>
-                <p className="text-sm font-bold">{cr.AsMin.toFixed(0)} mm²</p>
+                <p className="text-sm font-bold">
+                  {(cr.AsMin / 100).toFixed(2)} cm²
+                </p>
               </div>
             </div>
 
             {/* Requerimiento */}
             <p className="text-xs text-text-muted mb-2">
-              Necesaria: <strong>{AsReqT.toFixed(0)} mm²</strong> (mín:{" "}
-              {cr.AsMin.toFixed(0)} mm²)
+              Necesaria: <strong>{(AsReqT / 100).toFixed(2)} cm²</strong> (mín:{" "}
+              {(cr.AsMin / 100).toFixed(2)} cm²)
               {AsReqC > 0 && (
                 <span>
                   {" "}
-                  + A<sub>s</sub>' = {AsReqC.toFixed(0)} mm² (compresión)
+                  + A<sub>s</sub>' = {(AsReqC / 100).toFixed(2)} cm²
+                  (compresión)
                 </span>
               )}
             </p>
@@ -651,13 +697,13 @@ export default function ConcreteResults() {
                 >
                   {BAR_DIAMETERS.map((d) => (
                     <option key={d} value={d}>
-                      Ø{d} ({BAR_AREA[d]} mm²)
+                      Ø{d} ({(BAR_AREA[d] / 100).toFixed(2)} cm²)
                     </option>
                   ))}
                 </select>
               </label>
               <span className="text-sm pb-2">
-                = <strong>{AsT.toFixed(0)} mm²</strong>
+                = <strong>{(AsT / 100).toFixed(2)} cm²</strong>
               </span>
               <span
                 className={`text-xs font-bold ${flexTensionOK ? "text-success" : "text-danger"}`}
@@ -699,13 +745,13 @@ export default function ConcreteResults() {
                   >
                     {BAR_DIAMETERS.map((d) => (
                       <option key={d} value={d}>
-                        Ø{d} ({BAR_AREA[d]} mm²)
+                        Ø{d} ({(BAR_AREA[d] / 100).toFixed(2)} cm²)
                       </option>
                     ))}
                   </select>
                 </label>
                 <span className="text-sm pb-2">
-                  = <strong>{AsC.toFixed(0)} mm²</strong>
+                  = <strong>{(AsC / 100).toFixed(2)} cm²</strong>
                 </span>
                 <span
                   className={`text-xs font-bold ${flexCompressionOK ? "text-success" : "text-danger"}`}
@@ -720,8 +766,8 @@ export default function ConcreteResults() {
             >
               {flexOK ? "✓ Verifica flexión" : "✗ No verifica flexión"} —{" "}
               {AsReqC > 0
-                ? `tracción: ${AsT.toFixed(0)} vs ${Math.max(AsReqT, cr.AsMin).toFixed(0)} mm², compresión: ${AsC.toFixed(0)} vs ${AsReqC.toFixed(0)} mm²`
-                : `${AsT.toFixed(0)} vs ${Math.max(cr.AsReq, cr.AsMin).toFixed(0)} mm²`}
+                ? `tracción: ${(AsT / 100).toFixed(2)} vs ${(Math.max(AsReqT, cr.AsMin) / 100).toFixed(2)} cm², compresión: ${(AsC / 100).toFixed(2)} vs ${(AsReqC / 100).toFixed(2)} cm²`
+                : `${(AsT / 100).toFixed(2)} vs ${(Math.max(cr.AsReq, cr.AsMin) / 100).toFixed(2)} cm²`}
             </div>
 
             {/* Estribos */}
@@ -733,8 +779,8 @@ export default function ConcreteResults() {
                 V<sub>u</sub> = {sr.Vu.toFixed(1)} kN &middot; V<sub>c</sub> ={" "}
                 {cr.Vc.toFixed(1)} kN &middot; V<sub>s</sub> req ={" "}
                 {cr.VsReq.toFixed(1)} kN &middot; A<sub>v</sub>/s mín ={" "}
-                {cr.AvSMin.toFixed(1)} mm²/m &middot; s<sub>máx</sub> ={" "}
-                {cr.sMax.toFixed(0)} mm
+                {(cr.AvSMin / 100).toFixed(2)} cm²/m &middot; s<sub>máx</sub> ={" "}
+                {(cr.sMax / 10).toFixed(1)} cm
               </p>
               <div className="flex flex-wrap gap-3 items-end mb-2">
                 <label className="flex flex-col gap-1">
@@ -764,23 +810,29 @@ export default function ConcreteResults() {
                   >
                     {BAR_DIAMETERS.filter((d) => d <= 12).map((d) => (
                       <option key={d} value={d}>
-                        Ø{d} ({BAR_AREA[d]} mm²)
+                        Ø{d} ({(BAR_AREA[d] / 100).toFixed(2)} cm²)
                       </option>
                     ))}
                   </select>
                 </label>
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-text-muted">
-                    Separación (mm)
+                    Separación (cm)
                   </span>
                   <input
                     type="text"
-                    value={sSpacing || ""}
+                    value={sSpacing ? sSpacing / 10 : ""}
                     onChange={(e) => {
                       const raw = sanitizeDecimal(e.target.value);
                       const num = parseFloat(raw);
+                      // Entrada en cm → estado/guardado en mm (unidad del motor)
                       setStirrupSpacing(
-                        patchArr(stirrupSpacing, i, 200, isNaN(num) ? 0 : num),
+                        patchArr(
+                          stirrupSpacing,
+                          i,
+                          200,
+                          isNaN(num) ? 0 : num * 10,
+                        ),
                       );
                     }}
                     className="w-24"
@@ -789,8 +841,7 @@ export default function ConcreteResults() {
                 <span className="text-sm pb-2">
                   A<sub>v</sub>/s ={" "}
                   <strong>
-                    {(((sLegs * Av1) / (sSpacing || 1)) * 1000).toFixed(1)}{" "}
-                    mm²/m
+                    {(((sLegs * Av1) / (sSpacing || 1)) * 10).toFixed(2)} cm²/m
                   </strong>
                 </span>
               </div>
@@ -809,7 +860,7 @@ export default function ConcreteResults() {
                 Ver cuentas
               </summary>
               <pre className="mt-2 p-3 bg-surface-alt rounded-lg text-xs text-text-muted font-mono whitespace-pre-wrap overflow-x-auto">
-                {shearChk.steps.join("\n")}
+                {postSteps(shearChk.steps).join("\n")}
               </pre>
             </details>
           </section>
@@ -871,12 +922,13 @@ export default function ConcreteResults() {
                   kN·m
                 </h3>
                 <p className="text-xs text-text-muted mb-2">
-                  Necesaria: <strong>{supAsReqT.toFixed(0)} mm²</strong> (mín:{" "}
-                  {supDesign.AsMin.toFixed(0)} mm²)
+                  Necesaria: <strong>{(supAsReqT / 100).toFixed(2)} cm²</strong>{" "}
+                  (mín: {(supDesign.AsMin / 100).toFixed(2)} cm²)
                   {supAsReqC > 0 && (
                     <span>
                       {" "}
-                      + A<sub>s</sub>' = {supAsReqC.toFixed(0)} mm² (compresión)
+                      + A<sub>s</sub>' = {(supAsReqC / 100).toFixed(2)} cm²
+                      (compresión)
                     </span>
                   )}
                 </p>
@@ -911,13 +963,13 @@ export default function ConcreteResults() {
                     >
                       {BAR_DIAMETERS.map((d) => (
                         <option key={d} value={d}>
-                          Ø{d} ({BAR_AREA[d]} mm²)
+                          Ø{d} ({(BAR_AREA[d] / 100).toFixed(2)} cm²)
                         </option>
                       ))}
                     </select>
                   </label>
                   <span className="text-sm pb-2">
-                    = <strong>{supAsProv.toFixed(0)} mm²</strong>
+                    = <strong>{(supAsProv / 100).toFixed(2)} cm²</strong>
                   </span>
                   <span
                     className={`text-xs font-bold ${supTensionOK ? "text-success" : "text-danger"}`}
@@ -929,15 +981,15 @@ export default function ConcreteResults() {
                   className={`p-2 rounded-lg text-sm font-bold ${supOK ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}
                 >
                   {supOK ? "✓ Verifica flexión" : "✗ No verifica flexión"} —{" "}
-                  {supAsProv.toFixed(0)} vs{" "}
-                  {Math.max(supAsReqT, supDesign.AsMin).toFixed(0)} mm²
+                  {(supAsProv / 100).toFixed(2)} vs{" "}
+                  {(Math.max(supAsReqT, supDesign.AsMin) / 100).toFixed(2)} cm²
                 </div>
                 <details className="mt-2">
                   <summary className="cursor-pointer text-xs text-text-muted hover:text-text">
                     Ver cuentas
                   </summary>
                   <pre className="mt-2 p-3 bg-surface-alt rounded-lg text-xs text-text-muted font-mono whitespace-pre-wrap overflow-x-auto">
-                    {supDesign.steps.join("\n")}
+                    {postSteps(supDesign.steps).join("\n")}
                   </pre>
                 </details>
               </section>

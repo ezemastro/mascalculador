@@ -17,6 +17,47 @@ function sanitizeDecimal(val: string): string {
   return val.replace(/,/g, ".");
 }
 
+/** Convierte los pasos del motor (mm) a cm para su visualización.
+ *  Solo se protegen los diámetros de barras (designación comercial en mm)
+ *  y el ratio mm²/mm (el patrón mm²/m matchea dentro de "mm²/mm").
+ *  La geometría lineal también pasa a cm. */
+function postSteps(steps: string[]): string[] {
+  const PROTECT_PATTERNS: RegExp[] = [
+    /Ø\s*[\d.,]+\s*mm/g,
+    /diámetro[^\n]*?mm/g,
+    /[\d.,]+\s*mm²\/mm/g,
+  ];
+
+  return steps.map((line) => {
+    const saved: string[] = [];
+    let out = line;
+    for (const re of PROTECT_PATTERNS) {
+      out = out.replace(re, (m) => {
+        saved.push(m);
+        return `@@P${saved.length - 1}@@`;
+      });
+    }
+    out = out
+      .replace(
+        /(\d+\.?\d*)\s*mm²\/m/g,
+        (_m: string, n: string) => `${(Number(n) / 100).toFixed(2)} cm²/m`,
+      )
+      .replace(
+        /(\d+\.?\d*)\s*mm²(?!\/)/g,
+        (_m: string, n: string) => `${(Number(n) / 100).toFixed(2)} cm²`,
+      )
+      .replace(
+        /(\d+\.?\d*)\s*mm(?!²)/g,
+        (_m: string, n: string) => `${(Number(n) / 10).toFixed(1)} cm`,
+      );
+    // Restaurar los tokens protegidos
+    for (let i = 0; i < saved.length; i++) {
+      out = out.replace(`@@P${i}@@`, () => saved[i]);
+    }
+    return out;
+  });
+}
+
 const BAR_DIAMETERS = [6, 8, 10, 12, 16, 20];
 const BAR_AREA: Record<number, number> = {
   6: 28,
@@ -48,7 +89,7 @@ function SupportSection({
         A<sub>s</sub> req = {asReqCm} cm²/m
       </p>
       <p className="text-xs text-text-muted">
-        mín: {asMinCm} &middot; s<sub>máx</sub>: {dir.sMax} mm
+        mín: {asMinCm} &middot; s<sub>máx</sub>: {(dir.sMax / 10).toFixed(1)} cm
       </p>
       <details className="mt-2 pt-2 border-t border-border">
         <summary className="cursor-pointer text-xs text-text-muted hover:text-text">
@@ -73,16 +114,16 @@ function SupportSection({
           </p>
           <p className="text-primary font-semibold">{dir.caseLabel}</p>
           <p>
-            A<sub>s,req</sub> = {dir.AsReq} mm²/m = {asReqCm} cm²/m
+            A<sub>s,req</sub> = {asReqCm} cm²/m
           </p>
           <p>
-            A<sub>s,mín</sub> = {dir.AsMin} mm²/m = {asMinCm} cm²/m
+            A<sub>s,mín</sub> = {asMinCm} cm²/m
           </p>
           <p>
-            A<sub>s,temp</sub> = {dir.AsTemp} mm²/m
+            A<sub>s,temp</sub> = {(dir.AsTemp / 100).toFixed(2)} cm²/m
           </p>
           <p>
-            s<sub>máx</sub> = {dir.sMax} mm
+            s<sub>máx</sub> = {(dir.sMax / 10).toFixed(1)} cm
           </p>
         </div>
       </details>
@@ -129,7 +170,8 @@ function DirSection({
             A<sub>s</sub> req = {asReqCm} cm²/m
           </p>
           <p className="text-xs text-text-muted">
-            mín: {asMinCm} &middot; s<sub>máx</sub>: {dir.sMax} mm
+            mín: {asMinCm} &middot; s<sub>máx</sub>:{" "}
+            {(dir.sMax / 10).toFixed(1)} cm
           </p>
         </>
       ) : (
@@ -141,7 +183,8 @@ function DirSection({
             A<sub>s</sub> repartición = {asReqCm} cm²/m
           </p>
           <p className="text-xs text-text-muted">
-            s<sub>máx</sub>: {dir.sMax} mm &middot; min(3·h, 300)
+            s<sub>máx</sub>: {(dir.sMax / 10).toFixed(1)} cm &middot; min(3·h,
+            30 cm)
           </p>
         </>
       )}
@@ -173,7 +216,9 @@ function DirSection({
             className="w-20"
           />
         </label>
-        <span className="text-sm pb-2">→ {asProvided.toFixed(0)} mm²/m</span>
+        <span className="text-sm pb-2">
+          → {(asProvided / 100).toFixed(2)} cm²/m
+        </span>
         <span
           className={`text-sm font-bold pb-2 ${asProvided >= dir.AsReq ? "text-success" : "text-danger"}`}
         >
@@ -344,7 +389,8 @@ export default function SlabResults() {
             )}
           </h1>
           <p className="text-sm text-text-muted">
-            h = {result.h} mm &middot; d = {result.d} mm &middot; qu ={" "}
+            h = {(result.h / 10).toFixed(1)} cm &middot; d ={" "}
+            {(result.d / 10).toFixed(1)} cm &middot; qu ={" "}
             {result.qu.toFixed(2)} kN/m²
           </p>
         </div>
@@ -536,7 +582,7 @@ export default function SlabResults() {
           Ver cuentas completas
         </summary>
         <pre className="mt-3 p-3 bg-surface-alt rounded-lg text-xs text-text-muted font-mono whitespace-pre-wrap overflow-x-auto">
-          {result.steps.join("\n")}
+          {postSteps(result.steps).join("\n")}
         </pre>
       </details>
     </MainLayout>

@@ -842,24 +842,27 @@ export default function ConcreteForm() {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 items-end">
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
-                b<sub>w</sub> (mm)
+                b<sub>w</sub> (cm)
               </span>
-              <DecimalInput value={bw} onChange={setBw} />
+              <DecimalInput value={bw / 10} onChange={(n) => setBw(n * 10)} />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">h (mm)</span>
-              <DecimalInput value={h} onChange={setH} />
+              <span className="text-xs text-text-muted">h (cm)</span>
+              <DecimalInput value={h / 10} onChange={(n) => setH(n * 10)} />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
-                Recubrimiento (mm)
+                Recubrimiento (cm)
               </span>
-              <DecimalInput value={cover} onChange={setCover} />
+              <DecimalInput
+                value={cover / 10}
+                onChange={(n) => setCover(n * 10)}
+              />
             </label>
             <div className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">d = h − rec</span>
               <span className="text-sm font-semibold bg-surface-alt rounded px-2 py-1.5">
-                {h - cover} mm
+                {((h - cover) / 10).toFixed(1)} cm
               </span>
             </div>
             <label className="flex flex-col gap-1">

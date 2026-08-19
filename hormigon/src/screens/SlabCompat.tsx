@@ -11,6 +11,47 @@ const EDGE_LABELS: Record<EdgeIndex, string> = {
   3: "Abajo",
 };
 
+/** Convierte los pasos del motor (mm) a cm para su visualización.
+ *  Solo se protegen los diámetros de barras (designación comercial en mm)
+ *  y el ratio mm²/mm (el patrón mm²/m matchea dentro de "mm²/mm").
+ *  La geometría lineal también pasa a cm. */
+function postSteps(steps: string[]): string[] {
+  const PROTECT_PATTERNS: RegExp[] = [
+    /Ø\s*[\d.,]+\s*mm/g,
+    /diámetro[^\n]*?mm/g,
+    /[\d.,]+\s*mm²\/mm/g,
+  ];
+
+  return steps.map((line) => {
+    const saved: string[] = [];
+    let out = line;
+    for (const re of PROTECT_PATTERNS) {
+      out = out.replace(re, (m) => {
+        saved.push(m);
+        return `@@P${saved.length - 1}@@`;
+      });
+    }
+    out = out
+      .replace(
+        /(\d+\.?\d*)\s*mm²\/m/g,
+        (_m: string, n: string) => `${(Number(n) / 100).toFixed(2)} cm²/m`,
+      )
+      .replace(
+        /(\d+\.?\d*)\s*mm²(?!\/)/g,
+        (_m: string, n: string) => `${(Number(n) / 100).toFixed(2)} cm²`,
+      )
+      .replace(
+        /(\d+\.?\d*)\s*mm(?!²)/g,
+        (_m: string, n: string) => `${(Number(n) / 10).toFixed(1)} cm`,
+      );
+    // Restaurar los tokens protegidos
+    for (let i = 0; i < saved.length; i++) {
+      out = out.replace(`@@P${i}@@`, () => saved[i]);
+    }
+    return out;
+  });
+}
+
 export default function SlabCompat() {
   const navigate = useNavigate();
   const savedSlabs = useMemo(() => getSavedSlabs(), []);
@@ -169,8 +210,8 @@ export default function SlabCompat() {
                   {result.supportDesign && (
                     <div className="mt-2 p-2 bg-surface-alt rounded text-xs text-text-muted space-y-1">
                       <p className="font-semibold text-text">Armadura de apoyo:</p>
-                      <p>A<sub>s</sub> req = {result.supportDesign.AsReq} mm²/m</p>
-                      <p>mín: {result.supportDesign.AsMin} &middot; s<sub>máx</sub>: {result.supportDesign.sMax} mm</p>
+                      <p>A<sub>s</sub> req = {(result.supportDesign.AsReq / 100).toFixed(2)} cm²/m</p>
+                      <p>mín: {(result.supportDesign.AsMin / 100).toFixed(2)} &middot; s<sub>máx</sub>: {(result.supportDesign.sMax / 10).toFixed(1)} cm</p>
                       <p className="text-text-muted/60">{result.supportDesign.caseLabel}</p>
                     </div>
                   )}
@@ -179,7 +220,7 @@ export default function SlabCompat() {
                       <details className="mt-2">
                         <summary className="cursor-pointer text-text">Ver losa recalculada</summary>
                         <pre className="mt-2 p-2 bg-surface-alt rounded text-xs whitespace-pre-wrap">
-                          {result.recalculatedResult.steps.join("\n")}
+                          {postSteps(result.recalculatedResult.steps).join("\n")}
                         </pre>
                       </details>
                       <button
