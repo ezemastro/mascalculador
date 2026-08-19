@@ -378,28 +378,28 @@ export default function ConcreteForm() {
           </div>
         </section>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <section className="bg-surface rounded-xl border border-border p-5">
-            <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
+        <div className="flex flex-col gap-6">
+          <section className="bg-surface rounded-xl border border-border p-4">
+            <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
               Apoyos
             </h2>
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-wrap gap-2">
               {supportTypes.map((type, i) => {
                 const isEnd = i === 0 || i === supportTypes.length - 1;
                 const pos = spanLengths.slice(0, i).reduce((a, b) => a + b, 0);
                 return (
                   <div
                     key={i}
-                    className="flex items-center gap-2 p-2 bg-surface-alt rounded-lg"
+                    className="flex items-center gap-2 p-1.5 bg-surface-alt rounded-lg"
                   >
-                    <span className="text-xs text-text-muted w-16">
+                    <span className="text-xs text-text-muted whitespace-nowrap">
                       {supportTypes.length === 2
                         ? i === 0
                           ? "Ap. A"
                           : "Ap. B"
                         : `Ap. ${i + 1}`}
                     </span>
-                    <span className="text-xs text-text-muted">
+                    <span className="text-xs text-text-muted whitespace-nowrap">
                       x={pos.toFixed(1)}
                     </span>
                     <select
@@ -411,7 +411,7 @@ export default function ConcreteForm() {
                           ),
                         )
                       }
-                      className="flex-1"
+                      className="text-xs py-1 w-32"
                     >
                       <option value="simple">Articulado</option>
                       <option value="fixed">Empotrado</option>
