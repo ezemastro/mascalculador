@@ -212,278 +212,41 @@ export default function VigaContinuaForm() {
 
   return (
     <MainLayout>
-      <header className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
-          <svg
-            className="w-5 h-5 text-primary"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 7h6m-6 4h6m-6 4h6M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"
-            />
-          </svg>
-        </div>
-        <div className="flex-1">
-          <h1 className="text-xl font-semibold text-text">Viga Continua</h1>
-          <p className="text-sm text-text-muted">
-            {vigaNumber != null && loadedSaveName
-              ? `Viga #${vigaNumber} — ${loadedSaveName}`
-              : "Viga sin guardar"}
-          </p>
-        </div>
-      </header>
-
+      {/* Mode switch first — shared by both analysis modes. */}
       <div className="flex justify-center">
         <ModeSelector mode={mode} onChange={handleModeChange} />
       </div>
 
       {mode === "portico" ? (
+        // PorticoForm renders its own header and title.
         <PorticoForm />
       ) : (
-        <form
-          onSubmit={(e) => e.preventDefault()}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") e.preventDefault();
-          }}
-          className="flex flex-col gap-6"
-        >
-          <section className="bg-surface rounded-xl border border-border p-5">
-            <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-              Viga
-            </h2>
-            <div className="flex flex-col gap-4">
-              <label className="flex flex-col gap-1.5">
-                <span className="text-xs text-text-muted font-medium">
-                  Cantidad de tramos
-                </span>
-                <select
-                  value={spanCount}
-                  onChange={(e) =>
-                    setSpanCountAndAdjust(Number(e.target.value))
-                  }
-                  className="w-40"
-                >
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <option key={n} value={n}>
-                      {n}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {spanLengths.map((len, i) => (
-                  <label key={i} className="flex flex-col gap-1.5">
-                    <span className="text-xs text-text-muted font-medium">
-                      Tramo {i + 1} (m)
-                    </span>
-                    <DecimalInput
-                      value={len}
-                      onChange={(n) =>
-                        setSpanLengths((p) =>
-                          p.map((l, j) => (j === i ? n : l)),
-                        )
-                      }
-                    />
-                  </label>
-                ))}
-              </div>
-              <p className="text-xs text-text-muted">
-                Luz total: {totalLength.toFixed(2)} m
+        <>
+          <header className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
+              <svg
+                className="w-5 h-5 text-primary"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 7h6m-6 4h6m-6 4h6M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"
+                />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <h1 className="text-xl font-semibold text-text">Viga Continua</h1>
+              <p className="text-sm text-text-muted">
+                {vigaNumber != null && loadedSaveName
+                  ? `Viga #${vigaNumber} — ${loadedSaveName}`
+                  : "Viga sin guardar"}
               </p>
             </div>
-          </section>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <section className="bg-surface rounded-xl border border-border p-5">
-              <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-                Apoyos
-              </h2>
-              <div className="flex flex-col gap-2">
-                {supportTypes.map((type, i) => {
-                  const isEnd = i === 0 || i === supportTypes.length - 1;
-                  const pos = spanLengths
-                    .slice(0, i)
-                    .reduce((a, b) => a + b, 0);
-                  return (
-                    <div
-                      key={i}
-                      className="flex items-center gap-2 p-2 bg-surface-alt rounded-lg"
-                    >
-                      <span className="text-xs text-text-muted w-16">
-                        {supportTypes.length === 2
-                          ? i === 0
-                            ? "Ap. A"
-                            : "Ap. B"
-                          : `Ap. ${i + 1}`}
-                      </span>
-                      <span className="text-xs text-text-muted">
-                        x={pos.toFixed(1)}
-                      </span>
-                      <select
-                        value={type}
-                        onChange={(e) =>
-                          setSupportTypes((p) =>
-                            p.map((t, j) =>
-                              j === i ? (e.target.value as SupportType) : t,
-                            ),
-                          )
-                        }
-                        className="flex-1"
-                      >
-                        <option value="simple">Articulado</option>
-                        <option value="fixed">Empotrado</option>
-                        {isEnd && <option value="free">Libre</option>}
-                      </select>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-
-            <section className="bg-surface rounded-xl border border-border p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
-                  Cargas D + L → U
-                </h2>
-                <button
-                  type="button"
-                  onClick={addLoad}
-                  className="text-sm bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
-                >
-                  + Añadir carga
-                </button>
-              </div>
-              <p className="text-xs text-text-muted mb-2">U = 1.2·D + 1.6·L</p>
-              {loads.length === 0 && (
-                <p className="text-sm text-text-muted py-4 text-center">
-                  No hay cargas.
-                </p>
-              )}
-              <div className="flex flex-col gap-2">
-                {loads.map((load) => (
-                  <div
-                    key={load.id}
-                    className="flex flex-wrap items-end gap-2 p-2 bg-surface-alt rounded-lg"
-                  >
-                    <label className="flex flex-col gap-0.5">
-                      <span className="text-xs text-text-muted">Tipo</span>
-                      <select
-                        value={load.type}
-                        onChange={(e) =>
-                          updateLoad(load.id, {
-                            type: e.target.value as "point" | "distributed",
-                          })
-                        }
-                        className="w-24"
-                      >
-                        <option value="point">Puntual</option>
-                        <option value="distributed">Distribuida</option>
-                      </select>
-                    </label>
-                    <label className="flex flex-col gap-0.5">
-                      <span className="text-xs text-text-muted">
-                        D (kN{load.type === "distributed" ? "/m" : ""})
-                      </span>
-                      <DecimalInput
-                        value={load.D}
-                        onChange={(n) =>
-                          updateLoad(load.id, {
-                            D: Math.round(n * 100) / 100,
-                          })
-                        }
-                        className="w-20"
-                      />
-                    </label>
-                    <label className="flex flex-col gap-0.5">
-                      <span className="text-xs text-text-muted">
-                        L (kN{load.type === "distributed" ? "/m" : ""})
-                      </span>
-                      <DecimalInput
-                        value={load.L}
-                        onChange={(n) =>
-                          updateLoad(load.id, {
-                            L: Math.round(n * 100) / 100,
-                          })
-                        }
-                        className="w-20"
-                      />
-                    </label>
-                    <span className="text-xs text-text-muted pb-2">
-                      U={(1.2 * load.D + 1.6 * load.L).toFixed(2)}
-                    </span>
-                    {load.type === "point" ? (
-                      <label className="flex flex-col gap-0.5">
-                        <span className="text-xs text-text-muted">Pos (m)</span>
-                        <DecimalInput
-                          value={load.position ?? 0}
-                          onChange={(n) => updateLoad(load.id, { position: n })}
-                          className="w-20"
-                        />
-                      </label>
-                    ) : (
-                      <>
-                        <label className="flex flex-col gap-0.5">
-                          <span className="text-xs text-text-muted">
-                            Inicio
-                          </span>
-                          <DecimalInput
-                            value={load.start ?? 0}
-                            onChange={(n) => updateLoad(load.id, { start: n })}
-                            className="w-20"
-                          />
-                        </label>
-                        <label className="flex flex-col gap-0.5">
-                          <span className="text-xs text-text-muted">Fin</span>
-                          <DecimalInput
-                            value={load.end ?? 0}
-                            onChange={(n) => updateLoad(load.id, { end: n })}
-                            className="w-20"
-                          />
-                        </label>
-                      </>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => removeLoad(load.id)}
-                      className="ml-auto text-danger hover:bg-danger/10 border-danger/20 text-sm px-2 py-1"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </div>
-
-          <div className="self-center flex gap-3">
-            <button
-              type="button"
-              onClick={handleNueva}
-              className="bg-surface-alt text-text border border-border hover:bg-surface px-6 py-3 rounded-lg font-medium transition-colors"
-            >
-              Nueva
-            </button>
-            <button
-              type="button"
-              disabled={!valid}
-              onClick={handleSubmit}
-              className="bg-primary text-white font-semibold px-8 py-3 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-primary-hover transition-colors"
-            >
-              Calcular
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              className="bg-surface-alt border border-border text-text-muted font-semibold px-6 py-3 rounded-lg hover:bg-surface transition-colors"
-            >
-              {loadedSaveId ? "Guardar corrección" : "Guardar"}
-            </button>
-          </div>
+          </header>
 
           <SavedBeams
             app="concrete"
@@ -546,7 +309,267 @@ export default function VigaContinuaForm() {
               }
             }}
           />
-        </form>
+
+          <form
+            onSubmit={(e) => e.preventDefault()}
+            onKeyDown={(e) => {
+              // Enter exits the field being edited instead of submitting.
+              const target = e.target as HTMLElement;
+              if (
+                e.key === "Enter" &&
+                target &&
+                (target.tagName === "INPUT" ||
+                  target.tagName === "SELECT" ||
+                  target.tagName === "TEXTAREA")
+              ) {
+                e.preventDefault();
+                target.blur();
+              }
+            }}
+            className="flex flex-col gap-6"
+          >
+            <section className="bg-surface rounded-xl border border-border p-5">
+              <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
+                Viga
+              </h2>
+              <div className="flex flex-col gap-4">
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-xs text-text-muted font-medium">
+                    Cantidad de tramos
+                  </span>
+                  <select
+                    value={spanCount}
+                    onChange={(e) =>
+                      setSpanCountAndAdjust(Number(e.target.value))
+                    }
+                    className="w-40"
+                  >
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {spanLengths.map((len, i) => (
+                    <label key={i} className="flex flex-col gap-1.5">
+                      <span className="text-xs text-text-muted font-medium">
+                        Tramo {i + 1} (m)
+                      </span>
+                      <DecimalInput
+                        value={len}
+                        onChange={(n) =>
+                          setSpanLengths((p) =>
+                            p.map((l, j) => (j === i ? n : l)),
+                          )
+                        }
+                      />
+                    </label>
+                  ))}
+                </div>
+                <p className="text-xs text-text-muted">
+                  Luz total: {totalLength.toFixed(2)} m
+                </p>
+              </div>
+            </section>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <section className="bg-surface rounded-xl border border-border p-5">
+                <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
+                  Apoyos
+                </h2>
+                <div className="flex flex-col gap-2">
+                  {supportTypes.map((type, i) => {
+                    const isEnd = i === 0 || i === supportTypes.length - 1;
+                    const pos = spanLengths
+                      .slice(0, i)
+                      .reduce((a, b) => a + b, 0);
+                    return (
+                      <div
+                        key={i}
+                        className="flex items-center gap-2 p-2 bg-surface-alt rounded-lg"
+                      >
+                        <span className="text-xs text-text-muted w-16">
+                          {supportTypes.length === 2
+                            ? i === 0
+                              ? "Ap. A"
+                              : "Ap. B"
+                            : `Ap. ${i + 1}`}
+                        </span>
+                        <span className="text-xs text-text-muted">
+                          x={pos.toFixed(1)}
+                        </span>
+                        <select
+                          value={type}
+                          onChange={(e) =>
+                            setSupportTypes((p) =>
+                              p.map((t, j) =>
+                                j === i ? (e.target.value as SupportType) : t,
+                              ),
+                            )
+                          }
+                          className="flex-1"
+                        >
+                          <option value="simple">Articulado</option>
+                          <option value="fixed">Empotrado</option>
+                          {isEnd && <option value="free">Libre</option>}
+                        </select>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <section className="bg-surface rounded-xl border border-border p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
+                    Cargas D + L → U
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={addLoad}
+                    className="text-sm bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
+                  >
+                    + Añadir carga
+                  </button>
+                </div>
+                <p className="text-xs text-text-muted mb-2">
+                  U = 1.2·D + 1.6·L
+                </p>
+                {loads.length === 0 && (
+                  <p className="text-sm text-text-muted py-4 text-center">
+                    No hay cargas.
+                  </p>
+                )}
+                <div className="flex flex-col gap-2">
+                  {loads.map((load) => (
+                    <div
+                      key={load.id}
+                      className="flex flex-wrap items-end gap-2 p-2 bg-surface-alt rounded-lg"
+                    >
+                      <label className="flex flex-col gap-0.5">
+                        <span className="text-xs text-text-muted">Tipo</span>
+                        <select
+                          value={load.type}
+                          onChange={(e) =>
+                            updateLoad(load.id, {
+                              type: e.target.value as "point" | "distributed",
+                            })
+                          }
+                          className="w-24"
+                        >
+                          <option value="point">Puntual</option>
+                          <option value="distributed">Distribuida</option>
+                        </select>
+                      </label>
+                      <label className="flex flex-col gap-0.5">
+                        <span className="text-xs text-text-muted">
+                          D (kN{load.type === "distributed" ? "/m" : ""})
+                        </span>
+                        <DecimalInput
+                          value={load.D}
+                          onChange={(n) =>
+                            updateLoad(load.id, {
+                              D: Math.round(n * 100) / 100,
+                            })
+                          }
+                          className="w-20"
+                        />
+                      </label>
+                      <label className="flex flex-col gap-0.5">
+                        <span className="text-xs text-text-muted">
+                          L (kN{load.type === "distributed" ? "/m" : ""})
+                        </span>
+                        <DecimalInput
+                          value={load.L}
+                          onChange={(n) =>
+                            updateLoad(load.id, {
+                              L: Math.round(n * 100) / 100,
+                            })
+                          }
+                          className="w-20"
+                        />
+                      </label>
+                      <span className="text-xs text-text-muted pb-2">
+                        U={(1.2 * load.D + 1.6 * load.L).toFixed(2)}
+                      </span>
+                      {load.type === "point" ? (
+                        <label className="flex flex-col gap-0.5">
+                          <span className="text-xs text-text-muted">
+                            Pos (m)
+                          </span>
+                          <DecimalInput
+                            value={load.position ?? 0}
+                            onChange={(n) =>
+                              updateLoad(load.id, { position: n })
+                            }
+                            className="w-20"
+                          />
+                        </label>
+                      ) : (
+                        <>
+                          <label className="flex flex-col gap-0.5">
+                            <span className="text-xs text-text-muted">
+                              Inicio
+                            </span>
+                            <DecimalInput
+                              value={load.start ?? 0}
+                              onChange={(n) =>
+                                updateLoad(load.id, { start: n })
+                              }
+                              className="w-20"
+                            />
+                          </label>
+                          <label className="flex flex-col gap-0.5">
+                            <span className="text-xs text-text-muted">Fin</span>
+                            <DecimalInput
+                              value={load.end ?? 0}
+                              onChange={(n) => updateLoad(load.id, { end: n })}
+                              className="w-20"
+                            />
+                          </label>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => removeLoad(load.id)}
+                        className="ml-auto text-danger hover:bg-danger/10 border-danger/20 text-sm px-2 py-1"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </div>
+
+            <div className="self-center flex gap-3">
+              <button
+                type="button"
+                onClick={handleNueva}
+                className="bg-surface-alt text-text border border-border hover:bg-surface px-6 py-3 rounded-lg font-medium transition-colors"
+              >
+                Nueva
+              </button>
+              <button
+                type="button"
+                disabled={!valid}
+                onClick={handleSubmit}
+                className="bg-primary text-white font-semibold px-8 py-3 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-primary-hover transition-colors"
+              >
+                Calcular
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                className="bg-surface-alt border border-border text-text-muted font-semibold px-6 py-3 rounded-lg hover:bg-surface transition-colors"
+              >
+                {loadedSaveId ? "Guardar corrección" : "Guardar"}
+              </button>
+            </div>
+          </form>
+        </>
       )}
     </MainLayout>
   );

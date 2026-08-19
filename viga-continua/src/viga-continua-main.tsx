@@ -10,6 +10,7 @@ import {
 } from "react-router";
 import VigaContinuaForm from "./screens/VigaContinuaForm.tsx";
 import VigaContinuaResults from "./screens/VigaContinuaResults.tsx";
+import PrintPage from "./screens/PrintPage.tsx";
 
 // Route + URL contract (since PR1):
 //   /                                  → VigaContinuaForm (default mode)
@@ -85,6 +86,7 @@ function NavBar() {
 }
 
 const router = createBrowserRouter([
+  { path: "/viga-continua-print", Component: PrintPage },
   {
     Component: NavBar,
     children: [

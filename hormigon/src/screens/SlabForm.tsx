@@ -328,7 +328,13 @@ export default function SlabForm() {
         }}
       />
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+      <form
+        onSubmit={handleSubmit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.preventDefault();
+        }}
+        className="flex flex-col gap-6"
+      >
         <section className="bg-surface rounded-xl border border-border p-5">
           <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
             Dimensiones

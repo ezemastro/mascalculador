@@ -52,6 +52,9 @@ import PorticoDiagram, {
   COLOR_V,
 } from "../components/PorticoDiagram";
 import ZoomControls from "../components/ZoomControls";
+import PrintSelection, {
+  type PrintSelectionValue,
+} from "../components/PrintSelection";
 
 interface PorticoNavState {
   mode: "portico";
@@ -74,16 +77,31 @@ interface LoadResultant {
   Fx: number;
   Fy: number;
   Mz: number;
+  momentTerms: MomentTerm[];
+}
+
+interface MomentTerm {
+  label: string;
+  value: number;
+  nodeId?: string;
+}
+
+interface LoadAccounts {
+  reference: PorticoNode | undefined;
+  uls: LoadResultant;
+  d: LoadResultant;
 }
 
 function calculateLoadResultant(
   state: PorticoState,
   dFactor: number,
   lFactor: number,
+  reference: PorticoNode | undefined,
 ): LoadResultant {
   let Fx = 0;
   let Fy = 0;
   let Mz = 0;
+  const momentTerms: MomentTerm[] = [];
   for (const load of state.loads) {
     const bar = state.bars.find((item) => item.id === load.barId);
     if (!bar) continue;
@@ -110,9 +128,55 @@ function calculateLoadResultant(
     const fy = total * Math.sin(angle);
     Fx += fx;
     Fy += fy;
-    Mz += x * fy - y * fx;
+    const moment =
+      (x - (reference?.x ?? 0)) * fy - (y - (reference?.y ?? 0)) * fx;
+    Mz += moment;
+    momentTerms.push({ label: `Carga ${load.id}`, value: moment });
   }
-  return { Fx, Fy, Mz };
+  return { Fx, Fy, Mz, momentTerms };
+}
+
+function activeLoadResultant(
+  accounts: LoadAccounts,
+  envMode: EnvMode,
+): LoadResultant {
+  return envMode === "envolvente" ? accounts.uls : accounts.d;
+}
+
+function reactionMomentTerms(
+  solved: SolvedPortico,
+  state: PorticoState,
+  reference: PorticoNode | undefined,
+): MomentTerm[] {
+  const referenceX = reference?.x ?? 0;
+  const referenceY = reference?.y ?? 0;
+  return solved.reactions.flatMap((reaction) => {
+    const support = state.supports.find(
+      (item) => item.id === reaction.supportId,
+    );
+    const node = support
+      ? state.nodes.find((item) => item.id === support.nodeId)
+      : undefined;
+    if (!node) return [];
+    return [
+      {
+        label: `Apoyo ${node.id}`,
+        nodeId: node.id,
+        value:
+          (node.x - referenceX) * reaction.Fy -
+          (node.y - referenceY) * reaction.Fx +
+          reaction.Mz,
+      },
+    ];
+  });
+}
+
+function signed(value: number): string {
+  return `${value < 0 ? "−" : "+"} ${Math.abs(value).toFixed(3)}`;
+}
+
+function equilibriumValue(value: number): string {
+  return Math.abs(value) < 0.0005 ? "0.000" : value.toFixed(3);
 }
 
 // ---- Estética de soporte (movida a PorticoDiagram.tsx) ----
@@ -125,8 +189,10 @@ export default function PorticoResults() {
   const navigate = useNavigate();
   const location = useLocation();
   const raw: unknown = location.state;
+  const originalNavigationState = isPorticoNavState(raw) ? raw : null;
 
   const [envMode, setEnvMode] = useState<EnvMode>("envolvente");
+  const [showPrintSelection, setShowPrintSelection] = useState(false);
   const [loadedSaveId, setLoadedSaveId] = useState<string | null>(() =>
     isPorticoNavState(raw) ? (raw.loadedSaveId ?? null) : null,
   );
@@ -194,14 +260,16 @@ export default function PorticoResults() {
   );
 
   const active: SolvedPortico = envMode === "envolvente" ? uls : slsD;
-  const loadAccounts = useMemo(
-    () => ({
-      uls: calculateLoadResultant(porticoState, 1.2, 1.6),
-      d: calculateLoadResultant(porticoState, 1, 0),
-      l: calculateLoadResultant(porticoState, 0, 1),
-    }),
-    [porticoState],
-  );
+  const loadAccounts: LoadAccounts = useMemo(() => {
+    const reference =
+      porticoState.nodes.find((node) => node.id === "A") ??
+      porticoState.nodes[0];
+    return {
+      reference,
+      uls: calculateLoadResultant(porticoState, 1.2, 1.6, reference),
+      d: calculateLoadResultant(porticoState, 1, 0, reference),
+    };
+  }, [porticoState]);
   const activeReactionTotals = active.reactions.reduce(
     (totals, reaction) => ({
       Fx: totals.Fx + reaction.Fx,
@@ -210,6 +278,17 @@ export default function PorticoResults() {
     }),
     { Fx: 0, Fy: 0, Mz: 0 },
   );
+  const activeLoads = activeLoadResultant(loadAccounts, envMode);
+  const activeReactionMomentContributions = reactionMomentTerms(
+    active,
+    porticoState,
+    loadAccounts.reference,
+  );
+  const activeMomentTotal =
+    activeReactionMomentContributions.reduce(
+      (sum, term) => sum + term.value,
+      0,
+    ) + activeLoads.Mz;
 
   function handleSave() {
     if (loadedSaveId) {
@@ -234,15 +313,12 @@ export default function PorticoResults() {
       alert(err instanceof Error ? err.message : "Error al guardar");
     }
   }
-  const characteristicKey =
-    diagramMode === "normales"
-      ? "N"
-      : diagramMode === "momentos"
-        ? "M"
-        : diagramMode === "corte"
-          ? "V"
-          : null;
 
+  function handlePrint(selection: PrintSelectionValue) {
+    navigate("/viga-continua-print", {
+      state: { ...selection, state: porticoState },
+    });
+  }
   // ---- Zoom helpers ----
   // Mantienen el centro del viewBox y escalan los spans. Cuando el override
   // es null, el diagrama usa fit-to-bbox automático.
@@ -293,7 +369,11 @@ export default function PorticoResults() {
           <p className="text-danger">{solved.error}</p>
           <button
             type="button"
-            onClick={() => navigate("/viga-continua?mode=portico")}
+            onClick={() =>
+              navigate("/viga-continua?mode=portico", {
+                state: originalNavigationState ?? undefined,
+              })
+            }
             className="bg-primary text-white hover:bg-primary-hover px-6 py-3 rounded-lg"
           >
             Volver
@@ -307,7 +387,7 @@ export default function PorticoResults() {
     <MainLayout>
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-text">Pórtico</h1>
+          <h1 className="text-2xl font-semibold text-text">Pórtico</h1>
           <p className="text-sm text-text-muted">
             {porticoState.nodes.length} nudos · {porticoState.bars.length}{" "}
             barras · {porticoState.supports.length} apoyos ·{" "}
@@ -315,10 +395,18 @@ export default function PorticoResults() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <EnvToggle envMode={envMode} setEnvMode={setEnvMode} />
           <button
             type="button"
-            onClick={() => navigate("/viga-continua?mode=portico")}
+            onClick={() =>
+              navigate("/viga-continua?mode=portico", {
+                state: {
+                  mode: "portico",
+                  state: porticoState,
+                  loadedSaveId: loadedSaveId ?? undefined,
+                  loadedSaveName: loadedSaveName ?? undefined,
+                },
+              })
+            }
             className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-3 py-1.5 rounded-lg"
           >
             ← Volver
@@ -330,34 +418,28 @@ export default function PorticoResults() {
           >
             {loadedSaveId ? "Guardar corrección" : "Guardar"}
           </button>
+          <button
+            type="button"
+            className="bg-primary text-white font-semibold px-4 py-1.5 rounded-lg"
+            onClick={() => setShowPrintSelection(true)}
+          >
+            Imprimir
+          </button>
         </div>
       </header>
 
-      {/* Leyendas OBLIGATORIAS (top, sin scroll) */}
-      <section className="bg-surface rounded-xl border border-border p-3 text-xs text-text-muted">
-        <p>
-          <strong className="text-text">M+:</strong> fibra inferior traccionada
-          en vigas horizontales, vector momento apuntando a <code>+x</code>{" "}
-          (mano derecha).
+      {/* Env toggle in its own row, separated from the header actions. */}
+      <div className="flex flex-col items-center gap-1">
+        <EnvToggle envMode={envMode} setEnvMode={setEnvMode} />
+        <p className="text-xs text-text-muted">
+          Envolvente: U = 1.2·D + 1.6·L · Estado de servicio: D (sin mayorar)
         </p>
-        <p>
-          <strong className="text-text">Y:</strong> positivo hacia abajo (igual
-          que en pantalla). Vector momento horizontal va por <code>→ +x</code>.
-        </p>
-        <p>
-          {envMode === "servicio"
-            ? "Servicio — reacciones D y L por separado; envolvente = U = 1.2·D + 1.6·L."
-            : "Envolvente — U = 1.2·D + 1.6·L."}
-        </p>
-      </section>
+      </div>
 
       {/* Reacciones */}
       <section className="bg-surface rounded-xl border border-border p-5">
         <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
-          Reacciones{" "}
-          {envMode === "envolvente"
-            ? "(U = 1.2·D + 1.6·L)"
-            : "(D y L por separado)"}
+          Reacciones
         </h2>
         {envMode === "servicio" ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -376,7 +458,7 @@ export default function PorticoResults() {
           </div>
         ) : (
           <ReactionsTable
-            title={`Envolvente U = 1.2·D + 1.6·L`}
+            title="Envolvente"
             rows={active.reactions}
             supports={porticoState.supports}
             nodes={porticoState.nodes}
@@ -384,99 +466,53 @@ export default function PorticoResults() {
         )}
       </section>
 
-      <details className="bg-surface rounded-xl border border-border p-5">
-        <summary className="cursor-pointer text-sm font-semibold text-text">
-          Ver cuentas del pórtico
-        </summary>
-        <div className="mt-4 flex flex-col gap-4 text-xs text-text-muted">
+      <section className="bg-surface rounded-xl border border-border p-5">
+        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
+          Equilibrio global
+        </h2>
+        <p className="text-xs text-text-muted mb-3">
+          {envMode === "envolvente" ? "U = 1.2D + 1.6L" : "D (slsD)"} ·
+          referencia: Nudo {loadAccounts.reference?.id ?? "A"}. Las fuerzas
+          internas se cancelan por pares; esto verifica el equilibrio externo
+          global.
+        </p>
+        <div className="grid grid-cols-1 gap-2 text-xs text-text-muted">
+          <p>
+            ΣRx + ΣFx(ext) = {signed(activeReactionTotals.Fx)}{" "}
+            {signed(activeLoads.Fx)} ={" "}
+            {equilibriumValue(activeReactionTotals.Fx + activeLoads.Fx)} kN
+          </p>
+          <p>
+            ΣRy + ΣFy(ext) = {signed(activeReactionTotals.Fy)}{" "}
+            {signed(activeLoads.Fy)} ={" "}
+            {equilibriumValue(activeReactionTotals.Fy + activeLoads.Fy)} kN
+          </p>
           <div>
-            <h3 className="font-semibold text-text mb-2">
-              Resultantes de cargas respecto del origen A
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {(
-                [
-                  ["D", loadAccounts.d],
-                  ["L", loadAccounts.l],
-                  ["U = 1.2D + 1.6L", loadAccounts.uls],
-                ] as const
-              ).map(([label, result]) => (
-                <div key={label} className="bg-surface-alt rounded-lg p-3">
-                  <p className="font-semibold text-text mb-1">{label}</p>
-                  <p>ΣFx = {result.Fx.toFixed(3)} kN</p>
-                  <p>ΣFy = {result.Fy.toFixed(3)} kN</p>
-                  <p>ΣMz,A = {result.Mz.toFixed(3)} kN·m</p>
-                </div>
+            <p>ΣM{loadAccounts.reference?.id ?? "A"} =</p>
+            <ul className="ml-3 mt-1 space-y-1 text-[11px]">
+              {activeReactionMomentContributions.map((term) => (
+                <li key={`reaction-${term.label}`}>
+                  {term.label}: (x{term.nodeId}−x
+                  {loadAccounts.reference?.id ?? "A"})·Ry − (y
+                  {term.nodeId}−y{loadAccounts.reference?.id ?? "A"}
+                  )·Rx + Mz = {signed(term.value)} kN·m
+                </li>
               ))}
-            </div>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-text mb-2">
-              Equilibrio del modo mostrado
-            </h3>
-            <p>
-              Convención del informe: las reacciones compensatorias se comparan
-              con las cargas aplicadas, por eso se verifica R − P ≈ 0.
-            </p>
-            <p>
-              ΣFx: {activeReactionTotals.Fx.toFixed(3)} −{" "}
-              {(envMode === "envolvente"
-                ? loadAccounts.uls.Fx
-                : loadAccounts.d.Fx
-              ).toFixed(3)}{" "}
-              ={" "}
-              {(
-                activeReactionTotals.Fx -
-                (envMode === "envolvente"
-                  ? loadAccounts.uls.Fx
-                  : loadAccounts.d.Fx)
-              ).toFixed(3)}{" "}
-              kN
-            </p>
-            <p>
-              ΣFy: {activeReactionTotals.Fy.toFixed(3)} −{" "}
-              {(envMode === "envolvente"
-                ? loadAccounts.uls.Fy
-                : loadAccounts.d.Fy
-              ).toFixed(3)}{" "}
-              ={" "}
-              {(
-                activeReactionTotals.Fy -
-                (envMode === "envolvente"
-                  ? loadAccounts.uls.Fy
-                  : loadAccounts.d.Fy)
-              ).toFixed(3)}{" "}
-              kN
-            </p>
-          </div>
-
-          <div>
-            <h3 className="font-semibold text-text mb-2">
-              Fuerzas de extremo por barra
-            </h3>
-            <div className="flex flex-col gap-2">
-              {active.bars.map((bar) => (
-                <div key={bar.barId} className="bg-surface-alt rounded-lg p-3">
-                  <p className="font-semibold text-text mb-1">
-                    Barra {bar.barId}
-                  </p>
-                  <p>
-                    Inicio: N={bar.forces.start.N.toFixed(3)} kN · V=
-                    {bar.forces.start.V.toFixed(3)} kN · M=
-                    {bar.forces.start.M.toFixed(3)} kN·m
-                  </p>
-                  <p>
-                    Fin: N={bar.forces.end.N.toFixed(3)} kN · V=
-                    {bar.forces.end.V.toFixed(3)} kN · M=
-                    {bar.forces.end.M.toFixed(3)} kN·m
-                  </p>
-                </div>
+              {activeLoads.momentTerms.map((term) => (
+                <li key={`load-${term.label}`}>
+                  {term.label}: (x−x{loadAccounts.reference?.id ?? "A"})·Fy −
+                  (y−y{loadAccounts.reference?.id ?? "A"})·Fx ={" "}
+                  {signed(term.value)} kN·m
+                </li>
               ))}
-            </div>
+            </ul>
+            <p className="mt-1">
+              ΣM{loadAccounts.reference?.id ?? "A"} ={" "}
+              {equilibriumValue(activeMomentTotal)} kN·m
+            </p>
           </div>
         </div>
-      </details>
+      </section>
 
       {/* Diagrama Mafs */}
       <section className="bg-surface rounded-xl border border-border overflow-hidden">
@@ -584,53 +620,58 @@ export default function PorticoResults() {
         </div>
       </section>
 
-      {characteristicKey && (
-        <section className="bg-surface rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
-            Extremos por barra — {characteristicKey}
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {active.bars.map((b) => {
-              const values = [
-                b.forces.start[characteristicKey],
-                ...b.forces.samples.map((sample) => sample[characteristicKey]),
-                b.forces.end[characteristicKey],
-              ];
-              const min = Math.min(...values);
-              const max = Math.max(...values);
-              const maxAbs = Math.max(Math.abs(min), Math.abs(max));
-              return (
-                <div
-                  key={`force-card-${characteristicKey}-${b.barId}`}
-                  className="bg-surface rounded-xl border border-border p-3"
-                >
-                  <p className="text-xs text-text-muted">Barra {b.barId}</p>
-                  <p className="text-sm">
-                    Mín ={" "}
-                    <span className="font-semibold text-text">
-                      {min.toFixed(3)}
-                    </span>
-                    {characteristicKey === "M" ? " kN·m" : " kN"}
-                  </p>
-                  <p className="text-sm">
-                    Máx ={" "}
-                    <span className="font-semibold text-text">
-                      {max.toFixed(3)}
-                    </span>
-                    {characteristicKey === "M" ? " kN·m" : " kN"}
-                  </p>
-                  <p className="text-sm">
-                    |Máx| ={" "}
-                    <span className="font-semibold text-text">
-                      {maxAbs.toFixed(3)}
-                    </span>
-                    {characteristicKey === "M" ? " kN·m" : " kN"}
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-        </section>
+      <section className="bg-surface rounded-xl border border-border p-5">
+        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
+          Fuerzas por barra
+        </h2>
+        <p className="text-xs text-text-muted mb-3">
+          Componentes N, V y M en el sistema local de cada barra ·{" "}
+          {envMode === "envolvente" ? "U = 1.2D + 1.6L" : "D (slsD)"}
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {active.bars.map((bar) => {
+            const values = (key: "N" | "V" | "M") => [
+              bar.forces.start[key],
+              ...bar.forces.samples.map((sample) => sample[key]),
+              bar.forces.end[key],
+            ];
+            const maxAbs = (key: "N" | "V" | "M") =>
+              Math.max(...values(key).map((value) => Math.abs(value)));
+            return (
+              <div
+                key={bar.barId}
+                className="bg-surface-alt rounded-lg p-3 text-xs"
+              >
+                <p className="font-semibold text-text mb-1">
+                  Barra {bar.barId}
+                </p>
+                <p>
+                  Inicio: N={bar.forces.start.N.toFixed(3)} kN · V=
+                  {bar.forces.start.V.toFixed(3)} kN · M=
+                  {bar.forces.start.M.toFixed(3)} kN·m
+                </p>
+                <p>
+                  Fin: N={bar.forces.end.N.toFixed(3)} kN · V=
+                  {bar.forces.end.V.toFixed(3)} kN · M=
+                  {bar.forces.end.M.toFixed(3)} kN·m
+                </p>
+                <p className="mt-1 font-medium text-text">
+                  Máximos absolutos: |N|={maxAbs("N").toFixed(3)} kN · |V|=
+                  {maxAbs("V").toFixed(3)} kN · |M|={maxAbs("M").toFixed(3)}{" "}
+                  kN·m
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+      {showPrintSelection && (
+        <PrintSelection
+          kind="portico"
+          defaultEnvMode={envMode}
+          onPrint={handlePrint}
+          onCancel={() => setShowPrintSelection(false)}
+        />
       )}
     </MainLayout>
   );
@@ -662,11 +703,11 @@ function ReactionsTable({
           return (
             <div key={`${title}-${sup.id}`} className="text-xs">
               <p className="font-semibold text-text">
-                {sup.id} · nudo {n.id} ·{" "}
+                Apoyo {n.id} ·{" "}
                 {sup.kind === "hinge" ? "articulado" : "empotrado"}
               </p>
               <p className="text-text-muted">
-                Fx = {r.Fx.toFixed(2)} kN · Fy = {r.Fy.toFixed(2)} kN · Mz ={" "}
+                Rx = {r.Fx.toFixed(2)} kN · Ry = {r.Fy.toFixed(2)} kN · Mz ={" "}
                 {r.Mz.toFixed(2)} kN·m
               </p>
             </div>

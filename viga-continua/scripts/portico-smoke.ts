@@ -60,9 +60,9 @@ function fixtureHeader(n: string, desc: string): string {
 // 1 barra horizontal A(0,0) → B(3,0), 3 m. Apoyo `fixed` en A. Carga
 // puntual en B con `D=10`, `angle=90` (vertical hacia abajo en Y-down).
 // Hand-calculations:
-//   Ry_A = +10 kN  (reacción ↑ para balancear la carga ↓)        ⇒ Fy = +10
-//   |Mz_A| = P·L = 30 kN·m                                         ⇒ M = −30 (sentido M+)
-// Aceptamos M ±30 (signo depende de la convención), y siempre Fy ≈ +10.
+//   Ry_A = −10 kN  (reacción ↑ para balancear la carga ↓ en Y-down) ⇒ Fy = −10
+//   Mz_A = −P·L = −30 kN·m (opone el momento externo)              ⇒ M = −30
+// Reactions are support forces acting on the structure: ΣR + ΣP = 0.
 
 function mensulaFixture(): FixtureResult {
   const name = "1 — Ménsula (cantilever)";
@@ -93,9 +93,9 @@ function mensulaFixture(): FixtureResult {
   let pass = true;
   try {
     // tasks.md §2.4 entrega valores sin factorar (D puro). Usamos `sls-d`.
-    // Convención portico: Fx/Fy/Mz positivos = apoyo EMPUJA a la
-    // estructura en +x/+y/+z. Para nuestro cantilever con carga ↓, el
-    // apoyo A empuja ↑ → Fy_A = +10 (positiva).
+    // Reactions are forces exerted by supports on the structure. With the
+    // Y-down convention, the downward load is +y and the support reaction is
+    // −y: Fy_A = −10, so ΣR + ΣP = 0.
     const solved = solvePortico(state, "sls-d");
     const rA = solved.slsD.reactions.find((r) => r.supportId === "SupA");
     if (!rA) {
@@ -103,7 +103,7 @@ function mensulaFixture(): FixtureResult {
       return { name, pass: false, lines };
     }
     const c1 = check(name, rA.Fx, 0, 1e-3, "Fx_A");
-    const c2 = check(name, rA.Fy, 10, 1e-3, "Fy_A (push up)");
+    const c2 = check(name, rA.Fy, -10, 1e-3, "Fy_A (push up)");
     const c3 = check(name, Math.abs(rA.Mz), 30, 1e-3, "|Mz_A|");
     pass = c1.ok && c2.ok && c3.ok;
     lines.push(c1.line, c2.line, c3.line);
@@ -124,9 +124,9 @@ function mensulaFixture(): FixtureResult {
 // Y-down convention: B está ABAJO del segmento AC (apex inferior).
 //
 // Hand-calculation (symmetry + vertical-only load):
-//   ΣFy_reactions = +20 (carga ↓ → reacciones ↑ en portico cov.).
+//   ΣFy_reactions = −20 (carga ↓ → reacciones ↑ en Y-down).
 //   ΣFx_reactions = 0 (carga puramente vertical).
-//   Fy_A + Fy_C = +20 y, por simetría, ≈ +10 cada uno.
+//   Fy_A + Fy_C = −20 y, por simetría, ≈ −10 cada uno.
 //   Fx_A + Fx_C = 0 (por ΣFx); las contribuciones individuales pueden
 //   diferir de 0 cuando los BCs son asimétricos (hinge vs fixed) — un
 //   artefacto de asociar la carga puntual a UNA sola barra.
@@ -166,8 +166,8 @@ function porticoSimetricoFixture(): FixtureResult {
   let pass = true;
   try {
     // Verificaciones siempre ciertas (sumas de equilibrio):
-    //   ΣFx = 0, ΣFy = +20 (= P en portico cov. = mismo signo que carga).
-    // Y la simetría: |Fy_A − 10| + |Fy_C − 10| < 1e-2 (split 50/50).
+    //   ΣFx = 0, ΣFy = −20, so ΣR + ΣP = 0.
+    // Y la simetría: |Fy_A + 10| + |Fy_C + 10| < 1e-2 (split 50/50).
     const solved = solvePortico(state, "sls-d");
     const rA = solved.slsD.reactions.find((r) => r.supportId === "SupA");
     const rC = solved.slsD.reactions.find((r) => r.supportId === "SupC");
@@ -177,21 +177,15 @@ function porticoSimetricoFixture(): FixtureResult {
     }
     const sumFx = rA.Fx + rC.Fx;
     const sumFy = rA.Fy + rC.Fy;
-    const splitError = Math.abs(rA.Fy - 10) + Math.abs(rC.Fy - 10);
+    const splitError = Math.abs(rA.Fy + 10) + Math.abs(rC.Fy + 10);
     const c1 = check(name, sumFx, 0, 1e-3, "Σ Fx_reactions (= 0)");
-    const c2 = check(
-      name,
-      sumFy,
-      20,
-      1e-3,
-      "Σ Fy_reactions (= +20, portico cov.)",
-    );
+    const c2 = check(name, sumFy, -20, 1e-3, "Σ Fy_reactions (= −20)");
     const c3 = check(
       name,
       splitError,
       0,
       1e-1,
-      "|Fy_A − 10| + |Fy_C − 10| (≈ symmetric split, ≤ 0.1 kN)",
+      "|Fy_A + 10| + |Fy_C + 10| (≈ symmetric split, ≤ 0.1 kN)",
     );
     pass = c1.ok && c2.ok && c3.ok;
     lines.push(c1.line, c2.line, c3.line);
@@ -212,8 +206,8 @@ function porticoSimetricoFixture(): FixtureResult {
 // Componentes globales:
 //   fx = 30·cos(30°) ≈ 25.98 (en +x)
 //   fy = 30·sin(30°) = 15   (en +y → ↓)
-// Equilibrio global:
-//   ΣFx_reactions = −25.98  (apoyos empujan en −x para balancear +25.98)
+// Equilibrio global (ΣR + ΣP = 0):
+//   ΣFx_reactions = +25.98  (signo corregido para la reacción del apoyo)
 //   ΣFy_reactions = −15     (apoyos empujan en −y → ↑ para balancear ↓)
 
 function porticoInclinadaFixture(): FixtureResult {
@@ -252,14 +246,10 @@ function porticoInclinadaFixture(): FixtureResult {
     // Carga D=30 sin factor (sls-d): componentes globales
     //   fx = 30·cos(30°) ≈ 25.98  (carga empuja +x)
     //   fy = 30·sin(30°) = 15     (carga empuja +y → abajo)
-    // Convención portico: reacciones > 0 = apoyo empuja estructura. Para
-    // equilibrar la carga, los apoyos deben empujar en -x y -y. Las sumas:
-    //   Σ Fx_reactions ≈ −25.98 (empujan en −x)
+    // Reactions are forces exerted by supports on the structure and follow
+    // the equilibrium convention ΣR + ΣP = 0:
+    //   Σ Fx_reactions ≈ +25.98
     //   Σ Fy_reactions ≈ −15 (empujan en −y → ↑)
-    // PERO la convención del spec del fixture usa magnitudes reportadas con
-    // el signo del esfuerzo que el apoyo HACE sobre la estructura. Para Fy:
-    // positivo = ↑ (recordatorio: +y es ↓). El Σ Fy reportado es +15 (=↑).
-    // Para Fx: positivo = +x. El Σ Fx es −25.98 (=empujan en −x).
     const solved = solvePortico(state, "sls-d");
     const rA = solved.slsD.reactions.find((r) => r.supportId === "SupA");
     const rC = solved.slsD.reactions.find((r) => r.supportId === "SupC");
@@ -272,15 +262,14 @@ function porticoInclinadaFixture(): FixtureResult {
     const c1 = check(
       name,
       fxSum,
-      -30 * Math.cos((30 * Math.PI) / 180),
+      30 * Math.cos((30 * Math.PI) / 180),
       1e-3,
       "Σ Fx_reactions",
     );
-    // Σ Fy_reactions = +15 (convención "push up = positive" del fixture).
     const c2 = check(
       name,
       fySum,
-      30 * Math.sin((30 * Math.PI) / 180),
+      -30 * Math.sin((30 * Math.PI) / 180),
       1e-3,
       "Σ Fy_reactions",
     );

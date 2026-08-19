@@ -18,7 +18,7 @@ interface Props {
 
 const OPTIONS: ReadonlyArray<{ id: EnvMode; label: string }> = [
   { id: "envolvente", label: "Envolvente" },
-  { id: "servicio", label: "Servicio" },
+  { id: "servicio", label: "Estado de servicio" },
 ];
 
 export default function EnvToggle({ envMode, setEnvMode }: Props) {

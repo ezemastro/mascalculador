@@ -240,7 +240,20 @@ export default function BasesForm() {
       {/* Load saved bases */}
       <SavedBeams app="concrete" type="bases" onLoad={handleLoadBases} />
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+      <form
+        onSubmit={handleSubmit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            // Commit and exit the field instead of submitting (calculating).
+            e.preventDefault();
+            const target = e.target as HTMLElement;
+            if (target.tagName === "INPUT" && typeof target.blur === "function") {
+              target.blur();
+            }
+          }
+        }}
+        className="flex flex-col gap-6"
+      >
         {/* ── 1. Suelo ──────────────────────────────────────── */}
         <section className="bg-surface rounded-xl border border-border p-5">
           <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">

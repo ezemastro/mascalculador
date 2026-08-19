@@ -59,6 +59,8 @@ export interface PorticoDiagramProps {
   viewBoxOverride?: [number, number, number, number];
   /** Altura en px; default 400. */
   height?: number;
+  /** Paleta de alto contraste para planilla sobre fondo blanco. */
+  printMode?: boolean;
 }
 
 // ---- Geometry helpers ----
@@ -366,22 +368,37 @@ interface NodeGlyphProps {
   nx: number;
   ny: number;
   showCoords: boolean;
+  printMode: boolean;
 }
 
-function NodeGlyph({ x, y, id, nx, ny, showCoords }: NodeGlyphProps) {
+function NodeGlyph({
+  x,
+  y,
+  id,
+  nx,
+  ny,
+  showCoords,
+  printMode,
+}: NodeGlyphProps) {
   // Punto Mafs separado del label: el punto es amarillo y el texto claro
   // queda desplazado para conservar legibilidad sobre el fondo oscuro.
   const label = showCoords ? `${id} (${nx.toFixed(2)}, ${ny.toFixed(2)})` : id;
   return (
     <>
-      <Text x={x} y={y} size={18} color={COLOR_NODE} attach="ne">
+      <Text
+        x={x}
+        y={y}
+        size={18}
+        color={printMode ? "#111827" : COLOR_NODE}
+        attach="ne"
+      >
         ●
       </Text>
       <Text
         x={x + 0.16}
         y={y - 0.16}
         size={13}
-        color={COLOR_NODE_LABEL}
+        color={printMode ? "#111827" : COLOR_NODE_LABEL}
         attach="sw"
       >
         {label}
@@ -464,7 +481,12 @@ export default function PorticoDiagram({
   mode,
   viewBoxOverride,
   height = 400,
+  printMode = false,
 }: PorticoDiagramProps) {
+  const barColor = printMode ? "#000000" : COLOR_BAR;
+  const supportHatchColor = printMode ? "#111827" : "#f8fafc";
+  // Dark amber for print: light yellows wash out on paper.
+  const momentColor = printMode ? "#b45309" : COLOR_M;
   // viewBox fit-to-bbox (memoized to avoid recompute per render)
   const fitViewBox = useMemo(
     () => computeFitViewBox(porticoState),
@@ -542,7 +564,7 @@ export default function PorticoDiagram({
             key={`bar-${b.id}`}
             xy={(t) => [a.x + t * (c.x - a.x), -(a.y + t * (c.y - a.y))]}
             domain={[0, 1]}
-            color={COLOR_BAR}
+            color={barColor}
             weight={4}
           />
         );
@@ -606,7 +628,7 @@ export default function PorticoDiagram({
                   -(s.y0 + t * (s.y1 - s.y0)),
                 ]}
                 domain={[0, 1]}
-                color={COLOR_M}
+                color={momentColor}
                 weight={2.5}
               />
             )),
@@ -617,7 +639,7 @@ export default function PorticoDiagram({
                 baseY={a.y + (sample.s / length) * dy}
                 tipX={sample.x}
                 tipY={sample.y}
-                color={COLOR_M}
+                color={momentColor}
                 weight={idx === 0 || idx === pl.samples.length - 1 ? 2.5 : 1.25}
               />
             )),
@@ -637,21 +659,21 @@ export default function PorticoDiagram({
                   x={min.x}
                   y={min.y}
                   value={min.value}
-                  color={COLOR_M}
+                  color={momentColor}
                 />,
                 <DiagramValueLabel
                   key={`m-max-${pl.barId}`}
                   x={max.x}
                   y={max.y}
                   value={max.value}
-                  color={COLOR_M}
+                  color={momentColor}
                 />,
                 <DiagramValueLabel
                   key={`m-abs-${pl.barId}`}
                   x={abs.x}
                   y={abs.y}
                   value={Math.abs(abs.value)}
-                  color={COLOR_M}
+                  color={momentColor}
                 />,
               ];
             })(),
@@ -835,7 +857,7 @@ export default function PorticoDiagram({
                       cy - FIXED_SUPPORT_H + t * FIXED_SUPPORT_H * 0.45,
                     ]}
                     domain={[0, 1]}
-                    color="#f8fafc"
+                    color={supportHatchColor}
                     weight={2}
                   />
                 );
@@ -1009,6 +1031,7 @@ export default function PorticoDiagram({
           nx={n.x}
           ny={n.y}
           showCoords={showCoords}
+          printMode={printMode}
         />
       ))}
     </Mafs>

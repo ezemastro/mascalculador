@@ -38,6 +38,14 @@ export function DecimalInput({
           onChange(num);
         }
       }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          // Enter commits the edited value (already synced via onChange) and
+          // exits the field. It must NOT submit the surrounding form.
+          e.preventDefault();
+          e.currentTarget.blur();
+        }
+      }}
       onBlur={() => {
         internalRef.current = false;
         setText(String(value));

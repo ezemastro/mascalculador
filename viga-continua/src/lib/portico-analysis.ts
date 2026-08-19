@@ -562,8 +562,8 @@ function gaussSolve(A: number[][], b: number[]): number[] {
 
 // ---- Recuperación: reacciones y fuerzas internas ----
 
-/** Reacciones: `R = K·u − F` en DOFs restringidos, sign-flipped a la
- *  convención del usuario (positivo = apoyo empuja la estructura). */
+/** Reactions: `R = K·u − F` at constrained DOFs, already expressed as the
+ *  support reaction acting on the structure under the project's sign convention. */
 function recoverReactions(
   state: PorticoState,
   map: DofMap,
@@ -586,9 +586,9 @@ function recoverReactions(
       constrained[start] && constrained[start + 1] && constrained[start + 2];
     out.push({
       supportId: sup.id,
-      Fx: -(Ku[start] - F[start]),
-      Fy: -(Ku[start + 1] - F[start + 1]),
-      Mz: all ? -(Ku[start + 2] - F[start + 2]) : 0,
+      Fx: Ku[start] - F[start],
+      Fy: Ku[start + 1] - F[start + 1],
+      Mz: all ? Ku[start + 2] - F[start + 2] : 0,
     });
   }
   return out;
@@ -661,13 +661,25 @@ function recoverBarForces(
       M: -fInternal[5],
     };
 
-    // 11 muestras interiores + extremos. La recuperación de M/V se hace
+    // 11 muestras interiores + extremos, más posiciones a ambos lados de
+    // cada carga puntual. La recuperación de M/V se hace
     // desde los esfuerzos de extremo y las cargas locales; usar solamente
     // la curvatura Hermite de desplazamientos omitía el término parabólico
     // de una carga distribuida.
+    const samplePositions = new Set<number>();
+    for (let i = 0; i <= 12; i++) samplePositions.add((i / 12) * L);
+    const loadEpsilon = Math.max(1e-8, L * 1e-6);
+    for (const load of state.loads) {
+      if (load.barId !== bar.id || load.kind !== "point") continue;
+      const point = Math.max(0, Math.min(load.a, L));
+      samplePositions.add(Math.max(0, point - loadEpsilon));
+      samplePositions.add(Math.min(L, point + loadEpsilon));
+    }
+
     const samples: PorticoBarSample[] = [];
-    for (let i = 0; i <= 12; i++) {
-      const sPos = (i / 12) * L;
+    for (const sPos of [...samplePositions].sort(
+      (left, right) => left - right,
+    )) {
       let V = startForce.V;
       let N = startForce.N;
       let M = startForce.M - startForce.V * sPos;

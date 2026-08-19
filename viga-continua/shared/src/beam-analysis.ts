@@ -41,7 +41,7 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
       } else {
         const s = Math.max(ld.start ?? 0, a);
         const e = Math.min(ld.end ?? 0, b);
-        if (x > s) {
+        if (s < e && x > s) {
           const ee = Math.min(x, e);
           m -= (ld.magnitude ?? 0) * (ee - s) * (x - (s + ee) / 2);
         }

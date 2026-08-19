@@ -16,26 +16,26 @@ export interface EnvelopeLoad {
 }
 
 export interface BeamEnvelopeResult {
-  /** Máx momento positivo último (factorado), kN·m, en función de x. */
+  /** Maximum positive moment for the selected calculation mode, kN·m. */
   momentPos: (x: number) => number;
-  /** Máx momento negativo último (factorado, magnitud positiva), kN·m. */
+  /** Maximum negative moment magnitude for the selected mode, kN·m. */
   momentNeg: (x: number) => number;
-  /** Máx corte positivo último (factorado), kN. */
+  /** Maximum positive shear for the selected calculation mode, kN. */
   shearPos: (x: number) => number;
-  /** Máx corte negativo último (factorado, con signo), kN. */
+  /** Minimum shear for the selected calculation mode, kN. */
   shearNeg: (x: number) => number;
-  /** Máx |corte último| (factorado), kN. */
+  /** Maximum absolute shear for the selected calculation mode, kN. */
   shearMax: (x: number) => number;
   criticalPoints: number[];
-  /** Máx momento positivo último por tramo. */
+  /** Maximum positive moment by span. */
   spanMuPos: number[];
-  /** Máx corte último por tramo. */
+  /** Maximum absolute shear by span. */
   spanVu: number[];
-  /** Máx momento negativo último por apoyo (magnitud). */
+  /** Maximum negative moment magnitude by support. */
   supportMuNeg: number[];
-  /** Reacciones sin factorar — muerta (kN). */
+  /** Unfactored dead-load reactions (kN). */
   reactionsD: number[];
-  /** Reacciones sin factorar — viva (kN). */
+  /** Unfactored live-load reactions (kN). */
   reactionsL: number[];
 }
 
@@ -50,20 +50,22 @@ interface Seg {
 }
 
 /**
- * Envolvente de esfuerzos últimos por cargas alternadas (live load patterning).
+ * Calculates either the factored live-load envelope or one unfactored service case.
  *
  * El momento/corte máximo se obtiene combinando:
  *  - Carga muerta (1.2·D) en TODOS los tramos.
  *  - Carga viva (1.6·L) únicamente en los tramos "activados" de cada patrón.
  *
- * Se enumeran todos los patrones (2^n) y se toma la envolvente. Las reacciones
- * se devuelven separadas en D y L (sin factorar) para uso posterior (columnas).
+ * The envelope enumerates all patterns (2^n). Service mode assembles one D + L
+ * case without factors or live-load patterning. Reactions remain split into
+ * unfactored D and L components for the reactions cards.
  */
 export function calculateBeamEnvelope(
   spans: number[],
   supportTypes: SupportType[],
   loads: EnvelopeLoad[],
-  selfWeight: number, // kN/m, carga muerta (sin factorar)
+  selfWeight: number, // kN/m, unfactored dead load
+  mode: "envelope" | "service" = "envelope",
 ): BeamEnvelopeResult {
   const n = spans.length;
   const supportPositions: number[] = [0];
@@ -123,26 +125,46 @@ export function calculateBeamEnvelope(
 
   const config: BeamConfig = { spans, supportTypes };
 
-  // ---- Enumerate live-load patterns (bitmask over spans) ----
+  // Service uses one unfactored D + L case. ULS keeps the existing live-load
+  // pattern enumeration and 1.2·D + 1.6·L factors.
   const patterns: BeamResults[] = [];
-  const numPatterns = 1 << n;
-  for (let mask = 0; mask < numPatterns; mask++) {
-    const cfgLoads: Load[] = [];
-    let idx = 0;
-    for (const seg of segments) {
-      const liveActive = (mask >> seg.spanIdx) & 1;
-      const magnitude = 1.2 * seg.D + (liveActive ? 1.6 * seg.L : 0);
-      if (magnitude === 0) continue;
-      cfgLoads.push({
-        id: `p${mask}-${idx++}`,
-        type: seg.type,
-        magnitude,
-        position: seg.position,
-        start: seg.start,
-        end: seg.end,
-      });
+  if (mode === "service") {
+    const serviceLoads: Load[] = segments.flatMap((seg, idx) => {
+      const magnitude = seg.D + seg.L;
+      return magnitude === 0
+        ? []
+        : [
+            {
+              id: `s${idx}`,
+              type: seg.type,
+              magnitude,
+              position: seg.position,
+              start: seg.start,
+              end: seg.end,
+            },
+          ];
+    });
+    patterns.push(calculateBeam(config, serviceLoads));
+  } else {
+    const numPatterns = 1 << n;
+    for (let mask = 0; mask < numPatterns; mask++) {
+      const cfgLoads: Load[] = [];
+      let idx = 0;
+      for (const seg of segments) {
+        const liveActive = (mask >> seg.spanIdx) & 1;
+        const magnitude = 1.2 * seg.D + (liveActive ? 1.6 * seg.L : 0);
+        if (magnitude === 0) continue;
+        cfgLoads.push({
+          id: `p${mask}-${idx++}`,
+          type: seg.type,
+          magnitude,
+          position: seg.position,
+          start: seg.start,
+          end: seg.end,
+        });
+      }
+      patterns.push(calculateBeam(config, cfgLoads));
     }
-    patterns.push(calculateBeam(config, cfgLoads));
   }
 
   // ---- Envelope query functions ----

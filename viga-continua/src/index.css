@@ -91,3 +91,75 @@ button:focus-visible {
     background-color: #f9fafb;
   }
 }
+
+@page {
+  size: A4;
+  margin: 14mm;
+}
+
+.print-page {
+  background: #fff !important;
+  color: #000;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.print-page .bg-surface,
+.print-page .bg-surface-alt {
+  background: #fff !important;
+}
+
+.print-page .text-text,
+.print-page .text-text-muted {
+  color: #111827 !important;
+}
+
+.print-page .border-border {
+  border-color: #9ca3af !important;
+}
+
+.print-card,
+.print-diagram {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.print-diagram {
+  background: transparent !important;
+}
+
+.print-page .MafsView {
+  background: transparent !important;
+  --mafs-bg: #fff !important;
+  --mafs-fg: #000 !important;
+}
+
+@media print {
+  :root,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-page {
+    max-width: none;
+    padding: 0;
+    background: #fff !important;
+  }
+
+  .print-diagram,
+  .print-page .MafsView {
+    background: #fff !important;
+    --mafs-bg: #fff !important;
+    --mafs-fg: #000 !important;
+  }
+
+  .print-page svg {
+    overflow: visible;
+    max-width: 100%;
+  }
+}

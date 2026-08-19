@@ -579,7 +579,13 @@ export default function RCColumnForm() {
         label="Columnas guardadas"
       />
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+      <form
+        onSubmit={handleSubmit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.preventDefault();
+        }}
+        className="flex flex-col gap-6"
+      >
         {/* Materiales */}
         <section className="bg-surface rounded-xl border border-border p-5">
           <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
