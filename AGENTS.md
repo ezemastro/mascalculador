@@ -34,6 +34,12 @@ Disponible en `http://localhost:5173/`.
 
 ## Deploy
 
-- Cada carpeta tiene su propio `Dockerfile` (build `npm ci` + `npm run build`, servido con nginx).
-- En Coolify: Build Pack = Dockerfile, Base Directory = la carpeta del proyecto (`viga-continua` | `hormigon` | `acero`).
-- `docker-compose.yml` en la raiz levanta los 3 servicios con healthcheck y sin puertos publicados.
+Cada carpeta es un stack independiente con su propio `Dockerfile` y `docker-compose.yml` (build `npm ci` + `npm run build`, servido con nginx). Los compose usan `expose: 80` + healthcheck y NO publican puertos al host.
+
+En Coolify, por cada app (viga-continua, hormigon, acero):
+
+1. Nuevo recurso → **Docker Compose** como Build Pack.
+2. Repositorio raiz y branch deseada.
+3. **Base Directory** = la carpeta del proyecto (`viga-continua` | `hormigon` | `acero`).
+4. **Docker Compose Location** = `docker-compose.yml`.
+5. Asignar dominio a cada servicio.
