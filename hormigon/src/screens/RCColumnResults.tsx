@@ -251,7 +251,7 @@ export default function RCColumnResults() {
           </div>
           <div>
             <h1 className="text-xl font-semibold text-text">
-              Columna H° A° {result.Cx}×{result.Cy} cm
+              Columna {result.Cx}×{result.Cy} cm
             </h1>
             <p className="text-sm text-text-muted">
               f'<sub>c</sub> = {fc} MPa &middot; f<sub>y</sub> = {fy} MPa &middot; l<sub>u</sub> = {lu} m

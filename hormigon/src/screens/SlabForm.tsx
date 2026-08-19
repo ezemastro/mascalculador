@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import { SavedBeams } from "@mascalculador/shared";
-import { predimCoef, type EdgeCondition, type SlabInput } from "../lib/slab-calc";
+import { predimCoef, unidirectionalSpan, validateSlabSupports, type EdgeCondition, type SlabInput } from "../lib/slab-calc";
 import {
   saveLastSlabFormState,
   loadLastSlabFormState,
@@ -91,7 +91,7 @@ export default function SlabForm() {
   const [L, setL] = useState(state?.L ?? lastForm?.L ?? 2.0);
   const [fc, setFc] = useState(state?.fc ?? lastForm?.fc ?? 25);
   const [fy, setFy] = useState(state?.fy ?? lastForm?.fy ?? 420);
-  const [cover, setCover] = useState(state?.cover ?? lastForm?.cover ?? 20);
+  const [cover, setCover] = useState(state?.cover ?? lastForm?.cover ?? 15);
   const [hAdop, setHAdop] = useState<number>(initialHAdop);
   const [dBarX, setDBarX] = useState(state?.dBarX ?? lastForm?.dBarX ?? 10);
   const [dBarY, setDBarY] = useState(state?.dBarY ?? lastForm?.dBarY ?? 10);
@@ -112,8 +112,8 @@ export default function SlabForm() {
     const supportedEdges = edges.filter((e) => e !== "free").length;
     const isCrossed = ratioOk && supportedEdges === 4;
     const fixedEdges = edges.filter((e) => e === "continuo").length;
-    const coef = predimCoef(fixedEdges, isCrossed);
-    const lightOrL = isCrossed ? minLuz : lx;
+    const coef = predimCoef(fixedEdges, isCrossed, supportedEdges === 1);
+    const lightOrL = isCrossed ? minLuz : unidirectionalSpan(lx, ly, edges);
     const dMin = (lightOrL * 1000) / coef; // mm
     const hMinReg = 90; // mm
     const hPredimMm = Math.max(dMin + cover, hMinReg);
@@ -124,8 +124,18 @@ export default function SlabForm() {
   // predimensioned value. This is what the engine sees as `hInput`.
   const hEfectivoMm = (hAdop > 0 ? hAdop : hPredim) * 10;
 
-  const [loadedSaveId, setLoadedSaveId] = useState<string | null>(null);
-  const [loadedSaveName, setLoadedSaveName] = useState<string | null>(null);
+  const [loadedSaveId, setLoadedSaveId] = useState<string | null>(
+    state?.loadedSaveId ?? null,
+  );
+  const [loadedSaveName, setLoadedSaveName] = useState<string | null>(
+    state?.loadedSaveName ?? null,
+  );
+  const [supportError, setSupportError] = useState<string | null>(null);
+
+  // Clear the support validation error whenever the edge conditions change
+  useEffect(() => {
+    setSupportError(null);
+  }, [edgeX0, edgeXL, edgeY0, edgeYL]);
 
   // Guard: skip first auto-save to avoid overwriting valid state with defaults
   const mountedRef = useRef(false);
@@ -171,6 +181,11 @@ export default function SlabForm() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const err = validateSlabSupports([edgeX0, edgeXL, edgeY0, edgeYL]);
+    if (err) {
+      setSupportError(err);
+      return;
+    }
     navigate("/slab-results", {
       state: {
         lx,
@@ -250,7 +265,7 @@ export default function SlabForm() {
         </div>
         <div className="flex-1">
           <h1 className="text-xl font-semibold text-text flex items-center gap-3">
-            Losa de H° A°
+            Losa
             {loadedSaveName ? (
               <span className="text-sm font-normal text-text-muted bg-surface-alt border border-border px-2.5 py-0.5 rounded-full">
                 {loadedSaveName}
@@ -283,7 +298,7 @@ export default function SlabForm() {
             setL(2.0);
             setFc(25);
             setFy(420);
-            setCover(20);
+            setCover(15);
             setHAdop(0);
             setDBarX(10);
             setDBarY(10);
@@ -368,6 +383,11 @@ export default function SlabForm() {
           <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
             Condiciones de borde
           </h2>
+          {supportError && (
+            <p className="text-sm text-danger bg-danger/10 border border-danger/30 rounded-lg px-3 py-2 mb-3">
+              {supportError}
+            </p>
+          )}
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             {[
               {

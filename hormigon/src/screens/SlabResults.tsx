@@ -2,13 +2,12 @@ import { useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import { SlabPlan } from "@mascalculador/shared";
-import { designSlab, type DirectionResult } from "../lib/slab-calc";
-import { hasSlabDL } from "../lib/slab-to-beam";
+import { designSlab, unidirectionalDirection, validateSlabSupports, type DirectionResult } from "../lib/slab-calc";
+import { hasSlabDL, slabReactionToBeamLoad } from "../lib/slab-to-beam";
+import type { SlabEdge } from "../lib/slab-to-beam";
 import {
   saveSlab,
   updateSlab,
-  saveSlabInput,
-  updateSlabInput,
 } from "../lib/storage";
 import type { SlabInput } from "../lib/slab-calc";
 import type { SlabState } from "./SlabForm";
@@ -94,7 +93,7 @@ function SupportSection({
 function DirSection({
   label,
   dir,
-  dist,
+  principal,
   diam,
   setDiam,
   sep,
@@ -102,7 +101,8 @@ function DirSection({
 }: {
   label: string;
   dir: DirectionResult;
-  dist: DirectionResult;
+  /** true = armadura principal (a flexión); false = armadura de repartición */
+  principal: boolean;
   diam: number;
   setDiam: (d: number) => void;
   sep: number;
@@ -120,15 +120,31 @@ function DirSection({
       <span className="text-xs text-text-muted uppercase tracking-wider font-semibold">
         {label}
       </span>
-      <p className="text-sm mt-1">
-        M<sub>u</sub> = {dir.Mu.toFixed(2)} kN·m/m
-      </p>
-      <p className="text-sm font-bold text-primary">
-        A<sub>s</sub> req = {asReqCm} cm²/m
-      </p>
-      <p className="text-xs text-text-muted">
-        mín: {asMinCm} &middot; s<sub>máx</sub>: {dir.sMax} mm
-      </p>
+      {principal ? (
+        <>
+          <p className="text-sm mt-1">
+            M<sub>u</sub> = {dir.Mu.toFixed(2)} kN·m/m
+          </p>
+          <p className="text-sm font-bold text-primary">
+            A<sub>s</sub> req = {asReqCm} cm²/m
+          </p>
+          <p className="text-xs text-text-muted">
+            mín: {asMinCm} &middot; s<sub>máx</sub>: {dir.sMax} mm
+          </p>
+        </>
+      ) : (
+        <>
+          <p className="text-sm mt-1 text-text-muted">
+            Armadura de repartición
+          </p>
+          <p className="text-sm font-bold text-primary">
+            A<sub>s</sub> repartición = {asReqCm} cm²/m
+          </p>
+          <p className="text-xs text-text-muted">
+            s<sub>máx</sub>: {dir.sMax} mm &middot; min(3·h, 300)
+          </p>
+        </>
+      )}
       <div className="border-t border-border mt-2 pt-2 flex gap-2 items-end">
         <label className="flex flex-col gap-0.5">
           <span className="text-xs text-text-muted">Ø</span>
@@ -164,38 +180,6 @@ function DirSection({
           {asProvided >= dir.AsReq ? "✓" : "✗"}
         </span>
       </div>
-      {dist.AsReq > 0 && (
-        <div className="border-t border-border mt-2 pt-2">
-          <span className="text-xs text-text-muted">
-            Repartición: <strong>{(dist.AsReq / 100).toFixed(2)} cm²/m</strong>{" "}
-            (s ≤ {dist.sMax} mm)
-          </span>
-        </div>
-      )}
-      <details className="border-t border-border mt-2 pt-2">
-        <summary className="cursor-pointer text-xs text-text-muted hover:text-text">
-          Ver cuentas
-        </summary>
-        <div className="mt-2 p-2 bg-surface-alt rounded text-xs text-text-muted font-mono space-y-0.5">
-          <p>Mu = {dir.Mu.toFixed(2)} kN·m/m</p>
-          <p>
-            coef = {dir.coef ?? "—"} (1.4 si CM dominante, 1.2 si CM+CV mixto)
-          </p>
-          <p>d = {dir.d ?? "—"} mm</p>
-          <p>Ka = {dir.Ka.toFixed(4)}</p>
-          <p>caseLabel = {dir.caseLabel}</p>
-          <p>As_req = {dir.AsReq} mm²/m</p>
-          <p>As_min = {dir.AsMin} mm²/m</p>
-          <p>As_temp = {dir.AsTemp} mm²/m (si aplica)</p>
-          <p>s_max = {dir.sMax} mm</p>
-          {dist.AsReq > 0 && (
-            <p>
-              As_dist ≥ 0.20·As_principal → {dist.AsReq} mm²/m (s ≤ {dist.sMax}{" "}
-              mm)
-            </p>
-          )}
-        </div>
-      </details>
     </div>
   );
 }
@@ -230,6 +214,44 @@ export default function SlabResults() {
     loadedSaveId,
     loadedSaveName,
   } = s;
+
+  const supportError = validateSlabSupports([
+    edgeX0,
+    edgeXL,
+    edgeY0,
+    edgeYL,
+  ]);
+  if (supportError) {
+    return (
+      <MainLayout>
+        <div className="bg-surface rounded-xl border border-danger/30 p-6 text-center">
+          <h1 className="text-lg font-semibold text-danger mb-2">
+            Configuración de apoyos inválida
+          </h1>
+          <p className="text-sm text-text-muted">{supportError}</p>
+          <button
+            onClick={() => navigate("/slab")}
+            className="mt-4 text-sm bg-surface-alt border border-border text-text-muted px-4 py-1.5 rounded-lg hover:bg-surface hover:text-text transition-colors"
+          >
+            ← Volver
+          </button>
+        </div>
+      </MainLayout>
+    );
+  }
+
+  // Slab typology, same rules as the engine: crossed needs 4 supported edges
+  // with ratio > 0.5; otherwise unidirectional with a single spanning axis
+  // (the other axis only carries repartición).
+  const supEdges = [edgeX0, edgeXL, edgeY0, edgeYL].filter(
+    (e) => e !== "free",
+  ).length;
+  const ratio = Math.min(lx, ly) / Math.max(lx, ly);
+  const isCrossed = supEdges === 4 && ratio > 0.5;
+  const spanningAxis: "X" | "Y" | null = isCrossed
+    ? null
+    : unidirectionalDirection(lx, ly, [edgeX0, edgeXL, edgeY0, edgeYL]);
+
   const result = designSlab({
     lx,
     ly,
@@ -245,11 +267,54 @@ export default function SlabResults() {
     includeSelfWeight,
   });
 
+  // Reacciones por borde: factoradas (R) + D/L sin factorar (para envío a viga)
+  const EDGE_REACTIONS: {
+    label: string;
+    sub: string;
+    edge: SlabEdge;
+    value: number;
+    dead?: number;
+    live?: number;
+  }[] = [
+    {
+      label: "Izquierdo",
+      sub: "x",
+      edge: "izq",
+      value: result.RxIzq,
+      dead: result.RD_izq,
+      live: result.RL_izq,
+    },
+    {
+      label: "Derecho",
+      sub: "x",
+      edge: "der",
+      value: result.RxDer,
+      dead: result.RD_der,
+      live: result.RL_der,
+    },
+    {
+      label: "Arriba",
+      sub: "y",
+      edge: "arr",
+      value: result.RyArr,
+      dead: result.RD_arr,
+      live: result.RL_arr,
+    },
+    {
+      label: "Abajo",
+      sub: "y",
+      edge: "aba",
+      value: result.RyAba,
+      dead: result.RD_aba,
+      live: result.RL_aba,
+    },
+  ];
+
   // Adopted reinforcement state (persisted when saving)
   // sep values are in cm
-  const [diamX, setDiamX] = useState(10);
+  const [diamX, setDiamX] = useState(6);
   const [sepX, setSepX] = useState(15);
-  const [diamY, setDiamY] = useState(10);
+  const [diamY, setDiamY] = useState(6);
   const [sepY, setSepY] = useState(15);
   const adoptedAsX =
     sepX > 0 ? Math.round(((BAR_AREA[diamX] || 0) * 100) / sepX) : 0;
@@ -302,42 +367,6 @@ export default function SlabResults() {
                 includeSelfWeight,
               };
               if (savedId) {
-                updateSlabInput(savedId, slabInput);
-                return;
-              }
-              const name = prompt("Nombre para guardar los datos:");
-              if (!name) return;
-              try {
-                const saved = saveSlabInput(name, slabInput);
-                setSavedId(saved.id);
-                setSavedName(name);
-              } catch (err: unknown) {
-                alert(err instanceof Error ? err.message : "Error al guardar");
-              }
-            }}
-            className="text-sm bg-primary/10 text-primary border border-primary/20 px-2.5 py-1.5 rounded-lg hover:bg-primary/20 transition-colors"
-          >
-            Guardar datos
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              const slabInput: SlabInput = {
-                lx,
-                ly,
-                edges: [edgeX0, edgeXL, edgeY0, edgeYL],
-                D,
-                L,
-                fc,
-                fy,
-                cover,
-                h,
-                dBarX,
-                dBarY,
-                includeSelfWeight,
-              };
-
-              if (savedId) {
                 updateSlab(savedId, slabInput, {
                   ...result,
                   adoptedAsX,
@@ -345,8 +374,7 @@ export default function SlabResults() {
                 });
                 return;
               }
-
-              const name = prompt("Nombre para guardar los resultados:");
+              const name = prompt("Nombre para guardar la losa:");
               if (!name) return;
               try {
                 const saved = saveSlab(name, slabInput, {
@@ -362,10 +390,18 @@ export default function SlabResults() {
             }}
             className="text-sm bg-primary text-white font-semibold px-3 py-1.5 rounded-lg hover:bg-primary-hover transition-colors"
           >
-            Guardar resultados
+            Guardar
           </button>
           <button
-            onClick={() => navigate("/slab")}
+            onClick={() =>
+              navigate("/slab", {
+                state: {
+                  ...s,
+                  loadedSaveId: savedId,
+                  loadedSaveName: savedName,
+                },
+              })
+            }
             className="text-sm bg-surface-alt border border-border text-text-muted px-3 py-1.5 rounded-lg hover:bg-surface hover:text-text transition-colors"
           >
             ← Volver
@@ -378,10 +414,6 @@ export default function SlabResults() {
         ly={ly}
         edges={[edgeX0, edgeXL, edgeY0, edgeYL]}
         slabType={(() => {
-          const supEdges = [edgeX0, edgeXL, edgeY0, edgeYL].filter(
-            (e) => e !== "free",
-          ).length;
-          const ratio = Math.min(lx, ly) / Math.max(lx, ly);
           // Cantilever: find which edge is the single support
           if (supEdges === 1) {
             if (edgeX0 !== "free") return "cantilever-right";
@@ -389,94 +421,75 @@ export default function SlabResults() {
             if (edgeY0 !== "free") return "cantilever-bottom";
             return "cantilever-top";
           }
-          if (supEdges === 4 && ratio > 0.5) return "crossed";
-          // One-way: armor direction = direction with 2+ supported edges
-          const xSup = [edgeX0, edgeXL].filter((e) => e !== "free").length;
-          const ySup = [edgeY0, edgeYL].filter((e) => e !== "free").length;
-          if (xSup >= 2) return "oneway-x";
-          if (ySup >= 2) return "oneway-y";
-          // Fallback: use the direction with more supports
-          return xSup >= ySup ? "oneway-x" : "oneway-y";
+          if (isCrossed) return "crossed";
+          return spanningAxis === "X" ? "oneway-x" : "oneway-y";
         })()}
       />
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        <div className="bg-surface rounded-xl border border-border p-3">
-          <span className="text-xs text-text-muted">
-            Izquierdo (R<sub>x</sub>)
-          </span>
-          <p className="text-sm font-bold">
-            {result.RxIzq !== undefined ? result.RxIzq.toFixed(2) : "—"} kN/m
-          </p>
-          {hasSlabDL(result) && (
-            <details className="mt-2">
-              <summary className="text-xs text-text-muted cursor-pointer">
-                Ver D/L
-              </summary>
-              <div className="text-xs mt-1">
-                D: {result.RD_izq!.toFixed(2)} kN/m
-              </div>
-              <div className="text-xs">L: {result.RL_izq!.toFixed(2)} kN/m</div>
-            </details>
-          )}
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-3">
-          <span className="text-xs text-text-muted">
-            Derecho (R<sub>x</sub>)
-          </span>
-          <p className="text-sm font-bold">
-            {result.RxDer !== undefined ? result.RxDer.toFixed(2) : "—"} kN/m
-          </p>
-          {hasSlabDL(result) && (
-            <details className="mt-2">
-              <summary className="text-xs text-text-muted cursor-pointer">
-                Ver D/L
-              </summary>
-              <div className="text-xs mt-1">
-                D: {result.RD_der!.toFixed(2)} kN/m
-              </div>
-              <div className="text-xs">L: {result.RL_der!.toFixed(2)} kN/m</div>
-            </details>
-          )}
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-3">
-          <span className="text-xs text-text-muted">
-            Arriba (R<sub>y</sub>)
-          </span>
-          <p className="text-sm font-bold">
-            {result.RyArr !== undefined ? result.RyArr.toFixed(2) : "—"} kN/m
-          </p>
-          {hasSlabDL(result) && (
-            <details className="mt-2">
-              <summary className="text-xs text-text-muted cursor-pointer">
-                Ver D/L
-              </summary>
-              <div className="text-xs mt-1">
-                D: {result.RD_arr!.toFixed(2)} kN/m
-              </div>
-              <div className="text-xs">L: {result.RL_arr!.toFixed(2)} kN/m</div>
-            </details>
-          )}
-        </div>
-        <div className="bg-surface rounded-xl border border-border p-3">
-          <span className="text-xs text-text-muted">
-            Abajo (R<sub>y</sub>)
-          </span>
-          <p className="text-sm font-bold">
-            {result.RyAba !== undefined ? result.RyAba.toFixed(2) : "—"} kN/m
-          </p>
-          {hasSlabDL(result) && (
-            <details className="mt-2">
-              <summary className="text-xs text-text-muted cursor-pointer">
-                Ver D/L
-              </summary>
-              <div className="text-xs mt-1">
-                D: {result.RD_aba!.toFixed(2)} kN/m
-              </div>
-              <div className="text-xs">L: {result.RL_aba!.toFixed(2)} kN/m</div>
-            </details>
-          )}
-        </div>
+        {EDGE_REACTIONS.map(({ label, sub, edge, value, dead, live }) => {
+          // El adapter define la carga transferible; null = borde sin reacción D/L
+          const edgeLoad = hasSlabDL(result)
+            ? slabReactionToBeamLoad(result, edge, 0, 0)
+            : null;
+          const zeroReaction = hasSlabDL(result) && edgeLoad === null;
+          return (
+            <div
+              key={edge}
+              className="bg-surface rounded-xl border border-border p-3 flex flex-col"
+            >
+              <span className="text-xs text-text-muted">
+                {label} (R<sub>{sub}</sub>)
+              </span>
+              <p className="text-sm font-bold">
+                {value !== undefined ? value.toFixed(2) : "—"} kN/m
+              </p>
+              {hasSlabDL(result) && (
+                <details className="mt-2">
+                  <summary className="text-xs text-text-muted cursor-pointer">
+                    Ver D/L
+                  </summary>
+                  <div className="text-xs mt-1">D: {dead!.toFixed(2)} kN/m</div>
+                  <div className="text-xs">L: {live!.toFixed(2)} kN/m</div>
+                </details>
+              )}
+              <button
+                type="button"
+                disabled={!savedId || !hasSlabDL(result) || zeroReaction}
+                onClick={() => {
+                  if (!savedId || !edgeLoad) return;
+                  navigate("/concrete", {
+                    state: {
+                      slabImport: {
+                        slabId: savedId,
+                        savedName: savedName ?? "",
+                        edge,
+                        deadLoad: edgeLoad.deadLoad ?? 0,
+                        liveLoad: edgeLoad.liveLoad ?? 0,
+                      },
+                    },
+                  });
+                }}
+                className="mt-auto pt-2 px-0 py-1 text-xs text-primary hover:text-primary-hover transition-colors self-start disabled:text-text-muted disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Enviar a viga →
+              </button>
+              {!hasSlabDL(result) ? (
+                <p className="mt-1 text-xs text-warning">
+                  Recalcular primero — D/L no disponible
+                </p>
+              ) : zeroReaction ? (
+                <p className="mt-1 text-xs text-warning">
+                  Este borde no transfiere carga
+                </p>
+              ) : !savedId ? (
+                <p className="mt-1 text-xs text-warning">
+                  Guardar resultados primero
+                </p>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
 
       {(edgeX0 === "continuo" ||
@@ -501,8 +514,8 @@ export default function SlabResults() {
 
       <DirSection
         label="Dirección X"
-        dir={result.x}
-        dist={result.distX}
+        dir={spanningAxis === "Y" ? result.distX : result.x}
+        principal={spanningAxis !== "Y"}
         diam={diamX}
         setDiam={setDiamX}
         sep={sepX}
@@ -510,8 +523,8 @@ export default function SlabResults() {
       />
       <DirSection
         label="Dirección Y"
-        dir={result.y}
-        dist={result.distY}
+        dir={spanningAxis === "X" ? result.distY : result.y}
+        principal={spanningAxis !== "X"}
         diam={diamY}
         setDiam={setDiamY}
         sep={sepY}

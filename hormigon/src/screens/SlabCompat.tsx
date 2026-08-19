@@ -78,10 +78,10 @@ export default function SlabCompat() {
         </div>
         <div className="flex gap-2">
           <button onClick={() => navigate("/slab-compats")} className="text-sm bg-surface-alt border-border hover:bg-surface text-text-muted">
-            Ver guardadas
+            Volver a Apoyos losas
           </button>
           <button onClick={() => navigate("/slab")} className="text-sm bg-surface-alt border-border hover:bg-surface text-text-muted">
-            ← Volver
+            Calcular losas
           </button>
         </div>
       </header>
@@ -89,7 +89,7 @@ export default function SlabCompat() {
       {savedSlabs.length < 2 ? (
         <div className="bg-surface rounded-xl border border-border p-8 text-center">
           <p className="text-text-muted">Se necesitan al menos 2 losas guardadas.</p>
-          <p className="text-sm text-text-muted mt-1">Calculá y guardá losas desde la pantalla de Losas H°.</p>
+          <p className="text-sm text-text-muted mt-1">Calculá y guardá losas desde la pantalla de Losas.</p>
         </div>
       ) : (
         <>

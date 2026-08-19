@@ -183,7 +183,7 @@ export default function ConcreteResults() {
     <MainLayout>
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-text">Viga H° A°</h1>
+          <h1 className="text-xl font-semibold text-text">Viga</h1>
           <p className="text-sm text-text-muted">
             {bw}×{h} mm &middot; f'c={fc} MPa &middot; L={L} m
           </p>

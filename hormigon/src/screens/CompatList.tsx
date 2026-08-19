@@ -203,13 +203,13 @@ export default function CompatList() {
     <MainLayout>
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-text">Armaduras de apoyo</h1>
+          <h1 className="text-xl font-semibold text-text">Apoyos losas</h1>
           <p className="text-sm text-text-muted">
             {compats.length} compatibilizaci{compats.length !== 1 ? "ones" : "ón"} guardada{compats.length !== 1 ? "s" : ""}
           </p>
         </div>
-        <button onClick={() => navigate("/slab-compat")} className="text-sm bg-surface-alt border-border hover:bg-surface text-text-muted">
-          ← Volver
+        <button onClick={() => navigate("/slab-compat")} className="text-sm bg-primary/10 text-primary border border-primary/20 px-3 py-1.5 rounded-lg hover:bg-primary/20 transition-colors">
+          + Nueva compatibilización
         </button>
       </header>
 

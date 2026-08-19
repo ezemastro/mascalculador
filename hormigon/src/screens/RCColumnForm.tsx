@@ -759,7 +759,7 @@ export default function RCColumnForm() {
                 </option>
                 {availableColumns.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name} ({c.type === "acero-columna" ? "Acero" : "H°A°"}) —
+                    {c.name} ({c.type === "acero-columna" ? "Acero" : "Hormigón"}) —
                     P<sub>D</sub>={c.PD.toFixed(1)}, P<sub>L</sub>={c.PL.toFixed(1)} kN
                   </option>
                 ))}
@@ -846,7 +846,7 @@ export default function RCColumnForm() {
                 </option>
                 {availableBeams.map((b) => (
                   <option key={b.id} value={b.id}>
-                    {b.name} ({b.type === "acero-viga" ? "Acero" : "H°A°"},{" "}
+                    {b.name} ({b.type === "acero-viga" ? "Acero" : "Hormigón"},{" "}
                     {b.supportCount} apoyos)
                   </option>
                 ))}

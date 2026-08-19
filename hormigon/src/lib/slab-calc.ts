@@ -36,6 +36,10 @@ export interface DirectionResult {
   coef?: number;
   /** d efectivo en mm usado para el cálculo (h - cover, o h - cover - 10 si es dirección secundaria en losa cruzada) */
   d?: number;
+  /** k₁ = 1.33·K_a (solo cuando K_a ≤ K_a min) — para la traza de la cuenta de A_s */
+  ka1?: number;
+  /** A_s sin mayorar por mínimos (mm²/m) — para la traza de la cuenta */
+  AsRaw?: number;
 }
 
 export interface SlabResult {
@@ -1999,7 +2003,12 @@ function interpolateKalmanok3FixedY(r: number) {
 }
 
 // Preliminary d_min: d = l / M where M from table
-export function predimCoef(fixedEdges: number, isCrossed: boolean): number {
+export function predimCoef(
+  fixedEdges: number,
+  isCrossed: boolean,
+  isCantilever = false,
+): number {
+  if (isCantilever) return 12; // Voladizo: h ≈ l/12
   if (isCrossed) {
     if (fixedEdges === 4) return 60;
     if (fixedEdges >= 1) return 55;
@@ -2009,6 +2018,82 @@ export function predimCoef(fixedEdges: number, isCrossed: boolean): number {
   if (fixedEdges >= 2) return 40;
   if (fixedEdges >= 1) return 35;
   return 30;
+}
+
+// Span direction for a unidirectional slab:
+// - opposing beams on one axis only → span between them
+// - beams on all 4 edges → span the shorter side (armado según la luz corta)
+// - single supported edge → cantilever span on that axis
+export function unidirectionalSpan(
+  lx: number,
+  ly: number,
+  edges: readonly EdgeCondition[],
+): number {
+  return unidirectionalDirection(lx, ly, edges) === "X" ? lx : ly;
+}
+
+// Reinforcement axis for a unidirectional slab (same rules as unidirectionalSpan).
+export function unidirectionalDirection(
+  lx: number,
+  ly: number,
+  edges: readonly EdgeCondition[],
+): "X" | "Y" {
+  const xSupported = [edges[0], edges[1]].filter((e) => e !== "free").length;
+  const ySupported = [edges[2], edges[3]].filter((e) => e !== "free").length;
+  if (xSupported >= 2 && ySupported >= 2) return lx <= ly ? "X" : "Y";
+  if (xSupported >= 2) return "X";
+  if (ySupported >= 2) return "Y";
+  if (xSupported === 1) return "X";
+  if (ySupported === 1) return "Y";
+  return lx <= ly ? "X" : "Y";
+}
+
+// Validates that the edge conditions form a valid slab typology.
+// Returns an error message, or null when the configuration is valid.
+//   - Crossed: 4 supported edges (simple/continuo)
+//   - One-way: 2 opposite supported edges (3 supports are one-way along the
+//     axis that has the opposing pair)
+//   - Cantilever: exactly 1 supported edge, which must be "continuo" (empotrado)
+export function validateSlabSupports(
+  edges: readonly EdgeCondition[],
+): string | null {
+  const xSupported = [edges[0], edges[1]].filter((e) => e !== "free").length;
+  const ySupported = [edges[2], edges[3]].filter((e) => e !== "free").length;
+  const supportedEdges = xSupported + ySupported;
+
+  if (supportedEdges === 4) return null;
+  if (xSupported >= 2 || ySupported >= 2) return null;
+
+  if (supportedEdges === 1) {
+    const sole = edges.findIndex((e) => e !== "free");
+    if (edges[sole] !== "continuo") {
+      return "Voladizo inválido: el único borde apoyado debe ser continuo (empotrado). Un borde articulado no puede sostener un voladizo.";
+    }
+    return null;
+  }
+
+  if (supportedEdges === 0) {
+    return "La losa no tiene bordes apoyados. Indicá al menos un borde articulado, continuo o libre válido.";
+  }
+
+  return "Apoyos inválidos: los bordes apoyados no forman una tipología válida. La losa cruzada requiere 4 bordes apoyados, la unidireccional requiere 2 bordes opuestos y el voladizo requiere 1 borde continuo (empotrado).";
+}
+
+// Beam-strip positive/negative moments for a span L between two edges with
+// conditions c0/c1: both simple → qu·L²/8, both fixed → qu·L²/24 (+ qu·L²/12),
+// mixed → qu·L²/14.22 (+ qu·L²/8).
+function beamStripMoments(
+  L: number,
+  qu: number,
+  c0: EdgeCondition,
+  c1: EdgeCondition,
+): { M: number; Mneg: number } {
+  const isFixed0 = c0 === "continuo";
+  const isFixed1 = c1 === "continuo";
+  if (!isFixed0 && !isFixed1) return { M: (qu * L * L) / 8, Mneg: 0 };
+  if (isFixed0 && isFixed1)
+    return { M: (qu * L * L) / 24, Mneg: (qu * L * L) / 12 };
+  return { M: (qu * L * L) / 14.22, Mneg: (qu * L * L) / 8 };
 }
 
 // Unidirectional moment calculation — beam-strip coefficients
@@ -2026,45 +2111,34 @@ function calcUnidirectionalMoments(
     MnegX = 0,
     MnegY = 0;
 
-  if (xSupported >= 2) {
-    // Span in X direction
-    const L = lx;
-    const isFixed0 = edges[0] === "continuo";
-    const isFixed1 = edges[1] === "continuo";
+  const spanX = (L: number) => {
+    const m = beamStripMoments(L, qu, edges[0], edges[1]);
+    Mx = m.M;
+    MnegX = m.Mneg;
+  };
+  const spanY = (L: number) => {
+    const m = beamStripMoments(L, qu, edges[2], edges[3]);
+    My = m.M;
+    MnegY = m.Mneg;
+  };
 
-    if (!isFixed0 && !isFixed1) {
-      Mx = (qu * L * L) / 8;
-    } else if (isFixed0 && isFixed1) {
-      Mx = (qu * L * L) / 24;
-      MnegX = (qu * L * L) / 12;
-    } else {
-      Mx = (qu * L * L) / 14.22;
-      MnegX = (qu * L * L) / 8;
-    }
+  if (xSupported >= 2 && ySupported >= 2) {
+    // Beams on all 4 edges: the one-way slab spans the SHORT direction
+    if (lx <= ly) spanX(lx);
+    else spanY(ly);
+  } else if (xSupported >= 2) {
+    // Opposing beams in X: span in X
+    spanX(lx);
   } else if (ySupported >= 2) {
-    // Span in Y direction
-    const L = ly;
-    const isFixed0 = edges[2] === "continuo";
-    const isFixed1 = edges[3] === "continuo";
-
-    if (!isFixed0 && !isFixed1) {
-      My = (qu * L * L) / 8;
-    } else if (isFixed0 && isFixed1) {
-      My = (qu * L * L) / 24;
-      MnegY = (qu * L * L) / 12;
-    } else {
-      My = (qu * L * L) / 14.22;
-      MnegY = (qu * L * L) / 8;
-    }
+    // Opposing beams in Y: span in Y
+    spanY(ly);
   } else if (xSupported === 1) {
     // Cantilever in X: M = qu·L² / 2 at support — this IS the design moment for X
-    const L = lx;
-    Mx = (qu * L * L) / 2;
+    Mx = (qu * lx * lx) / 2;
     MnegX = Mx;
   } else if (ySupported === 1) {
     // Cantilever in Y: M = qu·L² / 2 at support — this IS the design moment for Y
-    const L = ly;
-    My = (qu * L * L) / 2;
+    My = (qu * ly * ly) / 2;
     MnegY = My;
   }
 
@@ -2090,20 +2164,21 @@ export function designSupportMoment(
   const KaMax = 0.375 * beta1;
   const KaMin = fc <= 30 ? 1.4 / (0.85 * fc) : 1 / (3.4 * Math.sqrt(fc));
 
-  let AsReq = 0,
+  let AsRaw = 0,
+    ka1: number | undefined,
     caseLabel = "";
   if (Ka <= KaMin) {
-    const ka1 = 1.33 * Ka;
-    AsReq =
+    ka1 = 1.33 * Ka;
+    AsRaw =
       ka1 >= KaMin
         ? (0.85 * fc * bw * KaMin * d) / fy
         : (0.85 * fc * bw * ka1 * d) / fy;
     caseLabel = `K_a ≤ K_a min → k₁ = ${ka1.toFixed(4)}`;
   } else if (Ka <= KaMax) {
-    AsReq = (0.85 * fc * bw * Ka * d) / fy;
+    AsRaw = (0.85 * fc * bw * Ka * d) / fy;
     caseLabel = "K_a min < K_a ≤ K_a max";
   } else {
-    AsReq = (0.85 * fc * bw * KaMax * d) / fy;
+    AsRaw = (0.85 * fc * bw * KaMax * d) / fy;
     caseLabel = "K_a > K_a max → sección sobre-reforzada.";
   }
 
@@ -2111,7 +2186,7 @@ export function designSupportMoment(
   const AsMin2 = (1.4 / fy) * bw * d;
   const AsMin = Math.max(AsMin1, AsMin2);
   const AsTemp = 0.0018 * bw * h;
-  AsReq = Math.max(AsReq, AsMin, AsTemp);
+  const AsReq = Math.max(AsRaw, AsMin, AsTemp);
   const sMax = Math.min(2.5 * h, 25 * dB, 300);
 
   return {
@@ -2128,6 +2203,8 @@ export function designSupportMoment(
     sMax: Math.round(sMax),
     phi: 0.9,
     Mneg,
+    ka1,
+    AsRaw,
   };
 }
 
@@ -2140,7 +2217,7 @@ export function designSlab(input: SlabInput): SlabResult {
   // Helper: push the explicit M_n → m_n → K_a derivation for a DirectionResult
   // so the user can audit the CIRSOC 201-05 path from M_u to K_a inside the
   // "Ver cuentas completas" details. Reads `fc`, `bw`, `d`, `st` from the closure.
-  function pushKaSteps(r: DirectionResult): void {
+  function pushKaSteps(r: DirectionResult, asLabel = "A_s"): void {
     const dEff = r.d ?? d;
     st.push(
       `   M_n = M_u / φ = ${r.Mu.toFixed(3)} / 0.9 = ${r.Mn.toFixed(3)} kN·m/m`,
@@ -2151,10 +2228,38 @@ export function designSlab(input: SlabInput): SlabResult {
     st.push(
       `   K_a = 1 - √(1 - 2·m_n) = 1 - √(1 - 2·${r.mn.toFixed(6)}) = ${r.Ka.toFixed(4)}`,
     );
+
+    // A_s derivation — la cuenta completa, no solo el resultado
+    if (r.ka1 !== undefined) {
+      const kUsed = r.ka1 >= r.KaMin ? r.KaMin : r.ka1;
+      st.push(
+        `   k₁ = 1.33·K_a = 1.33·${r.Ka.toFixed(4)} = ${r.ka1.toFixed(4)}`,
+      );
+      st.push(
+        `   k = mín(k₁, K_a min) = mín(${r.ka1.toFixed(4)}, ${r.KaMin.toFixed(4)}) = ${kUsed.toFixed(4)}`,
+      );
+      st.push(
+        `   A_s = (0.85·f'_c·b·k·d)/f_y = (0.85·${fc}·${bw}·${kUsed.toFixed(4)}·${dEff})/${fy} = ${r.AsRaw!.toFixed(1)} mm²/m`,
+      );
+    } else if (r.Ka > r.KaMax) {
+      st.push(
+        `   A_s = (0.85·f'_c·b·K_a max·d)/f_y = (0.85·${fc}·${bw}·${r.KaMax.toFixed(4)}·${dEff})/${fy} = ${r.AsRaw!.toFixed(1)} mm²/m (sección sobre-reforzada)`,
+      );
+    } else {
+      st.push(
+        `   A_s = (0.85·f'_c·b·K_a·d)/f_y = (0.85·${fc}·${bw}·${r.Ka.toFixed(4)}·${dEff})/${fy} = ${r.AsRaw!.toFixed(1)} mm²/m`,
+      );
+    }
+    st.push(
+      `   A_s,temp = 0.0018·b·h = 0.0018·${bw}·${h} = ${r.AsTemp} mm²/m`,
+    );
+    st.push(
+      `   ${asLabel} = máx(A_s, A_s,mín, A_s,temp) = máx(${r.AsRaw!.toFixed(1)}, ${r.AsMin}, ${r.AsTemp}) = ${r.AsReq} mm²/m`,
+    );
   }
 
   st.push(`Losa: lx = ${lx} m, ly = ${ly} m`);
-  st.push(`Relación ly/lx = ${(ly / lx).toFixed(2)}`);
+  st.push(`Relación l_menor/l_mayor = ${(Math.min(lx, ly) / Math.max(lx, ly)).toFixed(3)}`);
 
   // Step 1: Slab type — crossed requires 4 non-free edges AND ratio > 0.5
   const minLuz = Math.min(lx, ly);
@@ -2164,14 +2269,17 @@ export function designSlab(input: SlabInput): SlabResult {
   const isCrossed = ratioOk && supportedEdges === 4;
   st.push(`Tipo: ${isCrossed ? "Cruzada" : "Unidireccional"}`);
   st.push(
-    `   min/max = ${(minLuz / maxLuz).toFixed(3)} ${ratioOk ? ">" : "≤"} 0.5, bordes apoyados = ${supportedEdges} de 4`,
+    `   l_menor/l_mayor = ${(minLuz / maxLuz).toFixed(3)} ${ratioOk ? ">" : "≤"} 0.5, bordes apoyados = ${supportedEdges} de 4`,
   );
   st.push("");
 
   // Step 2: Predimensionado
   const fixedEdges = edges.filter((e) => e === "continuo").length;
-  const coefPredim = predimCoef(fixedEdges, isCrossed);
-  const dMin = ((isCrossed ? Math.min(lx, ly) : lx) * 1000) / coefPredim;
+  const coefPredim = predimCoef(fixedEdges, isCrossed, supportedEdges === 1);
+  const lArmado = isCrossed
+    ? Math.min(lx, ly)
+    : unidirectionalSpan(lx, ly, edges);
+  const dMin = (lArmado * 1000) / coefPredim;
   const hMinReg = 90;
   let h: number;
   if (hInput > 0) {
@@ -2183,10 +2291,10 @@ export function designSlab(input: SlabInput): SlabResult {
   const d = h - cover;
   st.push(`2. Predimensionado:`);
   st.push(
-    `   Coeficiente = ${coefPredim} (${isCrossed ? "cruzada" : "unidireccional"}, ${fixedEdges} borde(s) continuo(s))`,
+    `   Coeficiente = ${coefPredim} (${supportedEdges === 1 ? "voladizo" : isCrossed ? "cruzada" : "unidireccional"}, ${fixedEdges} borde(s) continuo(s))`,
   );
   st.push(
-    `   d_min = luz / ${coefPredim} = ${((isCrossed ? Math.min(lx, ly) : lx) * 1000).toFixed(0)} / ${coefPredim} = ${dMin.toFixed(0)} mm`,
+    `   d_min = luz / ${coefPredim} = ${(lArmado * 1000).toFixed(0)} / ${coefPredim} = ${dMin.toFixed(0)} mm`,
   );
   st.push(`   h_min reglamentario = ${hMinReg} mm`);
   st.push(`   h adoptado = ${h} mm, d = ${d} mm`);
@@ -2263,37 +2371,51 @@ export function designSlab(input: SlabInput): SlabResult {
     // Mixed supports (one continuous + one simple): use asymmetric reactions
     //   continuous edge → 5/8·qu·L, simple edge → 3/8·qu·L
     // Both simple or both continuous: symmetric qu·L/2
-    if (xSupported >= 2) {
-      const xHasCont = edges[0] === "continuo";
-      const xHasSimp = edges[0] === "simple";
-      const xLCont = edges[1] === "continuo";
-      const xLSimp = edges[1] === "simple";
-      const xMixed = (xHasCont && xLSimp) || (xHasSimp && xLCont);
-
-      if (xMixed) {
-        RxIzq = xHasCont ? (5 * qu * lx) / 8 : (3 * qu * lx) / 8;
-        RxDer = xLCont ? (5 * qu * lx) / 8 : (3 * qu * lx) / 8;
-        Rx = (qu * lx) / 2; // total reaction check
-      } else {
-        Rx = (qu * lx) / 2;
-        RxIzq = RxDer = Rx;
+    const stripReactions = (
+      L: number,
+      c0: EdgeCondition,
+      c1: EdgeCondition,
+    ): { r0: number; r1: number; total: number } => {
+      const hasCont0 = c0 === "continuo";
+      const hasSimp0 = c0 === "simple";
+      const hasCont1 = c1 === "continuo";
+      const hasSimp1 = c1 === "simple";
+      if ((hasCont0 && hasSimp1) || (hasSimp0 && hasCont1)) {
+        return {
+          r0: hasCont0 ? (5 * qu * L) / 8 : (3 * qu * L) / 8,
+          r1: hasCont1 ? (5 * qu * L) / 8 : (3 * qu * L) / 8,
+          total: (qu * L) / 2, // total reaction check
+        };
       }
+      return { r0: (qu * L) / 2, r1: (qu * L) / 2, total: (qu * L) / 2 };
+    };
+
+    if (xSupported >= 2 && ySupported >= 2) {
+      // Beams on all 4 edges: the slab bears on the SHORT-span beams
+      if (lx <= ly) {
+        const rx = stripReactions(lx, edges[0], edges[1]);
+        RxIzq = rx.r0;
+        RxDer = rx.r1;
+        Rx = rx.total;
+        RyArr = RyAba = 0;
+      } else {
+        const ry = stripReactions(ly, edges[2], edges[3]);
+        RyArr = ry.r0;
+        RyAba = ry.r1;
+        Ry = ry.total;
+        RxIzq = RxDer = 0;
+      }
+    } else if (xSupported >= 2) {
+      const rx = stripReactions(lx, edges[0], edges[1]);
+      RxIzq = rx.r0;
+      RxDer = rx.r1;
+      Rx = rx.total;
       RyArr = RyAba = 0;
     } else if (ySupported >= 2) {
-      const yHasCont = edges[2] === "continuo";
-      const yHasSimp = edges[2] === "simple";
-      const yLCont = edges[3] === "continuo";
-      const yLSimp = edges[3] === "simple";
-      const yMixed = (yHasCont && yLSimp) || (yHasSimp && yLCont);
-
-      if (yMixed) {
-        RyArr = yHasCont ? (5 * qu * ly) / 8 : (3 * qu * ly) / 8;
-        RyAba = yLCont ? (5 * qu * ly) / 8 : (3 * qu * ly) / 8;
-        Ry = (qu * ly) / 2; // total reaction check
-      } else {
-        Ry = (qu * ly) / 2;
-        RyArr = RyAba = Ry;
-      }
+      const ry = stripReactions(ly, edges[2], edges[3]);
+      RyArr = ry.r0;
+      RyAba = ry.r1;
+      Ry = ry.total;
       RxIzq = RxDer = 0;
     } else if (xSupported === 1) {
       // Voladizo o losa con un solo apoyo en X: toda la carga va a ese borde
@@ -2339,7 +2461,7 @@ export function designSlab(input: SlabInput): SlabResult {
       tableLabel = "1 borde continuo en X, 3 articulados";
       st.push(`4. Momentos (Kalmanok, ${tableLabel}):`);
       st.push(
-        `   lx/ly = ${r.toFixed(3)} → CMex = ${coef.CMex.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
+        `   l_menor/l_mayor = ${r.toFixed(3)} → CMex = ${coef.CMex.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
       );
     } else if (hasOneFixedY) {
       const coef = interpolateKalmanok1FixedY(r);
@@ -2351,7 +2473,7 @@ export function designSlab(input: SlabInput): SlabResult {
       tableLabel = "1 borde continuo en Y, 3 articulados";
       st.push(`4. Momentos (Kalmanok, ${tableLabel}):`);
       st.push(
-        `   lx/ly = ${r.toFixed(3)} → CMey = ${coef.CMey.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
+        `   l_menor/l_mayor = ${r.toFixed(3)} → CMey = ${coef.CMey.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
       );
     } else if (hasTwoFixedX) {
       const coef = interpolateKalmanok2FixedX(r);
@@ -2363,7 +2485,7 @@ export function designSlab(input: SlabInput): SlabResult {
       tableLabel = "2 bordes continuos en X, 2 articulados en Y";
       st.push(`4. Momentos (Kalmanok, ${tableLabel}):`);
       st.push(
-        `   lx/ly = ${r.toFixed(3)} → CMex = ${coef.CMex.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
+        `   l_menor/l_mayor = ${r.toFixed(3)} → CMex = ${coef.CMex.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
       );
     } else if (hasTwoAdj) {
       const coef = interpolateKalmanok2Adj(r);
@@ -2376,7 +2498,7 @@ export function designSlab(input: SlabInput): SlabResult {
       tableLabel = "2 bordes adyacentes continuos";
       st.push(`4. Momentos (Kalmanok, ${tableLabel}):`);
       st.push(
-        `   lx/ly = ${r.toFixed(3)} → CMex = ${coef.CMex.toFixed(4)}, CMey = ${coef.CMey.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
+        `   l_menor/l_mayor = ${r.toFixed(3)} → CMex = ${coef.CMex.toFixed(4)}, CMey = ${coef.CMey.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
       );
     } else if (hasTwoFixedY) {
       const coef = interpolateKalmanok2FixedY(r);
@@ -2388,7 +2510,7 @@ export function designSlab(input: SlabInput): SlabResult {
       tableLabel = "2 bordes continuos en Y, 2 articulados en X";
       st.push(`4. Momentos (Kalmanok, ${tableLabel}):`);
       st.push(
-        `   lx/ly = ${r.toFixed(3)} → CMey = ${coef.CMey.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
+        `   l_menor/l_mayor = ${r.toFixed(3)} → CMey = ${coef.CMey.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
       );
     } else if (hasThreeFixed) {
       const isYsimple = !isY0Fixed || !isYLFixed;
@@ -2404,7 +2526,7 @@ export function designSlab(input: SlabInput): SlabResult {
       tableLabel = "3 bordes continuos";
       st.push(`4. Momentos (Kalmanok, ${tableLabel}):`);
       st.push(
-        `   lx/ly = ${r.toFixed(3)} → CMex = ${coef.CMex.toFixed(4)}, CMey = ${coef.CMey.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
+        `   l_menor/l_mayor = ${r.toFixed(3)} → CMex = ${coef.CMex.toFixed(4)}, CMey = ${coef.CMey.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
       );
     } else if (hasFourFixed) {
       const coef = interpolateKalmanok4Fixed(r);
@@ -2417,7 +2539,7 @@ export function designSlab(input: SlabInput): SlabResult {
       tableLabel = "4 bordes continuos";
       st.push(`4. Momentos (Kalmanok, ${tableLabel}):`);
       st.push(
-        `   lx/ly = ${r.toFixed(3)} → CMex = ${coef.CMex.toFixed(4)}, CMey = ${coef.CMey.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
+        `   l_menor/l_mayor = ${r.toFixed(3)} → CMex = ${coef.CMex.toFixed(4)}, CMey = ${coef.CMey.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
       );
     } else {
       const coef = interpolateKalmanokSimple(r);
@@ -2428,7 +2550,7 @@ export function designSlab(input: SlabInput): SlabResult {
       tableLabel = "4 bordes articulados";
       st.push(`4. Momentos (Kalmanok, ${tableLabel}):`);
       st.push(
-        `   lx/ly = ${r.toFixed(3)} → CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
+        `   l_menor/l_mayor = ${r.toFixed(3)} → CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
       );
     }
 
@@ -2534,7 +2656,7 @@ export function designSlab(input: SlabInput): SlabResult {
         const dirName = ["Izquierdo", "Derecho", "Arriba", "Abajo"][i];
         const cOk = cRatio >= 0.5;
         st.push(
-          `   Borde ${dirName} (continuo): min/max = ${cRatio.toFixed(3)} ${cOk ? "≥" : "<"} 0.5 → ${cOk ? "continuidad validada" : "⚠️ no cumple continuidad — revisar"}`,
+          `   Borde ${dirName} (continuo): l_menor/l_mayor = ${cRatio.toFixed(3)} ${cOk ? "≥" : "<"} 0.5 → ${cOk ? "continuidad validada" : "⚠️ no cumple continuidad — revisar"}`,
         );
       }
     }
@@ -2581,48 +2703,73 @@ export function designSlab(input: SlabInput): SlabResult {
   dirX.d = d_x;
   dirY.d = d_y;
 
-  st.push(`5-8. Dimensionamiento X:`);
-  if (isCrossed && d_x < d) {
-    st.push(`   d_eff = ${d_x} mm (d - 10 mm, lado con M_x < M_y)`);
-  }
-  pushKaSteps(dirX);
-  st.push(
-    `   K_a = ${dirX.Ka.toFixed(4)}, K_a min = ${dirX.KaMin.toFixed(4)}, K_a max = ${dirX.KaMax.toFixed(4)}`,
-  );
-  st.push(`   ${dirX.caseLabel}`);
-  st.push(
-    `   A_s,x = ${dirX.AsReq} mm²/m (mín: ${dirX.AsMin}, temp: ${dirX.AsTemp})`,
-  );
-  st.push(`   s_máx = ${dirX.sMax} mm, s_mín = 80 mm`);
-  st.push("");
-  st.push(`5-8. Dimensionamiento Y:`);
-  if (isCrossed && d_y < d) {
-    st.push(`   d_eff = ${d_y} mm (d - 10 mm, lado con M_y < M_x)`);
-  }
-  pushKaSteps(dirY);
-  st.push(
-    `   K_a = ${dirY.Ka.toFixed(4)}, K_a min = ${dirY.KaMin.toFixed(4)}, K_a max = ${dirY.KaMax.toFixed(4)}`,
-  );
-  st.push(`   ${dirY.caseLabel}`);
-  st.push(
-    `   A_s,y = ${dirY.AsReq} mm²/m (mín: ${dirY.AsMin}, temp: ${dirY.AsTemp})`,
-  );
-  st.push(`   s_máx = ${dirY.sMax} mm, s_mín = 80 mm`);
-
-  // Distribution reinforcement (only for unidirectional slabs)
+  // Distribution reinforcement (unidirectional only): the axis that does NOT
+  // span carries repartición = máx(A_s,temp, 0.2·A_s principal).
+  const axis = isCrossed ? null : unidirectionalDirection(lx, ly, edges);
   const distX: DirectionResult = { ...dirX, AsReq: 0, sMax: 0, caseLabel: "" };
   const distY: DirectionResult = { ...dirY, AsReq: 0, sMax: 0, caseLabel: "" };
-  if (!isCrossed) {
-    distX.AsReq = Math.max(dirX.AsTemp, Math.round(0.2 * dirX.AsReq));
-    distX.sMax = Math.min(3 * h, 300);
-    distX.caseLabel = "Repartición X (unidireccional)";
-    distY.AsReq = Math.max(dirY.AsTemp, Math.round(0.2 * dirY.AsReq));
-    distY.sMax = Math.min(3 * h, 300);
-    distY.caseLabel = "Repartición Y (unidireccional)";
+  if (axis !== null) {
+    const principal = axis === "X" ? dirX : dirY;
+    const dist = axis === "X" ? distY : distX;
+    dist.AsReq = Math.max(principal.AsTemp, Math.round(0.2 * principal.AsReq));
+    dist.sMax = Math.min(3 * h, 300);
+    dist.caseLabel = `Repartición ${axis === "X" ? "Y" : "X"} (unidireccional)`;
+  }
+
+  // Audit-trail helper for the non-spanning axis of a unidirectional slab:
+  // no flexural K_a path (M = 0 by definition), just the repartición derivation.
+  function pushReparticionSteps(
+    dirName: string,
+    principal: DirectionResult,
+    dist: DirectionResult,
+  ): void {
+    st.push(`5-8. Dimensionamiento ${dirName} (armadura de repartición):`);
+    st.push(
+      `   M_${dirName.toLowerCase()} = 0 — ${dirName} es perpendicular a la luz de armado`,
+    );
+    st.push(
+      `   A_s,temp = 0.0018·b·h = 0.0018·1000·${h} = ${principal.AsTemp} mm²/m`,
+    );
+    st.push(
+      `   0.2·A_s principal = 0.2·${principal.AsReq} = ${Math.round(0.2 * principal.AsReq)} mm²/m`,
+    );
+    st.push(
+      `   A_s = máx(A_s,temp, 0.2·A_s principal) = ${dist.AsReq} mm²/m`,
+    );
+    st.push(
+      `   s_máx = min(3·h, 300) = min(${3 * h}, 300) = ${dist.sMax} mm`,
+    );
     st.push("");
+  }
+
+  if (axis === "Y") {
+    pushReparticionSteps("X", dirY, distX);
+  } else {
+    st.push(`5-8. Dimensionamiento X:`);
+    if (isCrossed && d_x < d) {
+      st.push(`   d_eff = ${d_x} mm (d - 10 mm, lado con M_x < M_y)`);
+    }
+    pushKaSteps(dirX, "A_s,x");
+    st.push(`   s_máx = ${dirX.sMax} mm, s_mín = 80 mm`);
+    st.push("");
+  }
+  if (axis === "X") {
+    pushReparticionSteps("Y", dirX, distY);
+  } else {
+    st.push(`5-8. Dimensionamiento Y:`);
+    if (isCrossed && d_y < d) {
+      st.push(`   d_eff = ${d_y} mm (d - 10 mm, lado con M_y < M_x)`);
+    }
+    pushKaSteps(dirY, "A_s,y");
+    st.push(`   s_máx = ${dirY.sMax} mm, s_mín = 80 mm`);
+  }
+
+  if (axis !== null) {
     st.push("9. Armadura de repartición:");
-    st.push(`   X: ${distX.AsReq} mm²/m (s ≤ ${distX.sMax} mm)`);
-    st.push(`   Y: ${distY.AsReq} mm²/m (s ≤ ${distY.sMax} mm)`);
+    const dist = axis === "X" ? distY : distX;
+    st.push(
+      `   ${axis === "X" ? "Y" : "X"}: ${dist.AsReq} mm²/m (s ≤ ${dist.sMax} mm)`,
+    );
   }
 
   // Per-edge support moments: continuous edges always get Mneg, and for cantilevers
@@ -2650,13 +2797,6 @@ export function designSlab(input: SlabInput): SlabResult {
     );
     st.push(`   M_u = ${MnegIzq.toFixed(2)} kN·m/m`);
     pushKaSteps(supportX0);
-    st.push(
-      `   K_a = ${supportX0.Ka.toFixed(4)}, K_a min = ${supportX0.KaMin.toFixed(4)}, K_a max = ${supportX0.KaMax.toFixed(4)}`,
-    );
-    st.push(`   ${supportX0.caseLabel}`);
-    st.push(
-      `   A_s = ${supportX0.AsReq} mm²/m (mín: ${supportX0.AsMin}, temp: ${supportX0.AsTemp})`,
-    );
     st.push(`   s_máx = ${supportX0.sMax} mm`);
   }
   if (MnegDer !== 0) {
@@ -2669,13 +2809,6 @@ export function designSlab(input: SlabInput): SlabResult {
     );
     st.push(`   M_u = ${MnegDer.toFixed(2)} kN·m/m`);
     pushKaSteps(supportXL);
-    st.push(
-      `   K_a = ${supportXL.Ka.toFixed(4)}, K_a min = ${supportXL.KaMin.toFixed(4)}, K_a max = ${supportXL.KaMax.toFixed(4)}`,
-    );
-    st.push(`   ${supportXL.caseLabel}`);
-    st.push(
-      `   A_s = ${supportXL.AsReq} mm²/m (mín: ${supportXL.AsMin}, temp: ${supportXL.AsTemp})`,
-    );
     st.push(`   s_máx = ${supportXL.sMax} mm`);
   }
   if (MnegArr !== 0) {
@@ -2688,13 +2821,6 @@ export function designSlab(input: SlabInput): SlabResult {
     );
     st.push(`   M_u = ${MnegArr.toFixed(2)} kN·m/m`);
     pushKaSteps(supportY0);
-    st.push(
-      `   K_a = ${supportY0.Ka.toFixed(4)}, K_a min = ${supportY0.KaMin.toFixed(4)}, K_a max = ${supportY0.KaMax.toFixed(4)}`,
-    );
-    st.push(`   ${supportY0.caseLabel}`);
-    st.push(
-      `   A_s = ${supportY0.AsReq} mm²/m (mín: ${supportY0.AsMin}, temp: ${supportY0.AsTemp})`,
-    );
     st.push(`   s_máx = ${supportY0.sMax} mm`);
   }
   if (MnegAba !== 0) {
@@ -2707,13 +2833,6 @@ export function designSlab(input: SlabInput): SlabResult {
     );
     st.push(`   M_u = ${MnegAba.toFixed(2)} kN·m/m`);
     pushKaSteps(supportYL);
-    st.push(
-      `   K_a = ${supportYL.Ka.toFixed(4)}, K_a min = ${supportYL.KaMin.toFixed(4)}, K_a max = ${supportYL.KaMax.toFixed(4)}`,
-    );
-    st.push(`   ${supportYL.caseLabel}`);
-    st.push(
-      `   A_s = ${supportYL.AsReq} mm²/m (mín: ${supportYL.AsMin}, temp: ${supportYL.AsTemp})`,
-    );
     st.push(`   s_máx = ${supportYL.sMax} mm`);
   }
 
