@@ -3,7 +3,7 @@ import { useLocation, useNavigate, Link } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import { designBase } from "../lib/bases-calc";
 import type { BaseInput } from "../lib/bases-calc";
-import { saveBeam } from "../lib/storage";
+import { saveBeam, updateSave } from "../lib/storage";
 
 // ---------------------------------------------------------------------------
 // Location state contract (set by BasesForm on submit)
@@ -11,6 +11,9 @@ import { saveBeam } from "../lib/storage";
 
 interface LocationState {
   input: BaseInput;
+  /** Id del guardado cargado, si viene de uno existente */
+  loadedSaveId?: string | null;
+  loadedSaveName?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -64,7 +67,16 @@ export default function BasesResults() {
   const navigate = useNavigate();
   const [showSteps, setShowSteps] = useState(false);
 
-  const input = (location.state as LocationState | null)?.input;
+  const locState = location.state as LocationState | null;
+  const input = locState?.input;
+
+  // Identidad del guardado (arranca del router state, se actualiza al guardar)
+  const [savedId, setSavedId] = useState<string | null>(
+    locState?.loadedSaveId ?? null,
+  );
+  const [savedName, setSavedName] = useState<string | null>(
+    locState?.loadedSaveName ?? null,
+  );
 
   // ─── Compute result (must be before any early return — rules of hooks) ───
   const { result, calcError } = useMemo(() => {
@@ -126,18 +138,18 @@ export default function BasesResults() {
 
   // ─── Save handler ───
   function handleSave() {
+    const data = { input, result } as Record<string, unknown>;
+    // Si venimos de una base guardada, actualizamos la misma (mismo id/nombre)
+    if (savedId) {
+      updateSave(savedId, data);
+      return;
+    }
     const name = prompt("Nombre para guardar estos resultados:");
     if (!name) return;
     try {
-      // NOTE: saveBeam type parameter on main doesn't include "bases"
-      // (fixed by PR3's storage.ts update). Cast avoids TS error;
-      // runtime stores "bases" correctly because SavedBeam.type already
-      // accepts it.
-      saveBeam(
-        name,
-        "bases" as "hormigon",
-        { input, result } as Record<string, unknown>,
-      );
+      const saved = saveBeam(name, "bases", data);
+      setSavedId(saved.id);
+      setSavedName(name);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Error al guardar");
     }
@@ -164,9 +176,18 @@ export default function BasesResults() {
             </svg>
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-text">
+            <h1 className="text-xl font-semibold text-text flex items-center gap-3">
               Base {isCentrada ? "Centrada" : "Medianera"} {result.B}×{result.L}
               ×{result.h} cm
+              {savedName ? (
+                <span className="text-sm font-normal text-text-muted bg-surface-alt border border-border px-2.5 py-0.5 rounded-full">
+                  {savedName}
+                </span>
+              ) : (
+                <span className="text-sm font-normal text-warning bg-warning/10 border border-warning/30 px-2.5 py-0.5 rounded-full">
+                  Sin guardar
+                </span>
+              )}
             </h1>
             <p className="text-sm text-text-muted">
               {isCentrada
@@ -177,13 +198,30 @@ export default function BasesResults() {
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => navigate("/bases")}
-          className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-4 py-1.5 rounded-lg"
-        >
-          ← Volver
-        </button>
+        <div className="flex gap-1.5">
+          <button
+            type="button"
+            onClick={handleSave}
+            className="text-sm bg-primary text-white font-semibold px-3 py-1.5 rounded-lg hover:bg-primary-hover transition-colors"
+          >
+            Guardar resultados
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              navigate("/bases", {
+                state: {
+                  ...input,
+                  loadedSaveId: savedId,
+                  loadedSaveName: savedName,
+                },
+              })
+            }
+            className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-4 py-1.5 rounded-lg"
+          >
+            ← Volver
+          </button>
+        </div>
       </header>
 
       {/* ─── Resumen ─── */}
@@ -511,31 +549,6 @@ export default function BasesResults() {
           </ul>
         </section>
       )}
-
-      {/* ─── Action buttons ─── */}
-      <div className="flex justify-center gap-3">
-        <button
-          type="button"
-          onClick={() => navigate("/bases")}
-          className="bg-surface-alt border border-border text-text-muted font-semibold px-6 py-3 rounded-lg hover:bg-surface transition-colors"
-        >
-          ← Volver
-        </button>
-        <button
-          type="button"
-          onClick={() => navigate("/bases", { state: { input } })}
-          className="bg-surface-alt border border-border text-text-muted font-semibold px-6 py-3 rounded-lg hover:bg-surface transition-colors"
-        >
-          Editar datos
-        </button>
-        <button
-          type="button"
-          onClick={handleSave}
-          className="bg-primary text-white font-semibold px-8 py-3 rounded-lg hover:bg-primary-hover transition-colors"
-        >
-          Guardar resultados
-        </button>
-      </div>
     </MainLayout>
   );
 }

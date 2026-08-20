@@ -44,6 +44,9 @@ export interface RCColumnState {
   dbEsquinas?: number;
   dbCarasX?: number;
   dbCarasY?: number;
+  /** Id del guardado cargado, si viene de uno existente */
+  loadedSaveId?: string | null;
+  loadedSaveName?: string | null;
 }
 
 interface ContributedColumn {
@@ -265,8 +268,12 @@ export default function RCColumnForm() {
     state?.includeSelfWeight ?? lastForm?.includeSelfWeight ?? false,
   );
 
-  const [loadedSaveId, setLoadedSaveId] = useState<string | null>(null);
-  const [loadedSaveName, setLoadedSaveName] = useState<string | null>(null);
+  const [loadedSaveId, setLoadedSaveId] = useState<string | null>(
+    state?.loadedSaveId ?? null,
+  );
+  const [loadedSaveName, setLoadedSaveName] = useState<string | null>(
+    state?.loadedSaveName ?? null,
+  );
 
   // Contributed loads from upper columns
   const [contributedColumns, setContributedColumns] = useState<
@@ -410,7 +417,8 @@ export default function RCColumnForm() {
     const name = prompt("Nombre para guardar esta columna:");
     if (!name) return;
     try {
-      saveBeam(name, "rc-columna", data);
+      const saved = saveBeam(name, "rc-columna", data);
+      setLoadedSaveId(saved.id);
       setLoadedSaveName(name);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Error al guardar");
@@ -540,6 +548,8 @@ export default function RCColumnForm() {
       includeSelfWeight,
       contributedColumns,
       contributedBeams,
+      loadedSaveId,
+      loadedSaveName,
     };
     navigate("/rc-column-results", { state: rcState });
   }

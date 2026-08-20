@@ -4,7 +4,7 @@ import { MainLayout } from "@mascalculador/shared";
 import { designRCColumn, computeManualAst, proposeArmado } from "../lib/rc-column-calc";
 import type { RCColumnState } from "./RCColumnForm";
 import { ArmadoLayoutSVG } from "./RCColumnForm";
-import { saveBeam } from "../lib/storage";
+import { saveBeam, updateSave } from "../lib/storage";
 
 /** Stepper control: +/- buttons with a label. */
 function StepperInput({
@@ -88,6 +88,8 @@ export default function RCColumnResults() {
     includeSelfWeight,
     contributedColumns,
     contributedBeams,
+    loadedSaveId,
+    loadedSaveName,
   } = state;
 
   // ─── Base result (auto-design, no manual armado) for initial proposal ───
@@ -138,6 +140,12 @@ export default function RCColumnResults() {
     state.dbCarasY ?? proposedArmado.dbCarasY,
   );
   const [armaduraConfirmada, setArmaduraConfirmada] = useState(false);
+
+  // Identidad del guardado (arranca del router state, se actualiza al guardar)
+  const [savedId, setSavedId] = useState<string | null>(loadedSaveId ?? null);
+  const [savedName, setSavedName] = useState<string | null>(
+    loadedSaveName ?? null,
+  );
 
   // ─── Recompute on user changes ───
   const armaduraManual = useMemo(
@@ -221,10 +229,17 @@ export default function RCColumnResults() {
       dbCarasX,
       dbCarasY,
     };
+    // Si venimos de una columna guardada, actualizamos la misma (mismo id/nombre)
+    if (savedId) {
+      updateSave(savedId, data);
+      return;
+    }
     const name = prompt("Nombre para guardar esta columna:");
     if (!name) return;
     try {
-      saveBeam(name, "rc-columna", data);
+      const saved = saveBeam(name, "rc-columna", data);
+      setSavedId(saved.id);
+      setSavedName(name);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Error al guardar");
     }
@@ -250,20 +265,47 @@ export default function RCColumnResults() {
             </svg>
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-text">
+            <h1 className="text-xl font-semibold text-text flex items-center gap-3">
               Columna {result.Cx}×{result.Cy} cm
+              {savedName ? (
+                <span className="text-sm font-normal text-text-muted bg-surface-alt border border-border px-2.5 py-0.5 rounded-full">
+                  {savedName}
+                </span>
+              ) : (
+                <span className="text-sm font-normal text-warning bg-warning/10 border border-warning/30 px-2.5 py-0.5 rounded-full">
+                  Sin guardar
+                </span>
+              )}
             </h1>
             <p className="text-sm text-text-muted">
               f'<sub>c</sub> = {fc} MPa &middot; f<sub>y</sub> = {fy} MPa &middot; l<sub>u</sub> = {lu} m
             </p>
           </div>
         </div>
-        <button
-          onClick={() => navigate("/rc-column", { state })}
-          className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-4 py-1.5 rounded-lg"
-        >
-          ← Volver
-        </button>
+        <div className="flex gap-1.5">
+          <button
+            type="button"
+            onClick={handleSaveFromResults}
+            className="text-sm bg-primary text-white font-semibold px-3 py-1.5 rounded-lg hover:bg-primary-hover transition-colors"
+          >
+            Guardar
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              navigate("/rc-column", {
+                state: {
+                  ...state,
+                  loadedSaveId: savedId,
+                  loadedSaveName: savedName,
+                },
+              })
+            }
+            className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-4 py-1.5 rounded-lg"
+          >
+            ← Volver
+          </button>
+        </div>
       </header>
 
       {/* Summary cards */}
@@ -758,24 +800,6 @@ export default function RCColumnResults() {
           {result.steps.join("\n")}
         </pre>
       </section>
-
-      {/* Bottom buttons */}
-      <div className="flex justify-center gap-3">
-        <button
-          type="button"
-          onClick={() => navigate("/rc-column", { state })}
-          className="bg-surface-alt border border-border text-text-muted font-semibold px-6 py-3 rounded-lg hover:bg-surface transition-colors"
-        >
-          ← Volver al formulario
-        </button>
-        <button
-          type="button"
-          onClick={handleSaveFromResults}
-          className="bg-primary text-white font-semibold px-8 py-3 rounded-lg hover:bg-primary-hover transition-colors"
-        >
-          Guardar
-        </button>
-      </div>
     </MainLayout>
   );
 }

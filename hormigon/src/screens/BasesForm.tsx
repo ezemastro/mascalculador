@@ -4,6 +4,7 @@ import { MainLayout } from "@mascalculador/shared";
 import { SavedBeams } from "@mascalculador/shared";
 import {
   saveBeam,
+  updateSave,
   listSaves,
   loadLastBasesFormState,
   saveLastBasesFormState,
@@ -76,18 +77,41 @@ const initialState: BasesFormState = {
 export default function BasesForm() {
   const location = useLocation();
   const navigate = useNavigate();
-  const locationState = location.state as BasesFormState | null;
+  const locationState = location.state as
+    | (BasesFormState & {
+        /** Id del guardado cargado, si viene de uno existente */
+        loadedSaveId?: string | null;
+        loadedSaveName?: string | null;
+      })
+    | null;
 
   const [state, setState] = useState<BasesFormState>(() => {
-    if (locationState) return locationState;
+    if (locationState) {
+      // La identidad del guardado se maneja aparte (loadedSaveId/Name):
+      // no debe mezclarse con los campos del formulario que se persisten.
+      return {
+        ...locationState,
+        loadedSaveId: undefined,
+        loadedSaveName: undefined,
+      } as BasesFormState;
+    }
     const saved = loadLastBasesFormState();
     if (saved) return saved;
     return initialState;
   });
 
-  const [loadedSaveName, setLoadedSaveName] = useState<string | null>(null);
-  const [columnId, setColumnId] = useState<string | null>(null);
-  const [columnName, setColumnName] = useState<string | null>(null);
+  const [loadedSaveId, setLoadedSaveId] = useState<string | null>(
+    locationState?.loadedSaveId ?? null,
+  );
+  const [loadedSaveName, setLoadedSaveName] = useState<string | null>(
+    locationState?.loadedSaveName ?? null,
+  );
+  const [columnId, setColumnId] = useState<string | null>(
+    locationState?.columnId ?? null,
+  );
+  const [columnName, setColumnName] = useState<string | null>(
+    locationState?.columnName ?? null,
+  );
 
   // Guard: skip first auto-save using ref (no re-render)
   const mountedRef = useRef(false);
@@ -138,51 +162,74 @@ export default function BasesForm() {
   // Save / Load
   // ------------------------------------------------------------------
   function handleSave() {
+    // El payload incluye la vinculación con la columna cargada, para que
+    // sobreviva al round-trip (guardar -> cargar -> guardar).
+    const data = {
+      ...state,
+      columnId: columnId ?? undefined,
+      columnName: columnName ?? undefined,
+    } as Record<string, unknown>;
+    // Si venimos de una base guardada, actualizamos la misma (mismo id/nombre)
+    if (loadedSaveId) {
+      updateSave(loadedSaveId, data);
+      return;
+    }
     const name = prompt("Nombre de la base:");
     if (!name) return;
     try {
-      saveBeam(name, "bases", state as unknown as Record<string, unknown>);
+      const saved = saveBeam(name, "bases", data);
+      setLoadedSaveId(saved.id);
       setLoadedSaveName(name);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Error al guardar");
     }
   }
 
-  function handleLoadBases(data: Record<string, unknown>) {
-    setLoadedSaveName("");
+  function handleLoadBases(
+    data: Record<string, unknown>,
+    save: { id: string; name: string },
+  ) {
+    setLoadedSaveId(save.id);
+    setLoadedSaveName(save.name);
     const d = data as Record<string, unknown>;
+    // Los guardados hechos desde resultados usan { input, result };
+    // los hechos desde el formulario guardan los campos en el nivel raíz.
+    const f = (d.input && typeof d.input === "object" ? d.input : d) as Record<
+      string,
+      unknown
+    >;
     setState((prev) => {
       const next = { ...prev };
-      if (typeof d.qa === "number") next.qa = d.qa;
-      if (typeof d.Df === "number") next.Df = d.Df;
-      if (typeof d.PD === "number") next.PD = d.PD;
-      if (typeof d.PL === "number") next.PL = d.PL;
-      if (typeof d.cx === "number") next.cx = d.cx;
-      if (typeof d.cy === "number") next.cy = d.cy;
-      if (typeof d.fc === "number") next.fc = d.fc;
-      if (typeof d.fy === "number") next.fy = d.fy;
+      if (typeof f.qa === "number") next.qa = f.qa;
+      if (typeof f.Df === "number") next.Df = f.Df;
+      if (typeof f.PD === "number") next.PD = f.PD;
+      if (typeof f.PL === "number") next.PL = f.PL;
+      if (typeof f.cx === "number") next.cx = f.cx;
+      if (typeof f.cy === "number") next.cy = f.cy;
+      if (typeof f.fc === "number") next.fc = f.fc;
+      if (typeof f.fy === "number") next.fy = f.fy;
       if (
-        typeof d.type === "string" &&
-        (d.type === "centrada" || d.type === "medianera")
+        typeof f.type === "string" &&
+        (f.type === "centrada" || f.type === "medianera")
       ) {
-        next.type = d.type;
+        next.type = f.type;
       }
       if (
-        typeof d.subType === "string" &&
-        (d.subType === "viga-de-fundacion" || d.subType === "tensor")
+        typeof f.subType === "string" &&
+        (f.subType === "viga-de-fundacion" || f.subType === "tensor")
       ) {
-        next.subType = d.subType;
+        next.subType = f.subType;
       }
-      if (typeof d.B === "number") next.B = d.B;
-      if (typeof d.L === "number") next.L = d.L;
-      if (typeof d.h === "number") next.h = d.h;
-      if (typeof d.Lcol === "number") next.Lcol = d.Lcol;
-      if (typeof d.H === "number") next.H = d.H;
-      if (typeof d.mu === "number") next.mu = d.mu;
-      if (typeof d.cover === "number") next.cover = d.cover;
-      if (typeof d.rebD === "number") next.rebD = d.rebD;
-      if (typeof d.columnName === "string") setColumnName(d.columnName);
-      if (typeof d.columnId === "string") setColumnId(d.columnId);
+      if (typeof f.B === "number") next.B = f.B;
+      if (typeof f.L === "number") next.L = f.L;
+      if (typeof f.h === "number") next.h = f.h;
+      if (typeof f.Lcol === "number") next.Lcol = f.Lcol;
+      if (typeof f.H === "number") next.H = f.H;
+      if (typeof f.mu === "number") next.mu = f.mu;
+      if (typeof f.cover === "number") next.cover = f.cover;
+      if (typeof f.rebD === "number") next.rebD = f.rebD;
+      if (typeof f.columnName === "string") setColumnName(f.columnName);
+      if (typeof f.columnId === "string") setColumnId(f.columnId);
       return next;
     });
   }
@@ -199,7 +246,8 @@ export default function BasesForm() {
           columnId: columnId ?? undefined,
           columnName: columnName ?? undefined,
         },
-        name: loadedSaveName ?? undefined,
+        loadedSaveId: loadedSaveId ?? undefined,
+        loadedSaveName: loadedSaveName ?? undefined,
       },
     });
   }
