@@ -762,7 +762,7 @@ export function designRCColumn(input: RCColumnInput): RCColumnResult {
     const aspect = Cy_cm / Cx;
     if (aspect > 2.5) {
       const targetB = Math.ceil(Math.sqrt(Ag));
-      Cx = Math.max(20, targetB * 0.7);
+      Cx = Math.max(20, Math.ceil(targetB * 0.7));
       Cy_cm = Math.ceil(Ag / Cx);
       while (Cx * Cy_cm < Ag) Cy_cm++;
     }

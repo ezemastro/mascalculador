@@ -141,6 +141,13 @@ export default function RCColumnResults() {
   );
   const [armaduraConfirmada, setArmaduraConfirmada] = useState(false);
 
+  // Cualquier cambio en el armado invalida la confirmación previa:
+  // obliga a volver a tocar "Confirmar armado" (y re-hide estribos).
+  function updateArmado(setter: (v: number) => void, v: number) {
+    setter(v);
+    setArmaduraConfirmada(false);
+  }
+
   // Identidad del guardado (arranca del router state, se actualiza al guardar)
   const [savedId, setSavedId] = useState<string | null>(loadedSaveId ?? null);
   const [savedName, setSavedName] = useState<string | null>(
@@ -266,7 +273,7 @@ export default function RCColumnResults() {
           </div>
           <div>
             <h1 className="text-xl font-semibold text-text flex items-center gap-3">
-              Columna {result.Cx}×{result.Cy} cm
+              Columna
               {savedName ? (
                 <span className="text-sm font-normal text-text-muted bg-surface-alt border border-border px-2.5 py-0.5 rounded-full">
                   {savedName}
@@ -401,7 +408,7 @@ export default function RCColumnResults() {
           <StepperInput
             label="Esquinas"
             value={nEsquinas}
-            onChange={setNEsquinas}
+            onChange={(v) => updateArmado(setNEsquinas, v)}
             min={4}
             max={8}
             step={2}
@@ -409,14 +416,14 @@ export default function RCColumnResults() {
           <StepperInput
             label="Caras X"
             value={nCarasX}
-            onChange={setNCarasX}
+            onChange={(v) => updateArmado(setNCarasX, v)}
             min={0}
             max={6}
           />
           <StepperInput
             label="Caras Y"
             value={nCarasY}
-            onChange={setNCarasY}
+            onChange={(v) => updateArmado(setNCarasY, v)}
             min={0}
             max={6}
           />
@@ -426,7 +433,7 @@ export default function RCColumnResults() {
             </span>
             <select
               value={dbEsquinas}
-              onChange={(e) => setDbEsquinas(Number(e.target.value))}
+              onChange={(e) => updateArmado(setDbEsquinas, Number(e.target.value))}
               className="text-sm font-semibold"
             >
               {DB_OPTIONS.map((d) => (
@@ -442,7 +449,7 @@ export default function RCColumnResults() {
             </span>
             <select
               value={dbCarasX}
-              onChange={(e) => setDbCarasX(Number(e.target.value))}
+              onChange={(e) => updateArmado(setDbCarasX, Number(e.target.value))}
               className="text-sm font-semibold"
             >
               {DB_OPTIONS.map((d) => (
@@ -458,7 +465,7 @@ export default function RCColumnResults() {
             </span>
             <select
               value={dbCarasY}
-              onChange={(e) => setDbCarasY(Number(e.target.value))}
+              onChange={(e) => updateArmado(setDbCarasY, Number(e.target.value))}
               className="text-sm font-semibold"
             >
               {DB_OPTIONS.map((d) => (
