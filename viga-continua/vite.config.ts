@@ -6,7 +6,15 @@ import path from "node:path";
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  server: { host: true, port: 5175, allowedHosts: true },
+  server: {
+    host: true,
+    port: 5175,
+    allowedHosts: true,
+    proxy: {
+      "/api": "http://127.0.0.1:5176",
+      "/health": "http://127.0.0.1:5176",
+    },
+  },
   resolve: {
     alias: {
       "@mascalculador/shared": path.resolve(__dirname, "shared/src"),

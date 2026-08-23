@@ -7,3 +7,9 @@ node_modules/
 # Build output
 dist/
 
+# Database runtime (SQLite persistido por server/index.js)
+viga-continua/data/
+
+# Secrets (SMTP, etc.)
+viga-continua/.env
+
