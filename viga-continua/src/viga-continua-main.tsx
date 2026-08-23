@@ -2,12 +2,15 @@
 import { StrictMode, Component, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
+import { flushCloudStorage, installCloudStorage } from "./lib/cloud-storage.ts";
 import {
   createBrowserRouter,
   RouterProvider,
   Link,
   Outlet,
 } from "react-router";
+import AuthScreen from "./screens/AuthScreen.tsx";
+import AdminScreen from "./screens/AdminScreen.tsx";
 import VigaContinuaForm from "./screens/VigaContinuaForm.tsx";
 import VigaContinuaResults from "./screens/VigaContinuaResults.tsx";
 import PrintPage from "./screens/PrintPage.tsx";
@@ -70,13 +73,36 @@ class ErrorBoundary extends Component<
   }
 }
 
-function NavBar() {
+function NavBar({
+  username,
+  admin,
+  onLogout,
+}: {
+  username: string;
+  admin: boolean;
+  onLogout: () => void;
+}) {
   return (
     <div className="min-h-screen bg-bg text-text">
-      <header className="sticky top-0 z-50 bg-surface border-b border-border px-4 py-2 flex gap-4">
+      <header className="sticky top-0 z-50 bg-surface border-b border-border px-4 py-2 flex gap-4 items-center">
         <Link to="/" className="text-sm text-text-muted hover:text-text">
           Viga Continua
         </Link>
+        {admin && (
+          <Link to="/admin" className="text-sm text-text-muted hover:text-text">
+            Admin
+          </Link>
+        )}
+        <div className="ml-auto flex items-center gap-3">
+          <span className="text-xs text-text-muted">{username}</span>
+          <button
+            type="button"
+            onClick={onLogout}
+            className="text-xs text-text-muted hover:text-danger"
+          >
+            Salir
+          </button>
+        </div>
       </header>
       <main className="px-4 py-4">
         <Outlet />
@@ -85,22 +111,77 @@ function NavBar() {
   );
 }
 
-const router = createBrowserRouter([
-  { path: "/viga-continua-print", Component: PrintPage },
-  {
-    Component: NavBar,
-    children: [
-      { path: "/", Component: VigaContinuaForm },
-      { path: "/viga-continua", Component: VigaContinuaForm },
-      { path: "/viga-continua-results", Component: VigaContinuaResults },
-    ],
-  },
-]);
+function buildRouter(username: string, admin: boolean, onLogout: () => void) {
+  return createBrowserRouter([
+    { path: "/viga-continua-print", Component: PrintPage },
+    {
+      Component: () => (
+        <NavBar username={username} admin={admin} onLogout={onLogout} />
+      ),
+      children: [
+        { path: "/", Component: VigaContinuaForm },
+        { path: "/viga-continua", Component: VigaContinuaForm },
+        { path: "/viga-continua-results", Component: VigaContinuaResults },
+        ...(admin ? [{ path: "/admin", Component: AdminScreen }] : []),
+      ],
+    },
+  ]);
+}
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <ErrorBoundary>
-      <RouterProvider router={router} />
-    </ErrorBoundary>
-  </StrictMode>,
-);
+type Session = { username: string; admin: boolean } | null;
+
+async function fetchSession(): Promise<Session> {
+  try {
+    const me = await fetch("/api/auth/me");
+    if (me.ok) {
+      const data = (await me.json()) as { username: string; admin?: boolean };
+      return { username: data.username, admin: Boolean(data.admin) };
+    }
+  } catch {
+    // Server inalcanzable: sin sesión confirmada, queda la pantalla de login.
+  }
+  return null;
+}
+
+async function main() {
+  const root = createRoot(document.getElementById("root")!);
+  const session = await fetchSession();
+  if (session) await installCloudStorage();
+
+  function render(s: Session) {
+    root.render(
+      <StrictMode>
+        <ErrorBoundary>
+          {s ? (
+            <RouterProvider
+              router={buildRouter(s.username, s.admin, () => {
+                void handleLogout(render);
+              })}
+            />
+          ) : (
+            <AuthScreen
+              onAuthenticated={async () => {
+                await installCloudStorage();
+                render(await fetchSession());
+              }}
+            />
+          )}
+        </ErrorBoundary>
+      </StrictMode>,
+    );
+  }
+
+  async function handleLogout(doRender: typeof render) {
+    try {
+      await flushCloudStorage();
+      await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    } catch {
+      // Igual volvemos a la pantalla de login.
+    }
+    doRender(null);
+  }
+
+  render(session);
+}
+
+main();
