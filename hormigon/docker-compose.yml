@@ -9,12 +9,6 @@ services:
     # Volumen persistente: SQLite (storage.db + WAL) sobrevive redeploys.
     volumes:
       - hormigon-data:/app/data
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
 
 volumes:
   hormigon-data:
