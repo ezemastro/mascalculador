@@ -1,9 +1,16 @@
 # Build del proyecto independiente (viga-continua | hormigon | acero).
 # En Coolify: Build Pack = Dockerfile, Base Directory = la carpeta del proyecto.
 # node:22-slim (Debian) por los binarios precompilados de better-sqlite3.
+# El toolchain (python3/make/g++) compila better-sqlite3 cuando el binario
+# precargado no matchea la plataforma (ej. ARM) — el runtime solo copia los
+# módulos YA instalados, nunca vuelve a instalar.
 FROM node:22-slim AS build
 
 WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
@@ -16,9 +23,9 @@ FROM node:22-slim
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --no-audit --no-fund
+ENV NODE_ENV=production
 
+COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY server ./server
 
