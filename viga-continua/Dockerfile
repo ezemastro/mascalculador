@@ -1,4 +1,4 @@
-# Build del proyecto independiente (viga-continua | hormigon | acero).
+# Build del proyecto independiente (redeploy con SMTP envs) (viga-continua | hormigon | acero).
 # En Coolify: Build Pack = Dockerfile, Base Directory = la carpeta del proyecto.
 # node:22-slim (Debian) por los binarios precompilados de better-sqlite3.
 # El toolchain (python3/make/g++) compila better-sqlite3 cuando el binario
