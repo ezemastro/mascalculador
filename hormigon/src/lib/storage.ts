@@ -14,6 +14,8 @@ export type {
   SlabLastFormState,
   SavedSlabData,
   SavedCompatData,
+  SavedSupportData,
+  CompatReinf,
   EdgeIndex,
   SlabInput,
   SlabResult,
@@ -45,6 +47,11 @@ export const deleteSlab = shared.deleteSlab;
 export const saveCompat = shared.saveCompat;
 export const getSavedCompats = shared.getSavedCompats;
 export const deleteCompat = shared.deleteCompat;
+export const getSavedSupports = shared.getSavedSupports;
+export const saveSupport = shared.saveSupport;
+export const deleteSupport = shared.deleteSupport;
+export const getCompatReinf = shared.getCompatReinf;
+export const saveCompatReinf = shared.saveCompatReinf;
 
 export function listSaves(): shared.SavedBeam[] {
   return shared.listSaves("concrete");

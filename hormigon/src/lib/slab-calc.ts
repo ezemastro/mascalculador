@@ -116,6 +116,19 @@ export interface CompatResult {
   message: string;
 }
 
+// =====================================================================
+// TABLAS DE KALMANOK — Manual de Placas (A.S. Kalmanok), Tablas 12-17.
+// Doble entrada: las filas se recorren con r = lx/ly.
+//   - r <= 1  -> seccion SUPERIOR de la tabla impresa (lx = luz corta).
+//   - r > 1   -> seccion INFERIOR (lx = luz larga: ly < lx). Se entra
+//     "por debajo" de la tabla, como se indica en el manual.
+// En ambas mitades las columnas se leen por direccion:
+//   CMx/CMy = coeficiente de M en las fajas que salvan X/Y (M = C*qu*lShort²),
+//   CMex/CMey = momento negativo en el borde continuo, CR = reacciones.
+// NOTA: los coeficientes respetan la edicion del manual en uso (Tablas 12-17);
+// la fila inferior (r > 1) coincide con la seccion inferior impresa, que en
+// esa edicion NO es espejo exacto de la superior (verificarlo al rotar placa).
+// =====================================================================
 // Kalmanok coefficients for rectangular slabs — 4 edges simply supported
 // Lx/Ly = shorter / longer span ratio (≤ 1.0)
 // CMx, CMy = moment coefficients for M = C · qu · lx²
@@ -2250,16 +2263,16 @@ export function designSlab(input: SlabInput): SlabResult {
         `   A_s = (0.85·f'_c·b·K_a·d)/f_y = (0.85·${fc}·${bw}·${r.Ka.toFixed(4)}·${dEff})/${fy} = ${r.AsRaw!.toFixed(1)} mm²/m`,
       );
     }
-    st.push(
-      `   A_s,temp = 0.0018·b·h = 0.0018·${bw}·${h} = ${r.AsTemp} mm²/m`,
-    );
+    st.push(`   A_s,temp = 0.0018·b·h = 0.0018·${bw}·${h} = ${r.AsTemp} mm²/m`);
     st.push(
       `   ${asLabel} = máx(A_s, A_s,mín, A_s,temp) = máx(${r.AsRaw!.toFixed(1)}, ${r.AsMin}, ${r.AsTemp}) = ${r.AsReq} mm²/m`,
     );
   }
 
   st.push(`Losa: lx = ${lx} m, ly = ${ly} m`);
-  st.push(`Relación l_menor/l_mayor = ${(Math.min(lx, ly) / Math.max(lx, ly)).toFixed(3)}`);
+  st.push(
+    `Relación l_menor/l_mayor (criterio losa cruzada) = ${(Math.min(lx, ly) / Math.max(lx, ly)).toFixed(3)}`,
+  );
 
   // Step 1: Slab type — crossed requires 4 non-free edges AND ratio > 0.5
   const minLuz = Math.min(lx, ly);
@@ -2324,7 +2337,7 @@ export function designSlab(input: SlabInput): SlabResult {
   st.push("");
 
   // Step 4: Moments
-  const r = Math.min(lx, ly) / Math.max(lx, ly);
+  const r = lx / ly;
   const lShort = Math.min(lx, ly);
 
   let Mx = 0,
@@ -2453,104 +2466,88 @@ export function designSlab(input: SlabInput): SlabResult {
 
     if (hasOneFixedX) {
       const coef = interpolateKalmanok1Fixed(r);
-      const Mshorter = coef.CMx * qu * lShort * lShort;
-      const Mlonger = coef.CMy * qu * lShort * lShort;
-      Mx = lx <= ly ? Mshorter : Mlonger;
-      My = lx <= ly ? Mlonger : Mshorter;
+      Mx = coef.CMx * qu * lShort * lShort;
+      My = coef.CMy * qu * lShort * lShort;
       MnegX = coef.CMex * qu * lShort * lShort;
       tableLabel = "1 borde continuo en X, 3 articulados";
       st.push(`4. Momentos (Kalmanok, ${tableLabel}):`);
       st.push(
-        `   l_menor/l_mayor = ${r.toFixed(3)} → CMex = ${coef.CMex.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
+        `   entrada r = lx/ly = ${r.toFixed(3)} (sección ${r > 1 ? "INFERIOR" : "SUPERIOR"}) → CMex = ${coef.CMex.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
       );
     } else if (hasOneFixedY) {
       const coef = interpolateKalmanok1FixedY(r);
-      const Mshorter = coef.CMx * qu * lShort * lShort;
-      const Mlonger = coef.CMy * qu * lShort * lShort;
-      Mx = lx <= ly ? Mshorter : Mlonger;
-      My = lx <= ly ? Mlonger : Mshorter;
+      Mx = coef.CMx * qu * lShort * lShort;
+      My = coef.CMy * qu * lShort * lShort;
       MnegY = coef.CMey * qu * lShort * lShort;
       tableLabel = "1 borde continuo en Y, 3 articulados";
       st.push(`4. Momentos (Kalmanok, ${tableLabel}):`);
       st.push(
-        `   l_menor/l_mayor = ${r.toFixed(3)} → CMey = ${coef.CMey.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
+        `   entrada r = lx/ly = ${r.toFixed(3)} (sección ${r > 1 ? "INFERIOR" : "SUPERIOR"}) → CMey = ${coef.CMey.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
       );
     } else if (hasTwoFixedX) {
       const coef = interpolateKalmanok2FixedX(r);
-      const Mshorter = coef.CMx * qu * lShort * lShort;
-      const Mlonger = coef.CMy * qu * lShort * lShort;
-      Mx = lx <= ly ? Mshorter : Mlonger;
-      My = lx <= ly ? Mlonger : Mshorter;
+      Mx = coef.CMx * qu * lShort * lShort;
+      My = coef.CMy * qu * lShort * lShort;
       MnegX = coef.CMex * qu * lShort * lShort;
       tableLabel = "2 bordes continuos en X, 2 articulados en Y";
       st.push(`4. Momentos (Kalmanok, ${tableLabel}):`);
       st.push(
-        `   l_menor/l_mayor = ${r.toFixed(3)} → CMex = ${coef.CMex.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
+        `   entrada r = lx/ly = ${r.toFixed(3)} (sección ${r > 1 ? "INFERIOR" : "SUPERIOR"}) → CMex = ${coef.CMex.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
       );
     } else if (hasTwoAdj) {
       const coef = interpolateKalmanok2Adj(r);
-      const Mshorter = coef.CMx * qu * lShort * lShort;
-      const Mlonger = coef.CMy * qu * lShort * lShort;
-      Mx = lx <= ly ? Mshorter : Mlonger;
-      My = lx <= ly ? Mlonger : Mshorter;
+      Mx = coef.CMx * qu * lShort * lShort;
+      My = coef.CMy * qu * lShort * lShort;
       MnegX = coef.CMex * qu * lShort * lShort;
       MnegY = coef.CMey * qu * lShort * lShort;
       tableLabel = "2 bordes adyacentes continuos";
       st.push(`4. Momentos (Kalmanok, ${tableLabel}):`);
       st.push(
-        `   l_menor/l_mayor = ${r.toFixed(3)} → CMex = ${coef.CMex.toFixed(4)}, CMey = ${coef.CMey.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
+        `   entrada r = lx/ly = ${r.toFixed(3)} (sección ${r > 1 ? "INFERIOR" : "SUPERIOR"}) → CMex = ${coef.CMex.toFixed(4)}, CMey = ${coef.CMey.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
       );
     } else if (hasTwoFixedY) {
       const coef = interpolateKalmanok2FixedY(r);
-      const Mshorter = coef.CMx * qu * lShort * lShort;
-      const Mlonger = coef.CMy * qu * lShort * lShort;
-      Mx = lx <= ly ? Mshorter : Mlonger;
-      My = lx <= ly ? Mlonger : Mshorter;
+      Mx = coef.CMx * qu * lShort * lShort;
+      My = coef.CMy * qu * lShort * lShort;
       MnegY = coef.CMey * qu * lShort * lShort;
       tableLabel = "2 bordes continuos en Y, 2 articulados en X";
       st.push(`4. Momentos (Kalmanok, ${tableLabel}):`);
       st.push(
-        `   l_menor/l_mayor = ${r.toFixed(3)} → CMey = ${coef.CMey.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
+        `   entrada r = lx/ly = ${r.toFixed(3)} (sección ${r > 1 ? "INFERIOR" : "SUPERIOR"}) → CMey = ${coef.CMey.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
       );
     } else if (hasThreeFixed) {
       const isYsimple = !isY0Fixed || !isYLFixed;
       const coef = isYsimple
         ? interpolateKalmanok3FixedY(r)
         : interpolateKalmanok3Fixed(r);
-      const Mshorter = coef.CMx * qu * lShort * lShort;
-      const Mlonger = coef.CMy * qu * lShort * lShort;
-      Mx = lx <= ly ? Mshorter : Mlonger;
-      My = lx <= ly ? Mlonger : Mshorter;
+      Mx = coef.CMx * qu * lShort * lShort;
+      My = coef.CMy * qu * lShort * lShort;
       MnegX = coef.CMex * qu * lShort * lShort;
       MnegY = coef.CMey * qu * lShort * lShort;
       tableLabel = "3 bordes continuos";
       st.push(`4. Momentos (Kalmanok, ${tableLabel}):`);
       st.push(
-        `   l_menor/l_mayor = ${r.toFixed(3)} → CMex = ${coef.CMex.toFixed(4)}, CMey = ${coef.CMey.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
+        `   entrada r = lx/ly = ${r.toFixed(3)} (sección ${r > 1 ? "INFERIOR" : "SUPERIOR"}) → CMex = ${coef.CMex.toFixed(4)}, CMey = ${coef.CMey.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
       );
     } else if (hasFourFixed) {
       const coef = interpolateKalmanok4Fixed(r);
-      const Mshorter = coef.CMx * qu * lShort * lShort;
-      const Mlonger = coef.CMy * qu * lShort * lShort;
-      Mx = lx <= ly ? Mshorter : Mlonger;
-      My = lx <= ly ? Mlonger : Mshorter;
+      Mx = coef.CMx * qu * lShort * lShort;
+      My = coef.CMy * qu * lShort * lShort;
       MnegX = coef.CMex * qu * lShort * lShort;
       MnegY = coef.CMey * qu * lShort * lShort;
       tableLabel = "4 bordes continuos";
       st.push(`4. Momentos (Kalmanok, ${tableLabel}):`);
       st.push(
-        `   l_menor/l_mayor = ${r.toFixed(3)} → CMex = ${coef.CMex.toFixed(4)}, CMey = ${coef.CMey.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
+        `   entrada r = lx/ly = ${r.toFixed(3)} (sección ${r > 1 ? "INFERIOR" : "SUPERIOR"}) → CMex = ${coef.CMex.toFixed(4)}, CMey = ${coef.CMey.toFixed(4)}, CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
       );
     } else {
       const coef = interpolateKalmanokSimple(r);
-      const Mshorter = coef.CMx * qu * lShort * lShort;
-      const Mlonger = coef.CMy * qu * lShort * lShort;
-      Mx = lx <= ly ? Mshorter : Mlonger;
-      My = lx <= ly ? Mlonger : Mshorter;
+      Mx = coef.CMx * qu * lShort * lShort;
+      My = coef.CMy * qu * lShort * lShort;
       tableLabel = "4 bordes articulados";
       st.push(`4. Momentos (Kalmanok, ${tableLabel}):`);
       st.push(
-        `   l_menor/l_mayor = ${r.toFixed(3)} → CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
+        `   entrada r = lx/ly = ${r.toFixed(3)} (sección ${r > 1 ? "INFERIOR" : "SUPERIOR"}) → CMx = ${coef.CMx.toFixed(4)}, CMy = ${coef.CMy.toFixed(4)}`,
       );
     }
 
@@ -2733,12 +2730,8 @@ export function designSlab(input: SlabInput): SlabResult {
     st.push(
       `   0.2·A_s principal = 0.2·${principal.AsReq} = ${Math.round(0.2 * principal.AsReq)} mm²/m`,
     );
-    st.push(
-      `   A_s = máx(A_s,temp, 0.2·A_s principal) = ${dist.AsReq} mm²/m`,
-    );
-    st.push(
-      `   s_máx = min(3·h, 300) = min(${3 * h}, 300) = ${dist.sMax} mm`,
-    );
+    st.push(`   A_s = máx(A_s,temp, 0.2·A_s principal) = ${dist.AsReq} mm²/m`);
+    st.push(`   s_máx = min(3·h, 300) = min(${3 * h}, 300) = ${dist.sMax} mm`);
     st.push("");
   }
 

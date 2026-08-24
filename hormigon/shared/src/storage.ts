@@ -35,6 +35,8 @@ const LAST_BASES_FORM_KEY = "last_bases_form";
 const LAST_RC_COLUMN_FORM_KEY = "last_rc_column_form";
 const LAST_SLAB_FORM_KEY = "last_slab_form";
 const COMPAT_KEY = "saved-compats";
+const SUPPORT_KEY = "saved-supports";
+const COMPAT_REINF_KEY = "compat-reinf";
 
 // ---- Tipos genericos ----
 
@@ -534,5 +536,91 @@ export function deleteCompat(name: string): void {
   localStorage.setItem(
     key("concrete", COMPAT_KEY),
     JSON.stringify(saved.filter((c) => c.name !== name)),
+  );
+  removeCompatReinf(name);
+}
+
+// ---- Especificas de hormigon (apoyo individual) ----
+
+export interface SavedSupportData {
+  name: string;
+  savedAt: string;
+  slabId: string;
+  slabName: string;
+  edge: EdgeIndex;
+  diam: number;
+  sep: number;
+}
+
+export function getSavedSupports(): SavedSupportData[] {
+  return JSON.parse(localStorage.getItem(key("concrete", SUPPORT_KEY)) || "[]");
+}
+
+/** Guarda (o actualiza si ya existe con el mismo nombre) un diseño de apoyo. */
+export function saveSupport(data: Omit<SavedSupportData, "savedAt">): void {
+  const saved = getSavedSupports();
+  const entry: SavedSupportData = {
+    ...data,
+    savedAt: new Date().toISOString(),
+  };
+  const existing = saved.find((s) => s.name === data.name);
+  if (existing) {
+    Object.assign(existing, entry);
+  } else {
+    saved.push(entry);
+  }
+  localStorage.setItem(key("concrete", SUPPORT_KEY), JSON.stringify(saved));
+}
+
+export function deleteSupport(name: string): void {
+  localStorage.setItem(
+    key("concrete", SUPPORT_KEY),
+    JSON.stringify(getSavedSupports().filter((s) => s.name !== name)),
+  );
+}
+
+// ---- Especificas de hormigon (armadura elegida por compatibilizacion) ----
+
+export interface CompatReinf {
+  compatName: string;
+  diam: number;
+  sep: number;
+}
+
+export function getCompatReinf(compatName: string): CompatReinf | null {
+  const saved: CompatReinf[] = JSON.parse(
+    localStorage.getItem(key("concrete", COMPAT_REINF_KEY)) || "[]",
+  );
+  return saved.find((r) => r.compatName === compatName) ?? null;
+}
+
+export function saveCompatReinf(
+  compatName: string,
+  diam: number,
+  sep: number,
+): void {
+  const saved: CompatReinf[] = JSON.parse(
+    localStorage.getItem(key("concrete", COMPAT_REINF_KEY)) || "[]",
+  );
+  const existing = saved.find((r) => r.compatName === compatName);
+  if (existing) {
+    existing.diam = diam;
+    existing.sep = sep;
+  } else {
+    saved.push({ compatName, diam, sep });
+  }
+  localStorage.setItem(
+    key("concrete", COMPAT_REINF_KEY),
+    JSON.stringify(saved),
+  );
+}
+
+export function removeCompatReinf(compatName: string): void {
+  const saved: CompatReinf[] = JSON.parse(
+    localStorage.getItem(key("concrete", COMPAT_REINF_KEY)) || "[]",
+  );
+  localStorage.setItem(
+    key("concrete", COMPAT_REINF_KEY),
+    JSON.stringify(saved.filter((r) => r.compatName !== compatName)),
   );
 }
