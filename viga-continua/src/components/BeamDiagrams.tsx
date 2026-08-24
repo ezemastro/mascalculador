@@ -32,13 +32,18 @@ export default function BeamDiagrams({
   supportTypes,
   envelope,
   selected = ["corte", "momento"],
+  printMode = false,
 }: {
   spans: number[];
   supportTypes: VigaContinuaState["supportTypes"];
   envelope: BeamEnvelopeResult;
   selected?: string[];
+  printMode?: boolean;
 }) {
   const L = spans.reduce((a, b) => a + b, 0);
+  const shearColor = printMode ? "#000000" : "#f87171";
+  const momentColor = printMode ? "#000000" : "#b45309";
+  const axisColor = printMode ? "#111827" : "#6b7280";
   const positions = [0];
   for (const span of spans)
     positions.push(positions[positions.length - 1] + span);
@@ -98,9 +103,17 @@ export default function BeamDiagrams({
               preserveAspectRatio={false}
             >
               <Coordinates.Cartesian xAxis={{ lines: 4 }} yAxis={false} />
-              <Plot.OfX y={() => 0} domain={[xMin, xMax]} color="#6b7280" />
-              <Plot.OfX y={envelope.shearPos} domain={[0, L]} color="#f87171" />
-              <Plot.OfX y={envelope.shearNeg} domain={[0, L]} color="#f87171" />
+              <Plot.OfX y={() => 0} domain={[xMin, xMax]} color={axisColor} />
+              <Plot.OfX
+                y={envelope.shearPos}
+                domain={[0, L]}
+                color={shearColor}
+              />
+              <Plot.OfX
+                y={envelope.shearNeg}
+                domain={[0, L]}
+                color={shearColor}
+              />
               {supports
                 .filter((s) => s.type !== "free")
                 .map((s) => (
@@ -111,7 +124,7 @@ export default function BeamDiagrams({
                       maxShear * 0.09,
                       L * 0.02,
                     )}
-                    color="#6b7280"
+                    color={axisColor}
                     fillOpacity={1}
                     strokeOpacity={0}
                   />
@@ -125,7 +138,7 @@ export default function BeamDiagrams({
                       y={s.right + maxShear * 0.07}
                       attach={`n${attach(s.x)}`}
                       size={16}
-                      color="#f87171"
+                      color={shearColor}
                     >
                       V⁺ = {s.right.toFixed(1)}
                     </Text>
@@ -140,7 +153,7 @@ export default function BeamDiagrams({
                       y={s.left - maxShear * 0.07}
                       attach={`s${attach(s.x)}`}
                       size={16}
-                      color="#f87171"
+                      color={shearColor}
                     >
                       V⁻ = {s.left.toFixed(1)}
                     </Text>
@@ -165,16 +178,16 @@ export default function BeamDiagrams({
               preserveAspectRatio={false}
             >
               <Coordinates.Cartesian xAxis={{ lines: 4 }} yAxis={false} />
-              <Plot.OfX y={() => 0} domain={[xMin, xMax]} color="#6b7280" />
+              <Plot.OfX y={() => 0} domain={[xMin, xMax]} color={axisColor} />
               <Plot.OfX
                 y={(x) => -envelope.momentPos(x)}
                 domain={[0, L]}
-                color="#b45309"
+                color={momentColor}
               />
               <Plot.OfX
                 y={envelope.momentNeg}
                 domain={[0, L]}
-                color="#b45309"
+                color={momentColor}
               />
               {supports
                 .filter((s) => s.type !== "free")
@@ -186,7 +199,7 @@ export default function BeamDiagrams({
                       maxMoment * 0.09,
                       L * 0.02,
                     )}
-                    color="#6b7280"
+                    color={axisColor}
                     fillOpacity={1}
                     strokeOpacity={0}
                   />
@@ -198,7 +211,7 @@ export default function BeamDiagrams({
                   y={-m.v - maxMoment * 0.07}
                   attach={`s${attach(m.x)}`}
                   size={16}
-                  color="#b45309"
+                  color={momentColor}
                 >
                   M⁺{spans.length > 1 ? ` tramo ${i + 1}` : ""} ={" "}
                   {m.v.toFixed(1)}
@@ -211,7 +224,7 @@ export default function BeamDiagrams({
                   y={m.v + maxMoment * 0.07}
                   attach={`n${attach(m.x)}`}
                   size={16}
-                  color="#b45309"
+                  color={momentColor}
                 >
                   M⁻ = {m.v.toFixed(1)}
                 </Text>

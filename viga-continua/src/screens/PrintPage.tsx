@@ -168,6 +168,7 @@ function BeamPrint({
             supportTypes={data.state.supportTypes}
             envelope={solved}
             selected={data.graphics}
+            printMode
           />
         </section>
       )}

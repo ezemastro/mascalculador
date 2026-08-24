@@ -485,8 +485,14 @@ export default function PorticoDiagram({
 }: PorticoDiagramProps) {
   const barColor = printMode ? "#000000" : COLOR_BAR;
   const supportHatchColor = printMode ? "#111827" : "#f8fafc";
-  // Dark amber for print: light yellows wash out on paper.
-  const momentColor = printMode ? "#b45309" : COLOR_M;
+  const momentColor = printMode ? "#000000" : COLOR_M;
+  const deformColor = printMode ? "#000000" : COLOR_DEFORM;
+  const nTensionColor = printMode ? "#000000" : COLOR_N_TENSION;
+  const nCompressionColor = printMode ? "#000000" : COLOR_N_COMPRESSION;
+  const vColor = printMode ? "#000000" : COLOR_V;
+  const supportColor = printMode ? "#111827" : COLOR_SUPPORT;
+  const loadColor = printMode ? "#000000" : COLOR_LOAD;
+  const axisColor = printMode ? "#111827" : "#94a3b8";
   // viewBox fit-to-bbox (memoized to avoid recompute per render)
   const fitViewBox = useMemo(
     () => computeFitViewBox(porticoState),
@@ -551,8 +557,8 @@ export default function PorticoDiagram({
       <Coordinates.Cartesian xAxis={{ lines: 4 }} yAxis={{ lines: 4 }} />
 
       {/* Ejes X y Y baseline */}
-      <Plot.OfX y={() => 0} domain={[xLo, xHi]} color="#94a3b8" />
-      <Plot.OfY x={() => 0} domain={[yLo, yHi]} color="#94a3b8" />
+      <Plot.OfX y={() => 0} domain={[xLo, xHi]} color={axisColor} />
+      <Plot.OfY x={() => 0} domain={[yLo, yHi]} color={axisColor} />
 
       {/* Barras indeformadas (siempre) */}
       {porticoState.bars.map((b) => {
@@ -586,7 +592,7 @@ export default function PorticoDiagram({
                 [a.x + disA.u * deformScale, -(a.y + disA.v * deformScale)],
                 [c.x + disC.u * deformScale, -(c.y + disC.v * deformScale)],
               ]}
-              color={COLOR_DEFORM}
+              color={deformColor}
               fillOpacity={0}
               strokeOpacity={0.7}
             />
@@ -690,7 +696,7 @@ export default function PorticoDiagram({
                   -(seg.y0 + t * (seg.y1 - seg.y0)),
                 ]}
                 domain={[0, 1]}
-                color={seg.tension ? COLOR_N_TENSION : COLOR_N_COMPRESSION}
+                color={seg.tension ? nTensionColor : nCompressionColor}
                 weight={2.5}
               />
               <PerpendicularTick
@@ -698,14 +704,14 @@ export default function PorticoDiagram({
                 baseY={seg.baseY0}
                 tipX={seg.x0}
                 tipY={seg.y0}
-                color={seg.tension ? COLOR_N_TENSION : COLOR_N_COMPRESSION}
+                color={seg.tension ? nTensionColor : nCompressionColor}
               />
               <PerpendicularTick
                 baseX={seg.baseX1}
                 baseY={seg.baseY1}
                 tipX={seg.x1}
                 tipY={seg.y1}
-                color={seg.tension ? COLOR_N_TENSION : COLOR_N_COMPRESSION}
+                color={seg.tension ? nTensionColor : nCompressionColor}
               />
             </Fragment>
           ))}
@@ -721,21 +727,21 @@ export default function PorticoDiagram({
                   x={extremes.min.x}
                   y={extremes.min.y}
                   value={extremes.min.value}
-                  color={COLOR_N_TENSION}
+                  color={nTensionColor}
                 />,
                 <DiagramValueLabel
                   key={`n-max-${barId}`}
                   x={extremes.max.x}
                   y={extremes.max.y}
                   value={extremes.max.value}
-                  color={COLOR_N_TENSION}
+                  color={nTensionColor}
                 />,
                 <DiagramValueLabel
                   key={`n-abs-${barId}`}
                   x={extremes.abs.x}
                   y={extremes.abs.y}
                   value={Math.abs(extremes.abs.value)}
-                  color={COLOR_N_TENSION}
+                  color={nTensionColor}
                 />,
               ];
             },
@@ -764,7 +770,7 @@ export default function PorticoDiagram({
                   [wx1, wy1],
                   [wx2, wy2],
                 ]}
-                color={a.tension ? COLOR_N_TENSION : COLOR_N_COMPRESSION}
+                color={a.tension ? nTensionColor : nCompressionColor}
                 fillOpacity={1}
               />
             );
@@ -781,7 +787,7 @@ export default function PorticoDiagram({
                 -(seg.y0 + t * (seg.y1 - seg.y0)),
               ]}
               domain={[0, 1]}
-              color={COLOR_V}
+              color={vColor}
               weight={2.5}
             />
             <PerpendicularTick
@@ -789,14 +795,14 @@ export default function PorticoDiagram({
               baseY={seg.baseY0}
               tipX={seg.x0}
               tipY={seg.y0}
-              color={COLOR_V}
+              color={vColor}
             />
             <PerpendicularTick
               baseX={seg.baseX1}
               baseY={seg.baseY1}
               tipX={seg.x1}
               tipY={seg.y1}
-              color={COLOR_V}
+              color={vColor}
             />
           </Fragment>
         ))}
@@ -813,21 +819,21 @@ export default function PorticoDiagram({
                 x={extremes.min.x}
                 y={extremes.min.y}
                 value={extremes.min.value}
-                color={COLOR_V}
+                color={vColor}
               />,
               <DiagramValueLabel
                 key={`v-max-${barId}`}
                 x={extremes.max.x}
                 y={extremes.max.y}
                 value={extremes.max.value}
-                color={COLOR_V}
+                color={vColor}
               />,
               <DiagramValueLabel
                 key={`v-abs-${barId}`}
                 x={extremes.abs.x}
                 y={extremes.abs.y}
                 value={Math.abs(extremes.abs.value)}
-                color={COLOR_V}
+                color={vColor}
               />,
             ];
           },
@@ -843,7 +849,7 @@ export default function PorticoDiagram({
             <Fragment key={`sup-${sup.id}`}>
               <Polygon
                 points={fixedSupportBlock(n.x, cy)}
-                color={COLOR_SUPPORT}
+                color={supportColor}
                 fillOpacity={0.9}
                 strokeOpacity={1}
               />
@@ -869,7 +875,7 @@ export default function PorticoDiagram({
           <Polygon
             key={`sup-${sup.id}`}
             points={hingeTriangle(n.x, cy)}
-            color={COLOR_SUPPORT}
+            color={supportColor}
             fillOpacity={0.9}
             strokeOpacity={1}
           />
@@ -924,7 +930,7 @@ export default function PorticoDiagram({
               <Polygon
                 key={`load-band-${l.id}`}
                 points={[p0, p1, q1, q0]}
-                color={COLOR_LOAD}
+                color={loadColor}
                 fillOpacity={0.18}
                 strokeOpacity={1}
                 weight={2}
@@ -941,7 +947,7 @@ export default function PorticoDiagram({
                     <Plot.Parametric
                       xy={(t) => [bx + t * (tx - bx), by + t * (ty - by)]}
                       domain={[0, 1]}
-                      color={COLOR_LOAD}
+                      color={loadColor}
                       weight={2}
                     />
                     <Polygon
@@ -956,7 +962,7 @@ export default function PorticoDiagram({
                           by - forceY * head - uy * head,
                         ],
                       ]}
-                      color={COLOR_LOAD}
+                      color={loadColor}
                       fillOpacity={1}
                     />
                   </Fragment>
@@ -967,7 +973,7 @@ export default function PorticoDiagram({
                 x={(q0[0] + q1[0]) / 2}
                 y={(q0[1] + q1[1]) / 2}
                 size={14}
-                color={COLOR_LOAD}
+                color={loadColor}
                 attach="n"
               >
                 {`${Math.round(l.D)}D+${Math.round(l.L)}L`}
@@ -990,7 +996,7 @@ export default function PorticoDiagram({
               <Plot.Parametric
                 xy={(t) => [tailX + t * (x - tailX), tailY + t * (y - tailY)]}
                 domain={[0, 1]}
-                color={COLOR_LOAD}
+                color={loadColor}
                 weight={2}
               />
               <Polygon
@@ -1005,14 +1011,14 @@ export default function PorticoDiagram({
                     y - fy * head - fx * headWidth,
                   ],
                 ]}
-                color={COLOR_LOAD}
+                color={loadColor}
                 fillOpacity={1}
               />
               <Text
                 x={tailX - fx * len * 0.2}
                 y={tailY - fy * len * 0.2}
                 size={14}
-                color={COLOR_LOAD}
+                color={loadColor}
                 attach="e"
               >
                 {`${Math.round(l.D)}D+${Math.round(l.L)}L`}
