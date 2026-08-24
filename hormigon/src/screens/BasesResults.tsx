@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useLocation, useNavigate, Link } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
+import { PrintButton } from "@mascalculador/shared";
 import { designBase } from "../lib/bases-calc";
 import type { BaseInput } from "../lib/bases-calc";
 import { saveBeam, updateSave } from "../lib/storage";
@@ -199,6 +200,7 @@ export default function BasesResults() {
           </div>
         </div>
         <div className="flex gap-1.5">
+          <PrintButton />
           <button
             type="button"
             onClick={handleSave}
@@ -223,6 +225,63 @@ export default function BasesResults() {
           </button>
         </div>
       </header>
+
+      {/* ─── Datos de entrada ─── */}
+      <section className="bg-surface rounded-xl border border-border p-5">
+        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
+          Datos
+        </h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          <DataCard
+            label="Cargas P<sub>D</sub> / P<sub>L</sub>"
+            value={`${fmt(input.PD, 1)} / ${fmt(input.PL, 1)}`}
+            sub="kN"
+          />
+          <DataCard
+            label="Tensión admisible suelo (q<sub>a</sub>)"
+            value={`${fmt(input.qa, 4)}`}
+            sub="kN/cm²"
+          />
+          <DataCard
+            label="Profundidad (D<sub>f</sub>)"
+            value={`${fmt(input.Df, 1)}`}
+            sub="cm"
+          />
+          <DataCard
+            label="Columna cx × cy"
+            value={`${fmt(input.cx, 1)} × ${fmt(input.cy, 1)}`}
+            sub="cm"
+          />
+          <DataCard
+            label="f'<sub>c</sub> / f<sub>y</sub>"
+            value={`${input.fc} / ${input.fy}`}
+            sub="MPa"
+          />
+          <DataCard
+            label="Recubrimiento"
+            value={`${fmt(input.cover ?? 5, 1)}`}
+            sub="cm"
+          />
+          <DataCard
+            label="Diámetro barra"
+            value={`${input.rebD ?? 12}`}
+            sub="mm"
+          />
+          {isMedianera && (
+            <DataCard
+              label={
+                isViga ? "Luz col. (L<sub>col</sub>)" : "Altura tensor (H)"
+              }
+              value={
+                isViga
+                  ? `${fmt(input.Lcol ?? 0, 1)}`
+                  : `${fmt(input.H ?? 0, 1)}`
+              }
+              sub="cm"
+            />
+          )}
+        </div>
+      </section>
 
       {/* ─── Resumen ─── */}
       <section className="bg-surface rounded-xl border border-border p-5">
@@ -490,7 +549,7 @@ export default function BasesResults() {
       )}
 
       {/* ─── Ver cuentas ─── */}
-      <section className="bg-surface rounded-xl border border-border p-5">
+      <section className="no-print bg-surface rounded-xl border border-border p-5">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
             Ver cuentas

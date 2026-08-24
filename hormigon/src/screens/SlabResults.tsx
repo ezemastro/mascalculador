@@ -2,13 +2,16 @@ import { useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import { SlabPlan } from "@mascalculador/shared";
-import { designSlab, unidirectionalDirection, validateSlabSupports, type DirectionResult } from "../lib/slab-calc";
+import { PrintButton } from "@mascalculador/shared";
+import {
+  designSlab,
+  unidirectionalDirection,
+  validateSlabSupports,
+  type DirectionResult,
+} from "../lib/slab-calc";
 import { hasSlabDL, slabReactionToBeamLoad } from "../lib/slab-to-beam";
 import type { SlabEdge } from "../lib/slab-to-beam";
-import {
-  saveSlab,
-  updateSlab,
-} from "../lib/storage";
+import { saveSlab, updateSlab } from "../lib/storage";
 import type { SlabInput } from "../lib/slab-calc";
 import type { SlabState } from "./SlabForm";
 
@@ -260,12 +263,7 @@ export default function SlabResults() {
     loadedSaveName,
   } = s;
 
-  const supportError = validateSlabSupports([
-    edgeX0,
-    edgeXL,
-    edgeY0,
-    edgeYL,
-  ]);
+  const supportError = validateSlabSupports([edgeX0, edgeXL, edgeY0, edgeYL]);
   if (supportError) {
     return (
       <MainLayout>
@@ -390,11 +388,12 @@ export default function SlabResults() {
           </h1>
           <p className="text-sm text-text-muted">
             h = {(result.h / 10).toFixed(1)} cm &middot; d ={" "}
-            {(result.d / 10).toFixed(1)} cm &middot; qu ={" "}
-            {result.qu.toFixed(2)} kN/m²
+            {(result.d / 10).toFixed(1)} cm &middot; qu = {result.qu.toFixed(2)}{" "}
+            kN/m²
           </p>
         </div>
         <div className="flex gap-1.5">
+          <PrintButton />
           <button
             type="button"
             onClick={() => {
@@ -454,6 +453,62 @@ export default function SlabResults() {
           </button>
         </div>
       </header>
+
+      <section className="bg-surface rounded-xl border border-border p-5">
+        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
+          Datos
+        </h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-sm">
+          <div>
+            <span className="text-xs text-text-muted">Lx (m)</span>
+            <p className="font-semibold">{lx}</p>
+          </div>
+          <div>
+            <span className="text-xs text-text-muted">Ly (m)</span>
+            <p className="font-semibold">{ly}</p>
+          </div>
+          <div>
+            <span className="text-xs text-text-muted">Bordes</span>
+            <p className="font-semibold">
+              {[
+                [edgeX0, "Izq"],
+                [edgeXL, "Der"],
+                [edgeY0, "Arr"],
+                [edgeYL, "Aba"],
+              ]
+                .map(
+                  ([e, s]) =>
+                    `${s}: ${
+                      e === "continuo"
+                        ? "Cont."
+                        : e === "simple"
+                          ? "Art."
+                          : "Libre"
+                    }`,
+                )
+                .join(" · ")}
+            </p>
+          </div>
+          <div>
+            <span className="text-xs text-text-muted">D / L (kN/m²)</span>
+            <p className="font-semibold">
+              {D} / {L}
+            </p>
+          </div>
+          <div>
+            <span className="text-xs text-text-muted">f'c / fy (MPa)</span>
+            <p className="font-semibold">
+              {fc} / {fy}
+            </p>
+          </div>
+          <div>
+            <span className="text-xs text-text-muted">Rec. / h (cm)</span>
+            <p className="font-semibold">
+              {cover / 10} / {(result.h / 10).toFixed(1)}
+            </p>
+          </div>
+        </div>
+      </section>
 
       <SlabPlan
         lx={lx}

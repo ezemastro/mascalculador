@@ -8,3 +8,4 @@ export * from "./useDecimalField";
 export { default as MainLayout } from "./MainLayout";
 export { default as SavedBeams } from "./SavedBeams";
 export { default as SlabPlan } from "./SlabPlan";
+export { default as PrintButton } from "./PrintButton";

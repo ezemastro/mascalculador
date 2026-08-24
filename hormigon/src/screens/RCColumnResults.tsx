@@ -1,7 +1,12 @@
 import { useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
-import { designRCColumn, computeManualAst, proposeArmado } from "../lib/rc-column-calc";
+import { PrintButton } from "@mascalculador/shared";
+import {
+  designRCColumn,
+  computeManualAst,
+  proposeArmado,
+} from "../lib/rc-column-calc";
 import type { RCColumnState } from "./RCColumnForm";
 import { ArmadoLayoutSVG } from "./RCColumnForm";
 import { saveBeam, updateSave } from "../lib/storage";
@@ -37,7 +42,9 @@ function StepperInput({
         </button>
         <span className="text-sm font-semibold text-text w-10 text-center tabular-nums">
           {value}
-          {unit && <span className="text-xs text-text-muted ml-0.5">{unit}</span>}
+          {unit && (
+            <span className="text-xs text-text-muted ml-0.5">{unit}</span>
+          )}
         </span>
         <button
           type="button"
@@ -156,7 +163,15 @@ export default function RCColumnResults() {
 
   // ─── Recompute on user changes ───
   const armaduraManual = useMemo(
-    () => computeManualAst(nEsquinas, nCarasX, nCarasY, dbEsquinas, dbCarasX, dbCarasY),
+    () =>
+      computeManualAst(
+        nEsquinas,
+        nCarasX,
+        nCarasY,
+        dbEsquinas,
+        dbCarasX,
+        dbCarasY,
+      ),
     [nEsquinas, nCarasX, nCarasY, dbEsquinas, dbCarasX, dbCarasY],
   );
 
@@ -285,11 +300,13 @@ export default function RCColumnResults() {
               )}
             </h1>
             <p className="text-sm text-text-muted">
-              f'<sub>c</sub> = {fc} MPa &middot; f<sub>y</sub> = {fy} MPa &middot; l<sub>u</sub> = {lu} m
+              f'<sub>c</sub> = {fc} MPa &middot; f<sub>y</sub> = {fy} MPa
+              &middot; l<sub>u</sub> = {lu} m
             </p>
           </div>
         </div>
         <div className="flex gap-1.5">
+          <PrintButton />
           <button
             type="button"
             onClick={handleSaveFromResults}
@@ -314,6 +331,57 @@ export default function RCColumnResults() {
           </button>
         </div>
       </header>
+
+      {/* Datos de entrada */}
+      <section className="bg-surface rounded-xl border border-border p-5">
+        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
+          Datos
+        </h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-sm">
+          <div>
+            <span className="text-xs text-text-muted">
+              Cargas P<sub>D</sub> / P<sub>L</sub> (kN)
+            </span>
+            <p className="font-semibold">
+              {PD} / {PL}
+            </p>
+          </div>
+          <div>
+            <span className="text-xs text-text-muted">
+              l<sub>u</sub> (m)
+            </span>
+            <p className="font-semibold">{lu}</p>
+          </div>
+          <div>
+            <span className="text-xs text-text-muted">
+              Momentos X sup/inf (kN·m)
+            </span>
+            <p className="font-semibold">
+              {MxSup} / {MxInf}
+            </p>
+          </div>
+          <div>
+            <span className="text-xs text-text-muted">
+              Momentos Y sup/inf (kN·m)
+            </span>
+            <p className="font-semibold">
+              {MySup} / {MyInf}
+            </p>
+          </div>
+          <div>
+            <span className="text-xs text-text-muted">Sección Cx×Cy (cm)</span>
+            <p className="font-semibold">
+              {Cx}×{Cy}
+            </p>
+          </div>
+          <div>
+            <span className="text-xs text-text-muted">
+              β<sub>d</sub>
+            </span>
+            <p className="font-semibold">{betaD}</p>
+          </div>
+        </div>
+      </section>
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -433,7 +501,9 @@ export default function RCColumnResults() {
             </span>
             <select
               value={dbEsquinas}
-              onChange={(e) => updateArmado(setDbEsquinas, Number(e.target.value))}
+              onChange={(e) =>
+                updateArmado(setDbEsquinas, Number(e.target.value))
+              }
               className="text-sm font-semibold"
             >
               {DB_OPTIONS.map((d) => (
@@ -449,7 +519,9 @@ export default function RCColumnResults() {
             </span>
             <select
               value={dbCarasX}
-              onChange={(e) => updateArmado(setDbCarasX, Number(e.target.value))}
+              onChange={(e) =>
+                updateArmado(setDbCarasX, Number(e.target.value))
+              }
               className="text-sm font-semibold"
             >
               {DB_OPTIONS.map((d) => (
@@ -465,7 +537,9 @@ export default function RCColumnResults() {
             </span>
             <select
               value={dbCarasY}
-              onChange={(e) => updateArmado(setDbCarasY, Number(e.target.value))}
+              onChange={(e) =>
+                updateArmado(setDbCarasY, Number(e.target.value))
+              }
               className="text-sm font-semibold"
             >
               {DB_OPTIONS.map((d) => (
@@ -482,9 +556,18 @@ export default function RCColumnResults() {
           className={`p-4 rounded-lg mb-4 text-center ${astVerifica ? "bg-success/5 border border-success/20" : "bg-danger/5 border border-danger/20"}`}
         >
           <div className="text-xs text-text-muted space-y-0.5 mb-2">
-            <p>Esquinas: {nEsquinas} Ø{dbEsquinas} = {armaduraManual.astEsquinas.toFixed(2)} cm²</p>
-            <p>Caras X: 2 × {nCarasX} Ø{dbCarasX} = {armaduraManual.astCarasX.toFixed(2)} cm²</p>
-            <p>Caras Y: 2 × {nCarasY} Ø{dbCarasY} = {armaduraManual.astCarasY.toFixed(2)} cm²</p>
+            <p>
+              Esquinas: {nEsquinas} Ø{dbEsquinas} ={" "}
+              {armaduraManual.astEsquinas.toFixed(2)} cm²
+            </p>
+            <p>
+              Caras X: 2 × {nCarasX} Ø{dbCarasX} ={" "}
+              {armaduraManual.astCarasX.toFixed(2)} cm²
+            </p>
+            <p>
+              Caras Y: 2 × {nCarasY} Ø{dbCarasY} ={" "}
+              {armaduraManual.astCarasY.toFixed(2)} cm²
+            </p>
           </div>
           <p
             className={`text-2xl font-bold mt-1 ${astVerifica ? "text-primary" : "text-danger"}`}
@@ -494,14 +577,16 @@ export default function RCColumnResults() {
               ({armaduraManual.totalBars} barras)
             </span>
           </p>
-          <span className={`text-sm font-semibold ${astVerifica ? "text-success" : "text-danger"}`}>
+          <span
+            className={`text-sm font-semibold ${astVerifica ? "text-success" : "text-danger"}`}
+          >
             {astVerifica
               ? `✓ Ast provisto ≥ Ast necesario (${astNeeded.toFixed(2)} cm²)`
               : `⚠ NO VERIFICA — se necesitan ${astNeeded.toFixed(2)} cm²`}
           </span>
           <p className="text-xs text-text-muted mt-1">
-            {nEsquinas} esquinas + {2 * nCarasX} caras X + {2 * nCarasY} caras
-            Y = {armaduraManual.totalBars} barras
+            {nEsquinas} esquinas + {2 * nCarasX} caras X + {2 * nCarasY} caras Y
+            = {armaduraManual.totalBars} barras
           </p>
         </div>
 
@@ -544,7 +629,9 @@ export default function RCColumnResults() {
                   : "bg-surface-alt border border-border text-text-muted cursor-not-allowed"
               }`}
             >
-              {astVerifica ? "Confirmar armado" : "Ajustar armado para confirmar"}
+              {astVerifica
+                ? "Confirmar armado"
+                : "Ajustar armado para confirmar"}
             </button>
           </div>
         ) : (
@@ -604,13 +691,17 @@ export default function RCColumnResults() {
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-7 gap-3">
           <div className="bg-surface-alt rounded-lg p-3">
-            <span className="text-xs text-text-muted">M<sub>1u</sub></span>
+            <span className="text-xs text-text-muted">
+              M<sub>1u</sub>
+            </span>
             <p className="text-lg font-bold text-primary">
               {result.dirX.M1u.toFixed(1)} kN·m
             </p>
           </div>
           <div className="bg-surface-alt rounded-lg p-3">
-            <span className="text-xs text-text-muted">M<sub>2u</sub></span>
+            <span className="text-xs text-text-muted">
+              M<sub>2u</sub>
+            </span>
             <p className="text-lg font-bold text-primary">
               {result.dirX.M2u.toFixed(1)} kN·m
             </p>
@@ -633,7 +724,9 @@ export default function RCColumnResults() {
             </p>
           </div>
           <div className="bg-surface-alt rounded-lg p-3">
-            <span className="text-xs text-text-muted">M<sub>u</sub></span>
+            <span className="text-xs text-text-muted">
+              M<sub>u</sub>
+            </span>
             <p className="text-lg font-bold text-primary">
               {result.dirX.Mu.toFixed(1)} kN·m
             </p>
@@ -643,14 +736,18 @@ export default function RCColumnResults() {
             <p className="text-base font-bold text-primary">
               {result.dirX.n_raw.toFixed(1)} kN/cm²
             </p>
-            <span className="text-xs text-text-muted">sin f'<sub>c</sub></span>
+            <span className="text-xs text-text-muted">
+              sin f'<sub>c</sub>
+            </span>
           </div>
           <div className="bg-surface-alt rounded-lg p-3">
             <span className="text-xs text-text-muted">μ*</span>
             <p className="text-base font-bold text-primary">
               {result.dirX.m_raw.toFixed(1)} kN·m/cm²
             </p>
-            <span className="text-xs text-text-muted">sin f'<sub>c</sub></span>
+            <span className="text-xs text-text-muted">
+              sin f'<sub>c</sub>
+            </span>
           </div>
         </div>
       </section>
@@ -674,13 +771,17 @@ export default function RCColumnResults() {
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-7 gap-3">
           <div className="bg-surface-alt rounded-lg p-3">
-            <span className="text-xs text-text-muted">M<sub>1u</sub></span>
+            <span className="text-xs text-text-muted">
+              M<sub>1u</sub>
+            </span>
             <p className="text-lg font-bold text-primary">
               {result.dirY.M1u.toFixed(1)} kN·m
             </p>
           </div>
           <div className="bg-surface-alt rounded-lg p-3">
-            <span className="text-xs text-text-muted">M<sub>2u</sub></span>
+            <span className="text-xs text-text-muted">
+              M<sub>2u</sub>
+            </span>
             <p className="text-lg font-bold text-primary">
               {result.dirY.M2u.toFixed(1)} kN·m
             </p>
@@ -703,7 +804,9 @@ export default function RCColumnResults() {
             </p>
           </div>
           <div className="bg-surface-alt rounded-lg p-3">
-            <span className="text-xs text-text-muted">M<sub>u</sub></span>
+            <span className="text-xs text-text-muted">
+              M<sub>u</sub>
+            </span>
             <p className="text-lg font-bold text-primary">
               {result.dirY.Mu.toFixed(1)} kN·m
             </p>
@@ -713,14 +816,18 @@ export default function RCColumnResults() {
             <p className="text-base font-bold text-primary">
               {result.dirY.n_raw.toFixed(1)} kN/cm²
             </p>
-            <span className="text-xs text-text-muted">sin f'<sub>c</sub></span>
+            <span className="text-xs text-text-muted">
+              sin f'<sub>c</sub>
+            </span>
           </div>
           <div className="bg-surface-alt rounded-lg p-3">
             <span className="text-xs text-text-muted">μ*</span>
             <p className="text-base font-bold text-primary">
               {result.dirY.m_raw.toFixed(1)} kN·m/cm²
             </p>
-            <span className="text-xs text-text-muted">sin f'<sub>c</sub></span>
+            <span className="text-xs text-text-muted">
+              sin f'<sub>c</sub>
+            </span>
           </div>
         </div>
       </section>
@@ -736,25 +843,33 @@ export default function RCColumnResults() {
               </h2>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="bg-surface-alt rounded-lg p-3">
-                  <span className="text-xs text-text-muted">M<sub>min</sub></span>
+                  <span className="text-xs text-text-muted">
+                    M<sub>min</sub>
+                  </span>
                   <p className="text-lg font-bold text-primary">
                     {result.dirX.Mmin?.toFixed(1)} kN·m
                   </p>
                 </div>
                 <div className="bg-surface-alt rounded-lg p-3">
-                  <span className="text-xs text-text-muted">P<sub>c</sub></span>
+                  <span className="text-xs text-text-muted">
+                    P<sub>c</sub>
+                  </span>
                   <p className="text-lg font-bold text-primary">
                     {result.dirX.Pc?.toFixed(1)} kN
                   </p>
                 </div>
                 <div className="bg-surface-alt rounded-lg p-3">
-                  <span className="text-xs text-text-muted">δ<sub>s</sub></span>
+                  <span className="text-xs text-text-muted">
+                    δ<sub>s</sub>
+                  </span>
                   <p className="text-lg font-bold text-primary">
                     {result.dirX.deltaS?.toFixed(3)}
                   </p>
                 </div>
                 <div className="bg-surface-alt rounded-lg p-3">
-                  <span className="text-xs text-text-muted">M<sub>c</sub></span>
+                  <span className="text-xs text-text-muted">
+                    M<sub>c</sub>
+                  </span>
                   <p className="text-lg font-bold text-primary">
                     {result.dirX.Mc?.toFixed(1)} kN·m
                   </p>
@@ -769,25 +884,33 @@ export default function RCColumnResults() {
               </h2>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="bg-surface-alt rounded-lg p-3">
-                  <span className="text-xs text-text-muted">M<sub>min</sub></span>
+                  <span className="text-xs text-text-muted">
+                    M<sub>min</sub>
+                  </span>
                   <p className="text-lg font-bold text-primary">
                     {result.dirY.Mmin?.toFixed(1)} kN·m
                   </p>
                 </div>
                 <div className="bg-surface-alt rounded-lg p-3">
-                  <span className="text-xs text-text-muted">P<sub>c</sub></span>
+                  <span className="text-xs text-text-muted">
+                    P<sub>c</sub>
+                  </span>
                   <p className="text-lg font-bold text-primary">
                     {result.dirY.Pc?.toFixed(1)} kN
                   </p>
                 </div>
                 <div className="bg-surface-alt rounded-lg p-3">
-                  <span className="text-xs text-text-muted">δ<sub>s</sub></span>
+                  <span className="text-xs text-text-muted">
+                    δ<sub>s</sub>
+                  </span>
                   <p className="text-lg font-bold text-primary">
                     {result.dirY.deltaS?.toFixed(3)}
                   </p>
                 </div>
                 <div className="bg-surface-alt rounded-lg p-3">
-                  <span className="text-xs text-text-muted">M<sub>c</sub></span>
+                  <span className="text-xs text-text-muted">
+                    M<sub>c</sub>
+                  </span>
                   <p className="text-lg font-bold text-primary">
                     {result.dirY.Mc?.toFixed(1)} kN·m
                   </p>
@@ -799,7 +922,7 @@ export default function RCColumnResults() {
       )}
 
       {/* Detailed steps */}
-      <section className="bg-surface rounded-xl border border-border p-5">
+      <section className="no-print bg-surface rounded-xl border border-border p-5">
         <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
           Cuentas completas
         </h2>

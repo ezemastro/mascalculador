@@ -82,7 +82,7 @@ function NavBar({
   onLogout: () => void;
 }) {
   return (
-    <div className="fixed top-0 left-0 right-0 z-50 bg-surface border-b border-border px-4 py-2 flex gap-4 items-center">
+    <div className="no-print fixed top-0 left-0 right-0 z-50 bg-surface border-b border-border px-4 py-2 flex gap-4 items-center">
       <Link to="/slab" className="text-sm text-text-muted hover:text-text">
         Losas
       </Link>

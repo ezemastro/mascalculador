@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { Coordinates, Mafs, Plot, Polygon, Text } from "mafs";
 import { MainLayout } from "@mascalculador/shared";
+import { PrintButton } from "@mascalculador/shared";
 import { formatForce } from "@mascalculador/shared";
 import { designConcreteDetailed } from "../lib/concrete-design";
 import { saveBeam, updateSave } from "../lib/storage";
@@ -437,6 +438,7 @@ export default function ConcreteResults() {
           </p>
         </div>
         <div className="flex gap-1.5">
+          <PrintButton />
           <button
             type="button"
             onClick={() => {
@@ -507,6 +509,72 @@ export default function ConcreteResults() {
           </button>
         </div>
       </header>
+
+      {/* Datos de entrada */}
+      <section className="bg-surface rounded-xl border border-border p-5">
+        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
+          Datos
+        </h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-sm">
+          <div>
+            <span className="text-xs text-text-muted">Tramos (m)</span>
+            <p className="font-semibold">{spans.join(" + ")}</p>
+          </div>
+          <div>
+            <span className="text-xs text-text-muted">Apoyos</span>
+            <p className="font-semibold">
+              {supportTypes
+                .map((t) =>
+                  t === "simple" ? "Art." : t === "fixed" ? "Emp." : "Libre",
+                )
+                .join(" · ")}
+            </p>
+          </div>
+          <div>
+            <span className="text-xs text-text-muted">Sección (cm)</span>
+            <p className="font-semibold">
+              {bw / 10}×{h / 10}
+            </p>
+          </div>
+          <div>
+            <span className="text-xs text-text-muted">f'c / fy (MPa)</span>
+            <p className="font-semibold">
+              {fc} / {fy}
+            </p>
+          </div>
+          <div>
+            <span className="text-xs text-text-muted">Recubrimiento (cm)</span>
+            <p className="font-semibold">{cover / 10}</p>
+          </div>
+          <div>
+            <span className="text-xs text-text-muted">Peso propio</span>
+            <p className="font-semibold">
+              {includeSelfWeight ? "Incluido" : "No incluido"}
+            </p>
+          </div>
+        </div>
+        <div className="mt-3 pt-3 border-t border-border space-y-1">
+          {concreteLoads.length === 0 && (
+            <p className="text-sm text-text-muted">
+              Sin cargas aplicadas — solo peso propio.
+            </p>
+          )}
+          {concreteLoads.map((cl, i) => (
+            <p key={i} className="text-sm">
+              <span className="text-text-muted">
+                {cl.type === "point"
+                  ? `Puntual @ ${cl.position}m`
+                  : `Distribuida ${cl.start}m → ${cl.end}m`}
+                :
+              </span>{" "}
+              <strong>
+                D = {cl.D} / L = {cl.L} kN
+                {cl.type === "distributed" ? "/m" : ""}
+              </strong>
+            </p>
+          ))}
+        </div>
+      </section>
 
       {/* Anchos de apoyo */}
       <section className="bg-surface rounded-xl border border-border p-5">

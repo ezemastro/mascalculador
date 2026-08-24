@@ -91,3 +91,49 @@ button:focus-visible {
     background-color: #f9fafb;
   }
 }
+
+@media print {
+  :root {
+    color-scheme: light;
+    --color-surface: #ffffff;
+    --color-surface-alt: #f5f6f8;
+    --color-border: #c8ccd4;
+    --color-primary: #1d4ed8;
+    --color-primary-hover: #1e40af;
+    --color-danger: #b91c1c;
+    --color-danger-hover: #dc2626;
+    --color-text: #111827;
+    --color-text-muted: #4b5563;
+    --color-success: #15803d;
+    --color-warning: #b45309;
+  }
+
+  body {
+    background: #ffffff !important;
+  }
+
+  /* Elementos que no van al papel: navegación, botones de acción y cuentas */
+  .no-print {
+    display: none !important;
+  }
+
+  button {
+    display: none !important;
+  }
+
+  details,
+  pre {
+    display: none !important;
+  }
+
+  /* La hoja entra en el ancho del papel */
+  .max-w-7xl {
+    max-width: 100% !important;
+  }
+
+  h1,
+  h2,
+  h3 {
+    break-after: avoid;
+  }
+}
