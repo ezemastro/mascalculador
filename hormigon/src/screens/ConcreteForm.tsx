@@ -363,12 +363,21 @@ export default function ConcreteForm() {
         </div>
         <div>
           <h1 className="text-xl font-semibold text-text">
-            Viga de Hormigón Armado
+            Dimensionado de Vigas
           </h1>
-          <p className="text-sm text-text-muted">
-            {loadedSaveName ? `Editando: ${loadedSaveName}` : "CIRSOC 201-05"}
-          </p>
+          {loadedSaveName ? (
+            <span className="inline-flex items-center mt-1 text-sm font-semibold text-primary bg-primary/10 border border-primary/30 px-2.5 py-0.5 rounded-full">
+              {/^\d+$/.test(loadedSaveName)
+                ? `Viga Nº ${loadedSaveName}`
+                : loadedSaveName}
+            </span>
+          ) : (
+            <span className="inline-flex items-center mt-1 text-sm font-semibold text-warning bg-warning/10 border border-warning/30 px-2.5 py-0.5 rounded-full">
+              Sin guardar
+            </span>
+          )}
         </div>
+        <span className="ml-auto text-xs text-text-muted">CIRSOC 201-05</span>
       </header>
 
       <SavedBeams
@@ -928,7 +937,7 @@ export default function ConcreteForm() {
             onClick={handleSave}
             className="bg-surface-alt border border-border text-text-muted font-semibold px-6 py-3 rounded-lg hover:bg-surface transition-colors"
           >
-            {loadedSaveId ? "Guardar corrección" : "Guardar"}
+            Guardar
           </button>
         </div>
       </form>

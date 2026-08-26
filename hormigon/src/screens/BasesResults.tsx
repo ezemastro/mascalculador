@@ -4,7 +4,9 @@ import { MainLayout } from "@mascalculador/shared";
 import { PrintButton } from "@mascalculador/shared";
 import { designBase } from "../lib/bases-calc";
 import type { BaseInput } from "../lib/bases-calc";
-import { saveBeam, updateSave } from "../lib/storage";
+import { saveBeam, updateSave, getSavedBeams } from "../lib/storage";
+import { buildBasesSheet } from "../lib/print-planilla";
+import PrintDialog from "../components/PrintDialog";
 
 // ---------------------------------------------------------------------------
 // Location state contract (set by BasesForm on submit)
@@ -54,9 +56,108 @@ function DataCard({
   );
 }
 
-/** Format a number for display: 1 decimal for forces/lengths, up to 4 for small values */
+/** Format a number for display */
 function fmt(n: number, decimals = 2): string {
   return n.toFixed(decimals);
+}
+
+function aBar(diamMm: number): number {
+  return (Math.PI * (diamMm / 10) ** 2) / 4; // cm²
+}
+
+/** Adopción de armadura: As nec + Ø + cantidad → As prov, separación vs máx. */
+function SteelEditor({
+  dir,
+  asNec,
+  spread,
+  cover,
+  diam,
+  qty,
+  onDiam,
+  onQty,
+}: {
+  dir: "X" | "Y";
+  asNec: number;
+  spread: number;
+  cover: number;
+  diam: number;
+  qty: number;
+  onDiam: (d: number) => void;
+  onQty: (q: number) => void;
+}) {
+  const asProv = qty * aBar(diam);
+  const sep = qty > 1 ? (spread - 2 * cover) / (qty - 1) : Infinity;
+  const sepMax = Math.min(25 * (diam / 10), 30);
+  const okCantidad = asProv >= asNec;
+  const okSep = sep <= sepMax;
+
+  return (
+    <div className="bg-surface-alt rounded-lg p-4 flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-semibold text-text">
+          As<sub>{dir}</sub> nec
+        </span>
+        <span className="text-lg font-bold text-primary">
+          {fmt(asNec, 2)}{" "}
+          <span className="text-xs font-normal text-text-muted">cm²</span>
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-text-muted">Ø (mm)</span>
+          <select
+            value={diam}
+            onChange={(e) => onDiam(Number(e.target.value))}
+          >
+            {[8, 10, 12, 16, 20, 25].map((d) => (
+              <option key={d} value={d}>
+                Ø{d}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-text-muted">Cantidad</span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => onQty(Math.max(1, qty - 1))}
+              className="w-8 h-8 rounded-lg bg-surface border border-border hover:bg-surface-alt text-text font-bold"
+            >
+              −
+            </button>
+            <input
+              type="number"
+              min={1}
+              value={qty}
+              onChange={(e) =>
+                onQty(Math.max(1, Number(e.target.value) || 1))
+              }
+              className="w-14 text-center"
+            />
+            <button
+              type="button"
+              onClick={() => onQty(qty + 1)}
+              className="w-8 h-8 rounded-lg bg-surface border border-border hover:bg-surface-alt text-text font-bold"
+            >
+              +
+            </button>
+          </div>
+        </label>
+      </div>
+      <div className="text-xs text-text-muted flex flex-col gap-1">
+        <span>
+          As prov = {qty} Ø{diam} = {fmt(asProv, 2)} cm²{" "}
+          <Badge ok={okCantidad} />
+        </span>
+        <span>
+          Separación s<sub>{dir.toLowerCase()}</sub> ={" "}
+          {qty > 1 ? fmt(sep, 1) : "—"} cm ≤ máx {fmt(sepMax, 1)} cm{" "}
+          <Badge ok={okSep} />
+        </span>
+      </div>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -67,6 +168,7 @@ export default function BasesResults() {
   const location = useLocation();
   const navigate = useNavigate();
   const [showSteps, setShowSteps] = useState(false);
+  const [showTensorForm, setShowTensorForm] = useState(false);
 
   const locState = location.state as LocationState | null;
   const input = locState?.input;
@@ -79,18 +181,49 @@ export default function BasesResults() {
     locState?.loadedSaveName ?? null,
   );
 
+  // Armadura adoptada (losas, dirección X e Y)
+  const [diamX, setDiamX] = useState(12);
+  const [qtyX, setQtyX] = useState(8);
+  const [diamY, setDiamY] = useState(12);
+  const [qtyY, setQtyY] = useState(8);
+
+  // Datos del tensor (se completan acá si se eligió tensor)
+  const [tensorH, setTensorH] = useState<number | undefined>(
+    input?.H ?? undefined,
+  );
+  const [tensorHx, setTensorHx] = useState<number | undefined>(
+    input?.Hx ?? undefined,
+  );
+  const [tensorHy, setTensorHy] = useState<number | undefined>(
+    input?.Hy ?? undefined,
+  );
+  const [tensorMu, setTensorMu] = useState<number | undefined>(
+    input?.mu ?? undefined,
+  );
+
   // ─── Compute result (must be before any early return — rules of hooks) ───
+  const fullInput = useMemo<BaseInput | null>(() => {
+    if (!input) return null;
+    return {
+      ...input,
+      H: tensorH,
+      Hx: tensorHx,
+      Hy: tensorHy,
+      mu: tensorMu,
+    };
+  }, [input, tensorH, tensorHx, tensorHy, tensorMu]);
+
   const { result, calcError } = useMemo(() => {
-    if (!input) return { result: null, calcError: null };
+    if (!fullInput) return { result: null, calcError: null };
     try {
-      return { result: designBase(input), calcError: null };
+      return { result: designBase(fullInput), calcError: null };
     } catch (e: unknown) {
       return {
         result: null,
         calcError: e instanceof Error ? e.message : String(e),
       };
     }
-  }, [input]);
+  }, [fullInput]);
 
   // ─── No data guard ───
   if (!input) {
@@ -132,14 +265,38 @@ export default function BasesResults() {
     );
   }
 
-  const isCentrada = input.type === "centrada";
-  const isMedianera = input.type === "medianera";
+  const isCentrada = input.type === "centrada" || input.type === "esquina";
+  const isEsquina = input.type === "esquina";
+  const isMedianera =
+    input.type === "medianera" ||
+    input.type === "medianera-x" ||
+    input.type === "medianera-y";
   const isViga = isMedianera && input.subType === "viga-de-fundacion";
-  const isTensor = isMedianera && input.subType === "tensor";
+  const isTensor =
+    input.subType === "tensor" && (isMedianera || isEsquina);
+  const tensorPending = result.tensorPending;
+
+  const typeLabel =
+    input.type === "medianera-x"
+      ? "Medianera X"
+      : input.type === "medianera-y"
+        ? "Medianera Y"
+        : input.type === "esquina"
+          ? "Esquina"
+          : isCentrada
+            ? "Centrada"
+            : "Medianera";
+
+  // As nec reales (máx entre flexión y mínima)
+  const asxNec = Math.max(result.Asx, result.AsMin);
+  const asyNec = Math.max(result.Asy, result.AsMin);
+  const cover = input.cover ?? 7;
+
+  const [printOpen, setPrintOpen] = useState(false);
 
   // ─── Save handler ───
   function handleSave() {
-    const data = { input, result } as Record<string, unknown>;
+    const data = { input: fullInput, result } as Record<string, unknown>;
     // Si venimos de una base guardada, actualizamos la misma (mismo id/nombre)
     if (savedId) {
       updateSave(savedId, data);
@@ -178,8 +335,8 @@ export default function BasesResults() {
           </div>
           <div>
             <h1 className="text-xl font-semibold text-text flex items-center gap-3">
-              Base {isCentrada ? "Centrada" : "Medianera"} {result.B}×{result.L}
-              ×{result.h} cm
+              Base {typeLabel} — L<sub>x</sub> {result.Lx} × L<sub>y</sub>{" "}
+              {result.Ly} × {result.h} cm
               {savedName ? (
                 <span className="text-sm font-normal text-text-muted bg-surface-alt border border-border px-2.5 py-0.5 rounded-full">
                   {savedName}
@@ -191,16 +348,15 @@ export default function BasesResults() {
               )}
             </h1>
             <p className="text-sm text-text-muted">
-              {isCentrada
-                ? `f'c = ${input.fc} MPa · fy = ${input.fy} MPa`
-                : isViga
-                  ? `Viga de fundación · Lcol = ${input.Lcol} cm`
-                  : `Tensor · H = ${input.H} cm`}
+              {`f'c = ${input.fc} MPa · fy = ${input.fy} MPa · σadm = ${input.qa} kN/m²`}
+              {isViga &&
+                ` · Viga de fundación (Lcol${isMedianera && input.type === "medianera-x" ? ` = ${input.Lcol} cm` : ` = ${input.Lcol ?? "—"} cm`})`}
+              {isTensor && (tensorPending ? " · Tensor: completar datos ↓" : " · Tensor")}
             </p>
           </div>
         </div>
         <div className="flex gap-1.5">
-          <PrintButton />
+          <PrintButton onClick={() => setPrintOpen(true)} />
           <button
             type="button"
             onClick={handleSave}
@@ -213,7 +369,7 @@ export default function BasesResults() {
             onClick={() =>
               navigate("/bases", {
                 state: {
-                  ...input,
+                  ...(fullInput as unknown as Record<string, unknown>),
                   loadedSaveId: savedId,
                   loadedSaveName: savedName,
                 },
@@ -226,80 +382,12 @@ export default function BasesResults() {
         </div>
       </header>
 
-      {/* ─── Datos de entrada ─── */}
-      <section className="bg-surface rounded-xl border border-border p-5">
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-          Datos
-        </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          <DataCard
-            label="Cargas P<sub>D</sub> / P<sub>L</sub>"
-            value={`${fmt(input.PD, 1)} / ${fmt(input.PL, 1)}`}
-            sub="kN"
-          />
-          <DataCard
-            label="Tensión admisible suelo (q<sub>a</sub>)"
-            value={`${fmt(input.qa, 4)}`}
-            sub="kN/cm²"
-          />
-          <DataCard
-            label="Profundidad (D<sub>f</sub>)"
-            value={`${fmt(input.Df, 1)}`}
-            sub="cm"
-          />
-          <DataCard
-            label="Columna cx × cy"
-            value={`${fmt(input.cx, 1)} × ${fmt(input.cy, 1)}`}
-            sub="cm"
-          />
-          <DataCard
-            label="f'<sub>c</sub> / f<sub>y</sub>"
-            value={`${input.fc} / ${input.fy}`}
-            sub="MPa"
-          />
-          <DataCard
-            label="Recubrimiento"
-            value={`${fmt(input.cover ?? 5, 1)}`}
-            sub="cm"
-          />
-          <DataCard
-            label="Diámetro barra"
-            value={`${input.rebD ?? 12}`}
-            sub="mm"
-          />
-          {isMedianera && (
-            <DataCard
-              label={
-                isViga ? "Luz col. (L<sub>col</sub>)" : "Altura tensor (H)"
-              }
-              value={
-                isViga
-                  ? `${fmt(input.Lcol ?? 0, 1)}`
-                  : `${fmt(input.H ?? 0, 1)}`
-              }
-              sub="cm"
-            />
-          )}
-        </div>
-      </section>
-
-      {/* ─── Resumen ─── */}
+      {/* ─── Resumen (datos + resultados) ─── */}
       <section className="bg-surface rounded-xl border border-border p-5">
         <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
           Resumen
         </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          <DataCard
-            label="Base (B &times; L)"
-            value={`${result.B} × ${result.L}`}
-            sub="cm"
-          />
-          <DataCard label="Altura (h)" value={`${fmt(result.h, 1)}`} sub="cm" />
-          <DataCard
-            label="Altura útil (d)"
-            value={`${fmt(result.d, 1)}`}
-            sub="cm"
-          />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <DataCard
             label="P<sub>u</sub>"
             value={`${fmt(result.Pu, 1)}`}
@@ -320,41 +408,49 @@ export default function BasesResults() {
             value={`${fmt(result.ky, 1)}`}
             sub="cm"
           />
-          <DataCard
-            label="Área req. / provista"
-            value={`${fmt(result.Areq, 0)} / ${fmt(result.Ap, 0)}`}
-            sub="cm²"
-          />
-          {isMedianera && (
-            <>
-              <DataCard
-                label="Excentricidad (e)"
-                value={`${fmt(result.e, 1)}`}
-                sub="cm"
-              />
-              <DataCard
-                label="M<sub>u</sub> volcador"
-                value={`${fmt(result.Mu, 1)}`}
-                sub="kN·cm"
-              />
-              {isTensor && (
-                <DataCard
-                  label="Tracción T<sub>u</sub>"
-                  value={`${fmt(result.Tu, 1)}`}
-                  sub="kN"
-                />
-              )}
-              {isViga && (
-                <DataCard
-                  label="Reacción R<sub>u</sub>"
-                  value={`${fmt(result.Ru, 1)}`}
-                  sub="kN"
-                />
-              )}
-            </>
-          )}
         </div>
       </section>
+
+      {/* ─── Esquina — sistema de equilibrio ─── */}
+      {isEsquina && input.subType === "viga-de-equilibrio" && (
+        <section className="bg-surface rounded-xl border border-border p-5">
+          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
+            Esquina — vigas de equilibrio
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <DataCard
+              label="e<sub>x</sub>"
+              value={`${fmt(result.eX ?? 0, 1)}`}
+              sub="cm"
+            />
+            <DataCard
+              label="e<sub>y</sub>"
+              value={`${fmt(result.eY ?? 0, 1)}`}
+              sub="cm"
+            />
+            <DataCard
+              label="R<sub>ux</sub>"
+              value={`${fmt(result.Rux ?? 0, 1)}`}
+              sub="kN"
+            />
+            <DataCard
+              label="R<sub>uy</sub>"
+              value={`${fmt(result.Ruy ?? 0, 1)}`}
+              sub="kN"
+            />
+            <DataCard
+              label="Viga X"
+              value={`${fmt(result.h_vigaX ?? 0, 1)} cm`}
+              sub={`As sup ${fmt(result.As_supX ?? 0, 2)} · As inf ${fmt(result.As_infX ?? 0, 2)} cm²`}
+            />
+            <DataCard
+              label="Viga Y"
+              value={`${fmt(result.h_vigaY ?? 0, 1)} cm`}
+              sub={`As sup ${fmt(result.As_supY ?? 0, 2)} · As inf ${fmt(result.As_infY ?? 0, 2)} cm²`}
+            />
+          </div>
+        </section>
+      )}
 
       {/* ─── Verificaciones ─── */}
       <section className="bg-surface rounded-xl border border-border p-5">
@@ -362,62 +458,45 @@ export default function BasesResults() {
           Verificaciones
         </h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          {isCentrada && (
-            <>
-              <DataCard
-                label="Punzonado V<sub>u</sub>"
-                value={`${fmt(result.Vu_punch, 1)} kN`}
-                sub={
-                  <span>
-                    φV<sub>c</sub> = {fmt(result.phiVc_punch, 1)} kN{" "}
-                    <Badge ok={result.punchOK} />
-                  </span>
-                }
-              />
-              <DataCard
-                label="Corte X V<sub>ux</sub>"
-                value={`${fmt(result.Vux, 1)} kN`}
-                sub={
-                  <span>
-                    φV<sub>c</sub> = {fmt(result.phiVc_beam, 1)} kN{" "}
-                    <Badge ok={result.Vux <= result.phiVc_beam} />
-                  </span>
-                }
-              />
-              <DataCard
-                label="Corte Y V<sub>uy</sub>"
-                value={`${fmt(result.Vuy, 1)} kN`}
-                sub={
-                  <span>
-                    φV<sub>c</sub> = {fmt(result.phiVc_beam, 1)} kN{" "}
-                    <Badge ok={result.Vuy <= result.phiVc_beam} />
-                  </span>
-                }
-              />
-              <DataCard
-                label="Separación"
-                value={`sx=${fmt(result.sep_x, 1)} sy=${fmt(result.sep_y, 1)}`}
-                sub={
-                  <span>
-                    cm <Badge ok={result.sepCheckOK} />
-                  </span>
-                }
-              />
-              <DataCard
-                label="Talón"
-                value={`${fmt(result.heel, 1)} cm`}
-                sub={
-                  <span>
-                    ≥ 25 cm <Badge ok={result.heelOK} />
-                  </span>
-                }
-              />
-            </>
-          )}
-          {isTensor && (
+          <DataCard
+            label="Punzonado V<sub>u</sub>"
+            value={`${fmt(result.Vu_punch, 1)} kN`}
+            sub={
+              <span>
+                φV<sub>c</sub> = {fmt(result.phiVc_punch, 1)} kN{" "}
+                <Badge ok={result.punchOK} />
+              </span>
+            }
+          />
+          <DataCard
+            label="Corte X V<sub>ux</sub>"
+            value={`${fmt(result.Vux, 1)} kN`}
+            sub={
+              <span>
+                φV<sub>c</sub> = {fmt(result.phiVc_beam_x, 1)} kN{" "}
+                <Badge ok={result.Vux <= result.phiVc_beam_x} />
+              </span>
+            }
+          />
+          <DataCard
+            label="Corte Y V<sub>uy</sub>"
+            value={`${fmt(result.Vuy, 1)} kN`}
+            sub={
+              <span>
+                φV<sub>c</sub> = {fmt(result.phiVc_beam_y, 1)} kN{" "}
+                <Badge ok={result.Vuy <= result.phiVc_beam_y} />
+              </span>
+            }
+          />
+          {isTensor && !tensorPending && (
             <DataCard
               label="Rozamiento"
-              value={`T<sub>u</sub> = ${fmt(result.Tu, 1)} kN`}
+              value={`T<sub>u</sub> = ${fmt(
+                isEsquina
+                  ? Math.max(result.Tux ?? 0, result.Tuy ?? 0)
+                  : result.Tu,
+                1,
+              )} kN`}
               sub={
                 <span>
                   PD·μ = {fmt(input.PD * (input.mu ?? 0.4), 1)} kN{" "}
@@ -429,71 +508,246 @@ export default function BasesResults() {
         </div>
       </section>
 
-      {/* ─── Armadura ─── */}
+      {/* ─── Armadura (adopción) ─── */}
       <section className="bg-surface rounded-xl border border-border p-5">
         <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
           Armadura
         </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          {isCentrada && (
-            <>
-              <DataCard
-                label="A<sub>sx</sub>"
-                value={`${fmt(result.Asx, 2)}`}
-                sub="cm²"
-              />
-              <DataCard
-                label="A<sub>sy</sub>"
-                value={`${fmt(result.Asy, 2)}`}
-                sub="cm²"
-              />
-              <DataCard
-                label="A<sub>s mín</sub>"
-                value={`${fmt(result.AsMin, 2)}`}
-                sub="cm²"
-              />
-              <DataCard
-                label="ka<sub>x</sub> / ka<sub>y</sub>"
-                value={`${fmt(result.kax, 4)} / ${fmt(result.kay, 4)}`}
-                sub={`ka<sub>mín</sub> = ${fmt(result.kamin, 4)}`}
-              />
-              <DataCard label="Ø<sub>b</sub>" value={`${result.db}`} sub="mm" />
-              <DataCard
-                label="Barras X / Y"
-                value={`${result.nb_x} / ${result.nb_y}`}
-                sub={`sep ${fmt(result.sep_x, 1)} / ${fmt(result.sep_y, 1)} cm`}
-              />
-            </>
-          )}
-          {isViga && (
-            <>
-              <DataCard
-                label="A<sub>s sup</sub>"
-                value={`${fmt(result.As_sup, 2)}`}
-                sub="cm²"
-              />
-              <DataCard
-                label="A<sub>s inf</sub>"
-                value={`${fmt(result.As_inf, 2)}`}
-                sub="cm²"
-              />
-            </>
-          )}
-          {isTensor && (
-            <DataCard
-              label="A<sub>s tensor</sub>"
-              value={`${fmt(result.As_tensor, 2)}`}
-              sub="cm²"
-            />
-          )}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <SteelEditor
+            dir="X"
+            asNec={asxNec}
+            spread={result.Ly}
+            cover={cover}
+            diam={diamX}
+            qty={qtyX}
+            onDiam={setDiamX}
+            onQty={setQtyX}
+          />
+          <SteelEditor
+            dir="Y"
+            asNec={asyNec}
+            spread={result.Lx}
+            cover={cover}
+            diam={diamY}
+            qty={qtyY}
+            onDiam={setDiamY}
+            onQty={setQtyY}
+          />
         </div>
+        <p className="text-xs text-text-muted mt-3">
+          As mín = {fmt(result.AsMin, 2)} cm² · Dirección X: As nec sobre L
+          <sub>x</sub> = {fmt(asxNec, 2)} cm² · Dirección Y: As nec sobre L
+          <sub>y</sub> = {fmt(asyNec, 2)} cm²
+        </p>
       </section>
 
-      {/* ─── Medianera extras ─── */}
-      {isMedianera && (
+      {/* ─── Tensores (si se eligió) ─── */}
+      {isTensor && (
         <section className="bg-surface rounded-xl border border-border p-5">
           <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-            Medianera — {isViga ? "Viga de fundación" : "Tensor"}
+            Dimensionado de tensores
+          </h2>
+          {tensorPending && (
+            <button
+              type="button"
+              onClick={() => setShowTensorForm(!showTensorForm)}
+              className="text-xs bg-surface-alt border border-border hover:bg-surface text-text-muted px-3 py-1.5 rounded-lg mb-3"
+            >
+              {showTensorForm
+                ? "Ocultar datos del tensor ▲"
+                : "Completar datos del tensor ▼"}
+            </button>
+          )}
+
+          {(!tensorPending || showTensorForm) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+              {isEsquina ? (
+                <div className="flex flex-col gap-3">
+                  <span className="text-xs font-semibold text-text uppercase tracking-wider">
+                    Tensor X
+                  </span>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs text-text-muted">
+                      H<sub>x</sub> (cm) — altura centro tensor a fondo de base
+                    </span>
+                    <input
+                      type="number"
+                      step="1"
+                      min="1"
+                      value={tensorHx ?? ""}
+                      onChange={(e) =>
+                        setTensorHx(
+                          e.target.value ? Number(e.target.value) : undefined,
+                        )
+                      }
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs text-text-muted">
+                      μ — coeficiente de fricción (default 0.5)
+                    </span>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      max="1"
+                      value={tensorMu ?? 0.5}
+                      onChange={(e) =>
+                        setTensorMu(
+                          e.target.value ? Number(e.target.value) : undefined,
+                        )
+                      }
+                    />
+                  </label>
+                  {!tensorPending ? (
+                    <div className="text-sm bg-surface-alt rounded-lg p-3">
+                      T<sub>ux</sub> = {fmt(result.Tux ?? 0, 1)} kN →{" "}
+                      <span className="font-semibold text-primary">
+                        Ast nec = {fmt(result.As_tensorX ?? 0, 2)} cm²
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-text-muted">
+                      Completá H<sub>x</sub> para calcular la armadura.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  <span className="text-xs font-semibold text-text uppercase tracking-wider">
+                    Tensor
+                  </span>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs text-text-muted">
+                      H (cm) — altura centro tensor a fondo de base
+                    </span>
+                    <input
+                      type="number"
+                      step="1"
+                      min="1"
+                      value={tensorH ?? ""}
+                      onChange={(e) =>
+                        setTensorH(
+                          e.target.value ? Number(e.target.value) : undefined,
+                        )
+                      }
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs text-text-muted">
+                      μ — coeficiente de fricción (default 0.5)
+                    </span>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0.1"
+                      max="1"
+                      value={tensorMu ?? 0.5}
+                      onChange={(e) =>
+                        setTensorMu(
+                          e.target.value ? Number(e.target.value) : undefined,
+                        )
+                      }
+                    />
+                  </label>
+                  {!tensorPending ? (
+                    <div className="text-sm bg-surface-alt rounded-lg p-3">
+                      T<sub>u</sub> = {fmt(result.Tu, 1)} kN →{" "}
+                      <span className="font-semibold text-primary">
+                        Ast nec = {fmt(result.As_tensor, 2)} cm²
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-text-muted">
+                      Completá H para calcular la armadura.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {isEsquina && (
+                <div className="flex flex-col gap-3">
+                  <span className="text-xs font-semibold text-text uppercase tracking-wider">
+                    Tensor Y
+                  </span>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs text-text-muted">
+                      H<sub>y</sub> (cm) — altura centro tensor a fondo de base
+                    </span>
+                    <input
+                      type="number"
+                      step="1"
+                      min="1"
+                      value={tensorHy ?? ""}
+                      onChange={(e) =>
+                        setTensorHy(
+                          e.target.value ? Number(e.target.value) : undefined,
+                        )
+                      }
+                    />
+                  </label>
+                  {!tensorPending ? (
+                    <div className="text-sm bg-surface-alt rounded-lg p-3 mt-8">
+                      T<sub>uy</sub> = {fmt(result.Tuy ?? 0, 1)} kN →{" "}
+                      <span className="font-semibold text-primary">
+                        Ast nec = {fmt(result.As_tensorY ?? 0, 2)} cm²
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-text-muted">
+                      Completá H<sub>y</sub> para calcular la armadura.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          {!tensorPending && (
+            <p className="text-xs text-text-muted">
+              Sección sugerida del tensor:{" "}
+              {isEsquina
+                ? `${Math.round(result.h_tensorX ?? 0)} × ${Math.round(result.h_tensorX ?? 0)} cm (X) · ${Math.round(result.h_tensorY ?? 0)} × ${Math.round(result.h_tensorY ?? 0)} cm (Y)`
+                : `${Math.round(result.h_tensor)} × ${Math.round(result.h_tensor)} cm`}
+            </p>
+          )}
+          {isEsquina && !tensorPending && (
+            <div className="mt-4 grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <DataCard
+                label="N (tronco)"
+                value={`${fmt(result.tronco_N ?? 0, 1)}`}
+                sub="kN"
+              />
+              <DataCard
+                label="M<sub>x</sub>"
+                value={`${fmt(result.tronco_Mx ?? 0, 0)}`}
+                sub="kN·cm"
+              />
+              <DataCard
+                label="M<sub>y</sub>"
+                value={`${fmt(result.tronco_My ?? 0, 0)}`}
+                sub="kN·cm"
+              />
+              <DataCard
+                label="V<sub>x</sub>"
+                value={`${fmt(result.tronco_Vx ?? 0, 1)}`}
+                sub="kN"
+              />
+              <DataCard
+                label="V<sub>y</sub>"
+                value={`${fmt(result.tronco_Vy ?? 0, 1)}`}
+                sub="kN"
+              />
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ─── Medianera — viga de fundación ─── */}
+      {isViga && (
+        <section className="bg-surface rounded-xl border border-border p-5">
+          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
+            Viga de fundación
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <DataCard
@@ -506,44 +760,26 @@ export default function BasesResults() {
               value={`${fmt(result.Mu, 1)}`}
               sub="kN·cm"
             />
-            {isViga && (
-              <>
-                <DataCard
-                  label="R<sub>u</sub>"
-                  value={`${fmt(result.Ru, 1)}`}
-                  sub="kN"
-                />
-                <DataCard
-                  label="Sección viga"
-                  value={`${Math.max(input.cy, 20)} × ${fmt(result.h, 1)}`}
-                  sub="cm (b × h)"
-                />
-                <DataCard
-                  label="Altura útil viga (d)"
-                  value={`${fmt(result.d, 1)}`}
-                  sub="cm"
-                />
-              </>
-            )}
-            {isTensor && (
-              <>
-                <DataCard
-                  label="Altura tensor (H)"
-                  value={`${input.H}`}
-                  sub="cm"
-                />
-                <DataCard
-                  label="T<sub>u</sub>"
-                  value={`${fmt(result.Tu, 1)}`}
-                  sub="kN"
-                />
-                <DataCard
-                  label="Sección tensor"
-                  value={`${Math.round(result.h_tensor)} × ${Math.round(result.h_tensor)}`}
-                  sub="cm (adoptada)"
-                />
-              </>
-            )}
+            <DataCard
+              label="R<sub>u</sub>"
+              value={`${fmt(result.Ru, 1)}`}
+              sub="kN"
+            />
+            <DataCard
+              label="Sección viga"
+              value={`${Math.max(input.cy, 20)} × ${fmt(result.h, 1)}`}
+              sub="cm (b × h)"
+            />
+            <DataCard
+              label="Altura útil viga (d)"
+              value={`${fmt(result.d, 1)}`}
+              sub="cm"
+            />
+            <DataCard
+              label="As sup / inf"
+              value={`${fmt(result.As_sup, 2)} / ${fmt(result.As_inf, 2)}`}
+              sub="cm²"
+            />
           </div>
         </section>
       )}
@@ -608,6 +844,33 @@ export default function BasesResults() {
           </ul>
         </section>
       )}
+
+      <PrintDialog
+        open={printOpen}
+        onClose={() => setPrintOpen(false)}
+        title="Imprimir planilla de bases"
+        currentLabel={savedName ?? "Elemento actual (sin guardar)"}
+        savedCount={getSavedBeams("bases").length}
+        savedCountLabel={(n) =>
+          `${n} base${n === 1 ? "" : "s"} guardada${n === 1 ? "" : "s"}`
+        }
+        buildSheet={(scope) =>
+          scope === "single"
+            ? buildBasesSheet([
+                {
+                  id: savedId ?? "current",
+                  name: savedName ?? "Elemento actual",
+                  type: "bases",
+                  date: new Date().toLocaleString(),
+                  data: { input: fullInput, result } as unknown as Record<
+                    string,
+                    unknown
+                  >,
+                },
+              ])
+            : buildBasesSheet(getSavedBeams("bases"))
+        }
+      />
     </MainLayout>
   );
 }

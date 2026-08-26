@@ -137,3 +137,121 @@ button:focus-visible {
     break-after: avoid;
   }
 }
+
+/* ---- Planilla municipal (impresión) ----
+ * #print-root es el portal donde PrintDialog monta la hoja; en pantalla
+ * permanece oculto y solo aparece cuando se imprime la planilla. */
+
+#print-root {
+  display: none;
+}
+
+@media print {
+  body.printing-planilla #root {
+    display: none !important;
+  }
+
+  body.printing-planilla #print-root {
+    display: block !important;
+  }
+}
+
+.planilla-sheet {
+  font-family: Helvetica, Arial, sans-serif;
+  color: #000;
+  background: #fff;
+}
+
+.planilla-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16pt;
+  margin-bottom: 8pt;
+}
+
+.planilla-titles {
+  flex: 1;
+  text-align: center;
+}
+
+.planilla-titles h1 {
+  margin: 0;
+  font-size: 14pt;
+  letter-spacing: 0.02em;
+}
+
+.planilla-titles p {
+  margin: 2pt 0 0;
+  font-size: 8.5pt;
+}
+
+.planilla-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 4pt;
+}
+
+.planilla-field {
+  display: flex;
+  align-items: baseline;
+  gap: 4pt;
+  font-size: 9pt;
+  white-space: nowrap;
+}
+
+.planilla-underline {
+  display: inline-block;
+  min-width: 110pt;
+  border-bottom: 0.75pt solid #000;
+}
+
+.planilla-underline.narrow {
+  min-width: 60pt;
+}
+
+.planilla-count {
+  margin: 0 0 4pt;
+  font-size: 9pt;
+}
+
+.planilla-notes {
+  margin-top: 6pt;
+  font-size: 8pt;
+}
+
+.planilla-sheet table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.planilla-sheet th,
+.planilla-sheet td {
+  border: 0.75pt solid #000;
+  padding: 2pt 4pt;
+  font-size: 8.5pt;
+  text-align: left;
+  vertical-align: top;
+}
+
+.planilla-sheet thead th {
+  background: #ececec;
+  font-weight: 700;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.planilla-sheet th.num,
+.planilla-sheet td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.planilla-sheet th.ctr,
+.planilla-sheet td.ctr {
+  text-align: center;
+}
+
+.planilla-sheet tbody tr {
+  break-inside: avoid;
+}

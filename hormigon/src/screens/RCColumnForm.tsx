@@ -574,12 +574,21 @@ export default function RCColumnForm() {
         </div>
         <div>
           <h1 className="text-xl font-semibold text-text">
-            Columna de Hormigón Armado
+            Dimensionado de Columnas
           </h1>
-          <p className="text-sm text-text-muted">
-            {loadedSaveName ? `Editando: ${loadedSaveName}` : "CIRSOC 201 — Compatibilidad de deformaciones"}
-          </p>
+          {loadedSaveName ? (
+            <span className="inline-flex items-center mt-1 text-sm font-semibold text-primary bg-primary/10 border border-primary/30 px-2.5 py-0.5 rounded-full">
+              {/^\d+$/.test(loadedSaveName)
+                ? `Columna Nº ${loadedSaveName}`
+                : loadedSaveName}
+            </span>
+          ) : (
+            <span className="inline-flex items-center mt-1 text-sm font-semibold text-warning bg-warning/10 border border-warning/30 px-2.5 py-0.5 rounded-full">
+              Sin guardar
+            </span>
+          )}
         </div>
+        <span className="ml-auto text-xs text-text-muted">CIRSOC 201</span>
       </header>
 
       <SavedBeams
@@ -1056,7 +1065,7 @@ export default function RCColumnForm() {
             onClick={handleSave}
             className="bg-surface-alt border border-border text-text-muted font-semibold px-6 py-3 rounded-lg hover:bg-surface transition-colors"
           >
-            {loadedSaveId ? "Guardar corrección" : "Guardar"}
+            Guardar
           </button>
         </div>
       </form>

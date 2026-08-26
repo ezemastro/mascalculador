@@ -10,6 +10,12 @@ import {
   saveLastBasesFormState,
   type BasesFormState,
 } from "../lib/storage";
+import {
+  suggestBaseDims,
+  suggestBaseHeight,
+  vuelos,
+  type BaseInput,
+} from "../lib/bases-calc";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -57,8 +63,8 @@ function getSavedColumns(): Array<{
 // ---------------------------------------------------------------------------
 
 const initialState: BasesFormState = {
-  qa: 0.02,
-  Df: 100,
+  qa: 200,
+  Df: 1,
   PD: 500,
   PL: 300,
   cx: 30,
@@ -66,13 +72,68 @@ const initialState: BasesFormState = {
   fc: 25,
   fy: 420,
   type: "centrada",
-  cover: 5,
-  rebD: 12,
+  cover: 7,
+  includeSelfWeight: true,
 };
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
+
+// Migración de guardados viejos: qa se guardaba en kN/cm², Df en cm,
+// los lados eran B/L y el tipo legado era "medianera" (excentricidad en X).
+function normalizeState(s: BasesFormState): BasesFormState {
+  const next = { ...s };
+  if (next.qa > 0 && next.qa < 1) next.qa *= 100;
+  if (next.Df >= 5) next.Df /= 100;
+  if (next.type === "medianera") next.type = "medianera-y";
+  return next;
+}
+
+// B/L viejos → Lx/Ly (B era el ancho X, L el largo Y)
+function normalizeSides(s: BasesFormState): BasesFormState {
+  const next = { ...s };
+  if (next.Lx === undefined && next.B !== undefined) next.Lx = next.B;
+  if (next.Ly === undefined && next.L !== undefined) next.Ly = next.L;
+  return next;
+}
+
+/** Croquis en planta de cada tipo de base (la columna en azul). */
+function BasePlanSketch({ type }: { type: string }) {
+  const stroke = "var(--color-text-muted, #9ca3af)";
+  const col = "var(--color-primary, #2563eb)";
+  if (type === "centrada") {
+    return (
+      <svg width="56" height="40" viewBox="0 0 56 40" className="shrink-0">
+        <rect x="13" y="5" width="30" height="30" fill="none" stroke={stroke} strokeWidth="1.5" />
+        <rect x="24" y="16" width="8" height="8" fill={col} />
+      </svg>
+    );
+  }
+  if (type === "medianera-x") {
+    return (
+      <svg width="56" height="40" viewBox="0 0 56 40" className="shrink-0">
+        <rect x="3" y="10" width="50" height="20" fill="none" stroke={stroke} strokeWidth="1.5" />
+        <rect x="24" y="22" width="8" height="8" fill={col} />
+      </svg>
+    );
+  }
+  if (type === "medianera-y") {
+    return (
+      <svg width="56" height="40" viewBox="0 0 56 40" className="shrink-0">
+        <rect x="18" y="3" width="20" height="34" fill="none" stroke={stroke} strokeWidth="1.5" />
+        <rect x="18" y="16" width="8" height="8" fill={col} />
+      </svg>
+    );
+  }
+  // esquina
+  return (
+    <svg width="56" height="40" viewBox="0 0 56 40" className="shrink-0">
+      <rect x="13" y="5" width="30" height="30" fill="none" stroke={stroke} strokeWidth="1.5" />
+      <rect x="13" y="5" width="8" height="8" fill={col} />
+    </svg>
+  );
+}
 
 export default function BasesForm() {
   const location = useLocation();
@@ -89,14 +150,15 @@ export default function BasesForm() {
     if (locationState) {
       // La identidad del guardado se maneja aparte (loadedSaveId/Name):
       // no debe mezclarse con los campos del formulario que se persisten.
-      return {
+      const s = {
         ...locationState,
         loadedSaveId: undefined,
         loadedSaveName: undefined,
       } as BasesFormState;
+      return normalizeSides(normalizeState(s));
     }
     const saved = loadLastBasesFormState();
-    if (saved) return saved;
+    if (saved) return normalizeSides(normalizeState(saved));
     return initialState;
   });
 
@@ -129,19 +191,45 @@ export default function BasesForm() {
   }, [state, columnId, columnName]);
 
   // ------------------------------------------------------------------
-  // Auto geometry preview (centrada)
+  // Auto geometry preview (usa el motor)
   // ------------------------------------------------------------------
-  const geoPreview = useMemo(() => {
-    const qa = state.qa > 0 ? state.qa : 0.02;
-    const loads = Math.max(0, state.PD + state.PL);
-    const Areq = (loads * 1.1) / qa;
-    const side = Math.max(20, Math.ceil(Math.sqrt(Areq) / 5) * 5);
-    return { Areq, side };
-  }, [state.qa, state.PD, state.PL]);
-
-  // ------------------------------------------------------------------
-  // Column dropdown
-  // ------------------------------------------------------------------
+  const geo = useMemo(() => {
+    const input = {
+      qa: state.qa > 0 ? state.qa : 200,
+      Df: state.Df,
+      PD: Math.max(0, state.PD),
+      PL: Math.max(0, state.PL),
+      cx: state.cx,
+      cy: state.cy,
+      fc: state.fc,
+      fy: state.fy,
+      type: state.type,
+      subType: state.subType,
+      Lx: state.Lx,
+      Ly: state.Ly,
+      Lcol: state.Lcol,
+      LcolX: state.LcolX,
+      LcolY: state.LcolY,
+      cover: state.cover ?? 7,
+      includeSelfWeight: state.includeSelfWeight,
+    } as BaseInput;
+    const dims = suggestBaseDims(input);
+    const hgt = suggestBaseHeight(input, dims.Lx, dims.Ly);
+    const { kx, ky } = vuelos(input, dims.Lx, dims.Ly);
+    const kmin = Math.min(kx, ky);
+    return {
+      Areq: dims.Areq,
+      Lx: dims.Lx,
+      Ly: dims.Ly,
+      bx: dims.bx,
+      by: dims.by,
+      hSug: hgt.h,
+      dSug: hgt.d,
+      dRig: hgt.dRig,
+      dFlex: hgt.dFlex,
+      hTalonSug: Math.max(25, (state.h ?? hgt.h) - kmin),
+    };
+  }, [state.qa, state.Df, state.PD, state.PL, state.cx, state.cy, state.fc, state.fy, state.type, state.subType, state.Lx, state.Ly, state.Lcol, state.LcolX, state.LcolY, state.cover, state.h]);
   const savedColumns = useMemo(() => getSavedColumns(), []);
 
   function handleLoadColumn(colId: string) {
@@ -199,7 +287,7 @@ export default function BasesForm() {
       unknown
     >;
     setState((prev) => {
-      const next = { ...prev };
+      const next = normalizeSides(normalizeState(prev));
       if (typeof f.qa === "number") next.qa = f.qa;
       if (typeof f.Df === "number") next.Df = f.Df;
       if (typeof f.PD === "number") next.PD = f.PD;
@@ -210,24 +298,34 @@ export default function BasesForm() {
       if (typeof f.fy === "number") next.fy = f.fy;
       if (
         typeof f.type === "string" &&
-        (f.type === "centrada" || f.type === "medianera")
+        (f.type === "centrada" ||
+          f.type === "medianera" ||
+          f.type === "medianera-x" ||
+          f.type === "medianera-y" ||
+          f.type === "esquina")
       ) {
         next.type = f.type;
       }
       if (
         typeof f.subType === "string" &&
-        (f.subType === "viga-de-fundacion" || f.subType === "tensor")
+        (f.subType === "viga-de-fundacion" ||
+          f.subType === "viga-de-equilibrio" ||
+          f.subType === "tensor")
       ) {
         next.subType = f.subType;
       }
-      if (typeof f.B === "number") next.B = f.B;
-      if (typeof f.L === "number") next.L = f.L;
+      if (typeof f.Lx === "number") next.Lx = f.Lx;
+      if (typeof f.Ly === "number") next.Ly = f.Ly;
       if (typeof f.h === "number") next.h = f.h;
+      if (typeof f.hTalon === "number") next.hTalon = f.hTalon;
       if (typeof f.Lcol === "number") next.Lcol = f.Lcol;
+      if (typeof f.LcolX === "number") next.LcolX = f.LcolX;
+      if (typeof f.LcolY === "number") next.LcolY = f.LcolY;
       if (typeof f.H === "number") next.H = f.H;
+      if (typeof f.Hx === "number") next.Hx = f.Hx;
+      if (typeof f.Hy === "number") next.Hy = f.Hy;
       if (typeof f.mu === "number") next.mu = f.mu;
       if (typeof f.cover === "number") next.cover = f.cover;
-      if (typeof f.rebD === "number") next.rebD = f.rebD;
       if (typeof f.columnName === "string") setColumnName(f.columnName);
       if (typeof f.columnId === "string") setColumnId(f.columnId);
       return next;
@@ -277,16 +375,23 @@ export default function BasesForm() {
           <h1 className="text-xl font-semibold text-text">
             Dimensionado de Bases
           </h1>
-          <p className="text-sm text-text-muted">
-            {loadedSaveName
-              ? `Editando: ${loadedSaveName}`
-              : "CIRSOC 201 — Base de hormigón armado"}
-          </p>
+          {loadedSaveName ? (
+            <span className="inline-flex items-center mt-1 text-sm font-semibold text-primary bg-primary/10 border border-primary/30 px-2.5 py-0.5 rounded-full">
+              {/^\d+$/.test(loadedSaveName)
+                ? `Base Nº ${loadedSaveName}`
+                : loadedSaveName}
+            </span>
+          ) : (
+            <span className="inline-flex items-center mt-1 text-sm font-semibold text-warning bg-warning/10 border border-warning/30 px-2.5 py-0.5 rounded-full">
+              Sin guardar
+            </span>
+          )}
         </div>
+        <span className="ml-auto text-xs text-text-muted">CIRSOC 201</span>
       </header>
 
       {/* Load saved bases */}
-      <SavedBeams app="concrete" type="bases" onLoad={handleLoadBases} />
+      <SavedBeams app="concrete" type="bases" onLoad={handleLoadBases} label="Bases guardadas" />
 
       <form
         onSubmit={handleSubmit}
@@ -310,11 +415,11 @@ export default function BasesForm() {
           <div className="grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
-                q<sub>a</sub> (kN/cm²)
+                σ<sub>adm</sub> (kN/m²)
               </span>
               <input
                 type="number"
-                step="0.001"
+                step="1"
                 min="0"
                 value={state.qa || ""}
                 onKeyDown={handleCommaKey}
@@ -325,11 +430,11 @@ export default function BasesForm() {
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
-                D<sub>f</sub> (cm)
+                D<sub>f</sub> (m) — profundidad de la fundación
               </span>
               <input
                 type="number"
-                step="1"
+                step="0.1"
                 min="0"
                 value={state.Df || ""}
                 onKeyDown={handleCommaKey}
@@ -381,19 +486,21 @@ export default function BasesForm() {
           </div>
         </section>
 
-        {/* ── 3. Columna ────────────────────────────────────── */}
+        {/* ── 3. Cargas ─────────────────────────────────────── */}
         <section className="bg-surface rounded-xl border border-border p-5">
           <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-            Columna
+            Cargas
           </h2>
 
           {/* Column load dropdown */}
           <div className="mb-4">
-            <label className="flex flex-col gap-1">
+            <div className="flex items-baseline justify-between gap-2 mb-1">
+              <span className="text-xs font-semibold text-text">Columna</span>
               <span className="text-xs text-text-muted">
                 Cargar columna guardada
               </span>
-              <select
+            </div>
+            <select
                 className="w-full"
                 defaultValue=""
                 onChange={(e) => {
@@ -412,7 +519,6 @@ export default function BasesForm() {
                   </option>
                 ))}
               </select>
-            </label>
             {columnName && (
               <p className="text-xs text-primary mt-1">
                 Columna cargada: {columnName}
@@ -452,6 +558,348 @@ export default function BasesForm() {
                 }
               />
             </label>
+          </div>
+          <label className="flex items-center gap-2 mt-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={state.includeSelfWeight !== false}
+              onChange={(e) =>
+                setState((prev) => ({
+                  ...prev,
+                  includeSelfWeight: e.target.checked,
+                }))
+              }
+            />
+            <span className="text-xs text-text-muted">
+              Incluir peso propio de la base y del suelo (+10% en el área
+              requerida)
+            </span>
+          </label>
+        </section>
+
+        {/* ── 4. Tipo de base ───────────────────────────────── */}
+        <section className="bg-surface rounded-xl border border-border p-5">
+          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
+            Tipo de base
+          </h2>
+          <div className="flex flex-col gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <label
+                className={`flex flex-col items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${
+                  state.type === "centrada"
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:bg-surface-alt"
+                }`}
+              >
+                <BasePlanSketch type="centrada" />
+                <span className="flex items-center gap-1.5">
+                  <input
+                    type="radio"
+                    name="baseType"
+                    value="centrada"
+                    checked={state.type === "centrada"}
+                    onChange={() =>
+                      setState((prev) => ({
+                        ...prev,
+                        type: "centrada",
+                        subType: undefined,
+                      }))
+                    }
+                  />
+                  <span className="text-sm text-text">Centrada</span>
+                </span>
+              </label>
+              <label
+                className={`flex flex-col items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${
+                  state.type === "medianera-x"
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:bg-surface-alt"
+                }`}
+              >
+                <BasePlanSketch type="medianera-x" />
+                <span className="flex items-center gap-1.5">
+                  <input
+                    type="radio"
+                    name="baseType"
+                    value="medianera-x"
+                    checked={state.type === "medianera-x"}
+                    onChange={() =>
+                      setState((prev) => ({
+                        ...prev,
+                        type: "medianera-x",
+                        subType:
+                          prev.subType === "viga-de-fundacion" ||
+                          prev.subType === "tensor"
+                            ? prev.subType
+                            : "viga-de-fundacion",
+                      }))
+                    }
+                  />
+                  <span className="text-sm text-text">Medianera X</span>
+                </span>
+              </label>
+              <label
+                className={`flex flex-col items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${
+                  state.type === "medianera-y"
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:bg-surface-alt"
+                }`}
+              >
+                <BasePlanSketch type="medianera-y" />
+                <span className="flex items-center gap-1.5">
+                  <input
+                    type="radio"
+                    name="baseType"
+                    value="medianera-y"
+                    checked={state.type === "medianera-y"}
+                    onChange={() =>
+                      setState((prev) => ({
+                        ...prev,
+                        type: "medianera-y",
+                        subType:
+                          prev.subType === "viga-de-fundacion" ||
+                          prev.subType === "tensor"
+                            ? prev.subType
+                            : "viga-de-fundacion",
+                      }))
+                    }
+                  />
+                  <span className="text-sm text-text">Medianera Y</span>
+                </span>
+              </label>
+              <label
+                className={`flex flex-col items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${
+                  state.type === "esquina"
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:bg-surface-alt"
+                }`}
+              >
+                <BasePlanSketch type="esquina" />
+                <span className="flex items-center gap-1.5">
+                  <input
+                    type="radio"
+                    name="baseType"
+                    value="esquina"
+                    checked={state.type === "esquina"}
+                    onChange={() =>
+                      setState((prev) => ({
+                        ...prev,
+                        type: "esquina",
+                        subType: "viga-de-equilibrio",
+                      }))
+                    }
+                  />
+                  <span className="text-sm text-text">Esquina</span>
+                </span>
+              </label>
+            </div>
+
+            {/* Sistema de equilibrio (medianeras y esquina) */}
+            {(state.type === "medianera-x" ||
+              state.type === "medianera-y" ||
+              state.type === "esquina") && (
+              <div className="mt-2 flex flex-col gap-3">
+                <div className="flex gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="equilibrio"
+                      value="viga"
+                      checked={
+                        state.subType === "viga-de-fundacion" ||
+                        state.subType === "viga-de-equilibrio"
+                      }
+                      onChange={() =>
+                        setState((prev) => ({
+                          ...prev,
+                          subType:
+                            prev.type === "esquina"
+                              ? "viga-de-equilibrio"
+                              : "viga-de-fundacion",
+                        }))
+                      }
+                    />
+                    <span className="text-sm text-text">
+                      {state.type === "esquina"
+                        ? "Viga de equilibrio"
+                        : "Viga de fundación"}
+                    </span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="equilibrio"
+                      value="tensor"
+                      checked={state.subType === "tensor"}
+                      onChange={() =>
+                        setState((prev) => ({
+                          ...prev,
+                          subType: "tensor",
+                        }))
+                      }
+                    />
+                    <span className="text-sm text-text">Tensor</span>
+                  </label>
+                </div>
+
+                {state.type === "esquina" && state.subType === "tensor" ? (
+                  <p className="text-xs text-text-muted">
+                    Los datos de los tensores X e Y (altura al fondo de la base y
+                    sección) se cargan en la hoja de resultados.
+                  </p>
+                ) : state.type === "esquina" && state.subType === "viga-de-equilibrio" ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs text-text-muted">
+                        L<sub>colX</sub> (cm) — luz entre ejes de columnas (X)
+                      </span>
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        value={state.LcolX ?? ""}
+                        onKeyDown={handleCommaKey}
+                        onChange={(e) =>
+                          setState((prev) => ({
+                            ...prev,
+                            LcolX: e.target.value
+                              ? Number(e.target.value)
+                              : undefined,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs text-text-muted">
+                        L<sub>colY</sub> (cm) — luz entre ejes de columnas (Y)
+                      </span>
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        value={state.LcolY ?? ""}
+                        onKeyDown={handleCommaKey}
+                        onChange={(e) =>
+                          setState((prev) => ({
+                            ...prev,
+                            LcolY: e.target.value
+                              ? Number(e.target.value)
+                              : undefined,
+                          }))
+                        }
+                      />
+                    </label>
+                  </div>
+                ) : state.subType === "tensor" ? (
+                  <p className="text-xs text-text-muted">
+                    Los datos del tensor (altura al fondo de la base y sección)
+                    se cargan en la hoja de resultados.
+                  </p>
+                ) : (
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs text-text-muted">
+                      L<sub>col</sub> (cm) — luz entre ejes de columnas
+                    </span>
+                    <input
+                      type="number"
+                      step="1"
+                      min="1"
+                      value={state.Lcol ?? ""}
+                      onKeyDown={handleCommaKey}
+                      onChange={(e) =>
+                        setState((prev) => ({
+                          ...prev,
+                          Lcol: e.target.value
+                            ? Number(e.target.value)
+                            : undefined,
+                        }))
+                      }
+                    />
+                  </label>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* ── 5. Geometría ───────────────────────────────────── */}
+        <section className="bg-surface rounded-xl border border-border p-5">
+          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
+            Geometría
+          </h2>
+
+          {/* Auto-predim preview */}
+          <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg mb-4">
+            <span className="text-xs text-text-muted">
+              Predimensionado automático (A<sub>req</sub> = (P<sub>D</sub>+P
+              <sub>L</sub>)·1.10 / σ<sub>adm</sub>)
+            </span>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs">
+              <span className="text-text-muted">
+                A<sub>req</sub> = {geo.Areq.toFixed(0)} cm²
+              </span>
+              <span className="font-semibold text-primary">
+                Base sugerida: L<sub>x</sub> {geo.Lx} × L<sub>y</sub> {geo.Ly}{" "}
+                cm
+              </span>
+              <span className="text-text-muted">
+                d: rigidez {geo.dRig.toFixed(1)} cm · flexión{" "}
+                {geo.dFlex.toFixed(1)} cm
+              </span>
+              <span className="text-text-muted">
+                h sugerida: {geo.hSug.toFixed(1)} cm
+              </span>
+              <span className="text-text-muted">
+                b<sub>x</sub> {geo.bx} · b<sub>y</sub> {geo.by} cm
+              </span>
+              <span className="text-text-muted">
+                Talón sugerido: {geo.hTalonSug.toFixed(0)} cm
+              </span>
+            </div>
+          </div>
+
+          {/* Inputs */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-text-muted">
+                L<sub>x</sub> (cm, horizontal){" "}
+                {state.Lx === undefined && `(auto: ${geo.Lx})`}
+              </span>
+              <input
+                type="number"
+                step="5"
+                min="20"
+                value={state.Lx ?? ""}
+                onKeyDown={handleCommaKey}
+                placeholder={String(geo.Lx)}
+                onChange={(e) =>
+                  setState((prev) => ({
+                    ...prev,
+                    Lx: e.target.value ? Number(e.target.value) : undefined,
+                  }))
+                }
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-text-muted">
+                L<sub>y</sub> (cm, vertical){" "}
+                {state.Ly === undefined && `(auto: ${geo.Ly})`}
+              </span>
+              <input
+                type="number"
+                step="5"
+                min="20"
+                value={state.Ly ?? ""}
+                onKeyDown={handleCommaKey}
+                placeholder={String(geo.Ly)}
+                onChange={(e) =>
+                  setState((prev) => ({
+                    ...prev,
+                    Ly: e.target.value ? Number(e.target.value) : undefined,
+                  }))
+                }
+              />
+            </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
                 c<sub>x</sub> (cm) {columnName && "(columna)"}
@@ -482,153 +930,42 @@ export default function BasesForm() {
                 }
               />
             </label>
-          </div>
-        </section>
-
-        {/* ── 4. Tipo de base ───────────────────────────────── */}
-        <section className="bg-surface rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-            Tipo de base
-          </h2>
-          <div className="flex flex-col gap-3">
-            <div className="flex gap-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="baseType"
-                  value="centrada"
-                  checked={state.type === "centrada"}
-                  onChange={() =>
-                    setState((prev) => ({
-                      ...prev,
-                      type: "centrada",
-                      subType: undefined,
-                    }))
-                  }
-                />
-                <span className="text-sm text-text">Centrada</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="baseType"
-                  value="medianera"
-                  checked={state.type === "medianera"}
-                  onChange={() =>
-                    setState((prev) => ({
-                      ...prev,
-                      type: "medianera",
-                      subType: prev.subType ?? "viga-de-fundacion",
-                    }))
-                  }
-                />
-                <span className="text-sm text-text">Medianera</span>
-              </label>
-            </div>
-
-            {/* Medianera sub-selector */}
-            {state.type === "medianera" && (
-              <div className="mt-2">
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs text-text-muted">
-                    Sistema de equilibrio
-                  </span>
-                  <select
-                    value={state.subType ?? "viga-de-fundacion"}
-                    onChange={(e) =>
-                      setState((prev) => ({
-                        ...prev,
-                        subType: e.target.value as
-                          | "viga-de-fundacion"
-                          | "tensor",
-                      }))
-                    }
-                    className="w-64"
-                  >
-                    <option value="viga-de-fundacion">Viga de fundación</option>
-                    <option value="tensor">Tensor</option>
-                  </select>
-                </label>
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* ── 5. Geometría ───────────────────────────────────── */}
-        <section className="bg-surface rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-            Geometría
-          </h2>
-
-          {/* Auto-predim preview */}
-          <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg mb-4">
-            <span className="text-xs text-text-muted">
-              Predimensionado automático (A<sub>req</sub> = (P<sub>D</sub>+P
-              <sub>L</sub>)·1.10 / q<sub>a</sub>)
-            </span>
-            <div className="flex flex-wrap gap-4 mt-2">
-              <span className="text-xs text-text-muted">
-                A<sub>req</sub> = {geoPreview.Areq.toFixed(0)} cm²
-              </span>
-              <span className="text-xs font-semibold text-primary">
-                Base sugerida: {geoPreview.side} × {geoPreview.side} cm
-              </span>
-            </div>
-          </div>
-
-          {/* Override inputs */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
-                B (cm, ancho X){" "}
-                {state.B === undefined && `(auto: ${geoPreview.side})`}
+                b<sub>x</sub> (cm) — apoyo tronco
+              </span>
+              <input value={geo.bx} readOnly className="bg-surface-alt" />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-text-muted">
+                b<sub>y</sub> (cm) — apoyo tronco
+              </span>
+              <input value={geo.by} readOnly className="bg-surface-alt" />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-text-muted">
+                Altura útil d (cm)
               </span>
               <input
-                type="number"
-                step="5"
-                min="20"
-                value={state.B ?? ""}
-                onKeyDown={handleCommaKey}
-                placeholder={String(geoPreview.side)}
-                onChange={(e) =>
-                  setState((prev) => ({
-                    ...prev,
-                    B: e.target.value ? Number(e.target.value) : undefined,
-                  }))
-                }
+                value={(state.h ?? 0) > 0
+                  ? ((state.h ?? 0) - (state.cover ?? 7)).toFixed(1)
+                  : geo.dSug.toFixed(1)}
+                readOnly
+                className="bg-surface-alt"
               />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
-                L (cm, largo Y){" "}
-                {state.L === undefined && `(auto: ${geoPreview.side})`}
+                h (cm, altura total){" "}
+                {state.h === undefined && `(auto: ${geo.hSug.toFixed(1)})`}
               </span>
               <input
                 type="number"
-                step="5"
-                min="20"
-                value={state.L ?? ""}
-                onKeyDown={handleCommaKey}
-                placeholder={String(geoPreview.side)}
-                onChange={(e) =>
-                  setState((prev) => ({
-                    ...prev,
-                    L: e.target.value ? Number(e.target.value) : undefined,
-                  }))
-                }
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">
-                h (cm, altura total) {state.h === undefined && "(auto)"}
-              </span>
-              <input
-                type="number"
-                step="5"
+                step="any"
                 min="20"
                 value={state.h ?? ""}
                 onKeyDown={handleCommaKey}
-                placeholder="Auto"
+                placeholder={geo.hSug.toFixed(1)}
                 onChange={(e) =>
                   setState((prev) => ({
                     ...prev,
@@ -637,96 +974,36 @@ export default function BasesForm() {
                 }
               />
             </label>
-          </div>
-        </section>
-
-        {/* ── 6. Detalles medianera ──────────────────────────── */}
-        {state.type === "medianera" && (
-          <section className="bg-surface rounded-xl border border-border p-5">
-            <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-              Detalles medianera
-            </h2>
-
-            {state.subType === "viga-de-fundacion" && (
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-text-muted">
-                  L<sub>col</sub> (cm) — luz entre ejes de columnas
-                </span>
-                <input
-                  type="number"
-                  step="1"
-                  min="1"
-                  value={state.Lcol ?? ""}
-                  onKeyDown={handleCommaKey}
-                  onChange={(e) =>
-                    setState((prev) => ({
-                      ...prev,
-                      Lcol: e.target.value ? Number(e.target.value) : undefined,
-                    }))
-                  }
-                />
-              </label>
-            )}
-
-            {state.subType === "tensor" && (
-              <div className="grid grid-cols-2 gap-3">
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs text-text-muted">
-                    H (cm) — altura centro tensor a fondo zapata
-                  </span>
-                  <input
-                    type="number"
-                    step="1"
-                    min="1"
-                    value={state.H ?? ""}
-                    onKeyDown={handleCommaKey}
-                    onChange={(e) =>
-                      setState((prev) => ({
-                        ...prev,
-                        H: e.target.value ? Number(e.target.value) : undefined,
-                      }))
-                    }
-                  />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs text-text-muted">
-                    μ — coeficiente de fricción (default 0.5)
-                  </span>
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0.1"
-                    max="1"
-                    value={state.mu ?? 0.5}
-                    onKeyDown={handleCommaKey}
-                    onChange={(e) =>
-                      setState((prev) => ({
-                        ...prev,
-                        mu: e.target.value ? Number(e.target.value) : undefined,
-                      }))
-                    }
-                  />
-                </label>
-              </div>
-            )}
-          </section>
-        )}
-
-        {/* ── 7. Armado ──────────────────────────────────────── */}
-        <section className="bg-surface rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-            Armado
-          </h2>
-          <div className="grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
-                Recubrimiento (cm, default 5)
+                h<sub>talón</sub> (cm) — espesor del borde{" "}
+                {state.hTalon === undefined &&
+                  `(auto: ${geo.hTalonSug.toFixed(0)})`}
+              </span>
+              <input
+                type="number"
+                step="any"
+                min="1"
+                value={state.hTalon ?? ""}
+                onKeyDown={handleCommaKey}
+                placeholder={String(geo.hTalonSug)}
+                onChange={(e) =>
+                  setState((prev) => ({
+                    ...prev,
+                    hTalon: e.target.value ? Number(e.target.value) : undefined,
+                  }))
+                }
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-text-muted">
+                Recubrimiento (cm, default 7)
               </span>
               <input
                 type="number"
                 step="0.5"
                 min="1"
-                value={state.cover ?? 5}
+                value={state.cover ?? 7}
                 onKeyDown={handleCommaKey}
                 onChange={(e) =>
                   setState((prev) => ({
@@ -735,26 +1012,6 @@ export default function BasesForm() {
                   }))
                 }
               />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">
-                Ø barra (mm, default 12)
-              </span>
-              <select
-                value={state.rebD ?? 12}
-                onChange={(e) =>
-                  setState((prev) => ({
-                    ...prev,
-                    rebD: Number(e.target.value),
-                  }))
-                }
-              >
-                {[8, 10, 12, 16, 20, 25].map((d) => (
-                  <option key={d} value={d}>
-                    Ø{d}
-                  </option>
-                ))}
-              </select>
             </label>
           </div>
         </section>
@@ -772,7 +1029,7 @@ export default function BasesForm() {
             onClick={handleSave}
             className="bg-surface-alt border border-border text-text-muted font-semibold px-6 py-3 rounded-lg hover:bg-surface transition-colors"
           >
-            Guardar datos
+            Guardar
           </button>
         </div>
       </form>

@@ -1,12 +1,14 @@
 export default function PrintButton({
   label = "Imprimir",
+  onClick,
 }: {
   label?: string;
+  onClick?: () => void;
 }) {
   return (
     <button
       type="button"
-      onClick={() => window.print()}
+      onClick={onClick ?? (() => window.print())}
       className="text-sm bg-primary/10 text-primary border border-primary/20 px-3 py-1.5 rounded-lg hover:bg-primary/20 transition-colors"
     >
       <svg

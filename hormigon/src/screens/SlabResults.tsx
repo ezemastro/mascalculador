@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import { SlabPlan } from "@mascalculador/shared";
@@ -11,8 +11,10 @@ import {
 } from "../lib/slab-calc";
 import { hasSlabDL, slabReactionToBeamLoad } from "../lib/slab-to-beam";
 import type { SlabEdge } from "../lib/slab-to-beam";
-import { saveSlab, updateSlab } from "../lib/storage";
+import { saveSlab, updateSlab, getSavedSlabs } from "../lib/storage";
 import type { SlabInput } from "../lib/slab-calc";
+import { buildLosaSheet } from "../lib/print-planilla";
+import PrintDialog from "../components/PrintDialog";
 import type { SlabState } from "./SlabForm";
 
 function sanitizeDecimal(val: string): string {
@@ -236,6 +238,32 @@ export default function SlabResults() {
   const location = useLocation();
   const navigate = useNavigate();
   const s = location.state as SlabState | null;
+  const [printOpen, setPrintOpen] = useState(false);
+
+  // Payload de guardado/impresión (mismos campos que persiste "Guardar")
+  const currentSlabInput = useMemo<SlabInput>(
+    () => ({
+      lx: s?.lx ?? 0,
+      ly: s?.ly ?? 0,
+      edges: [
+        s?.edgeX0 ?? "simple",
+        s?.edgeXL ?? "simple",
+        s?.edgeY0 ?? "simple",
+        s?.edgeYL ?? "simple",
+      ],
+      D: s?.D ?? 0,
+      L: s?.L ?? 0,
+      fc: s?.fc ?? 0,
+      fy: s?.fy ?? 0,
+      cover: s?.cover ?? 0,
+      h: s?.h ?? 0,
+      dBarX: s?.dBarX ?? 0,
+      dBarY: s?.dBarY ?? 0,
+      includeSelfWeight: s?.includeSelfWeight ?? false,
+    }),
+    [s],
+  );
+
   if (!s)
     return (
       <MainLayout>
@@ -393,24 +421,11 @@ export default function SlabResults() {
           </p>
         </div>
         <div className="flex gap-1.5">
-          <PrintButton />
+          <PrintButton onClick={() => setPrintOpen(true)} />
           <button
             type="button"
             onClick={() => {
-              const slabInput: SlabInput = {
-                lx,
-                ly,
-                edges: [edgeX0, edgeXL, edgeY0, edgeYL],
-                D,
-                L,
-                fc,
-                fy,
-                cover,
-                h,
-                dBarX,
-                dBarY,
-                includeSelfWeight,
-              };
+              const slabInput = currentSlabInput;
               if (savedId) {
                 updateSlab(savedId, slabInput, {
                   ...result,
@@ -640,6 +655,33 @@ export default function SlabResults() {
           {postSteps(result.steps).join("\n")}
         </pre>
       </details>
+
+      <PrintDialog
+        open={printOpen}
+        onClose={() => setPrintOpen(false)}
+        title="Imprimir planilla de losas"
+        currentLabel={savedName ?? "Elemento actual (sin guardar)"}
+        savedCount={getSavedSlabs().length}
+        savedCountLabel={(n) =>
+          `${n} losa${n === 1 ? "" : "s"} guardada${n === 1 ? "" : "s"}`
+        }
+        buildSheet={(scope) =>
+          scope === "single"
+            ? buildLosaSheet([
+                {
+                  id: savedId ?? "current",
+                  name: savedName ?? "Elemento actual",
+                  type: "losa",
+                  date: new Date().toLocaleString(),
+                  data: {
+                    input: currentSlabInput,
+                    result: { ...result, adoptedAsX, adoptedAsY },
+                  } as unknown as Record<string, unknown>,
+                },
+              ])
+            : buildLosaSheet(getSavedSlabs())
+        }
+      />
     </MainLayout>
   );
 }

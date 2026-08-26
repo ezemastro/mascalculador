@@ -20,6 +20,8 @@ import {
   type DirectionResult,
   type EdgeIndex,
 } from "../lib/slab-calc";
+import { buildApoyosSheet } from "../lib/print-planilla";
+import PrintDialog from "../components/PrintDialog";
 
 const BAR_DIAMETERS = [6, 8, 10, 12, 16, 20];
 const BAR_AREA: Record<number, number> = {
@@ -281,6 +283,7 @@ export default function CompatList() {
 
   const designKey = `${selectedSlabId}:${supportEdge}`;
   const [appliedDesignKey, setAppliedDesignKey] = useState("");
+  const [printOpen, setPrintOpen] = useState(false);
 
   const currentDesign = savedDesigns.find(
     (d) => d.slabId === selectedSlabId && d.edge === supportEdge,
@@ -430,7 +433,7 @@ export default function CompatList() {
     <MainLayout>
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-text">Apoyos losas</h1>
+          <h1 className="text-xl font-semibold text-text">Dimensionado de apoyo en losas</h1>
           <p className="text-sm text-text-muted">
             {savedItems.length} apoyo
             {savedItems.length !== 1 ? "s" : ""} guardado
@@ -438,7 +441,7 @@ export default function CompatList() {
           </p>
         </div>
         <div className="flex gap-2">
-          <PrintButton />
+          <PrintButton onClick={() => setPrintOpen(true)} />
           <button
             onClick={handleNewIndividual}
             className="text-sm bg-primary/10 text-primary border border-primary/20 px-3 py-1.5 rounded-lg hover:bg-primary/20 transition-colors"
@@ -721,6 +724,19 @@ export default function CompatList() {
           />
         </section>
       )}
+
+      <PrintDialog
+        open={printOpen}
+        onClose={() => setPrintOpen(false)}
+        title="Imprimir planilla de apoyos"
+        currentLabel=""
+        savedCount={savedItems.length}
+        savedCountLabel={(n) =>
+          `${n} apoyo${n === 1 ? "" : "s"} guardado${n === 1 ? "" : "s"}`
+        }
+        allowSingle={false}
+        buildSheet={() => buildApoyosSheet(getSavedSupports())}
+      />
     </MainLayout>
   );
 }

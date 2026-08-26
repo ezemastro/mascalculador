@@ -264,27 +264,20 @@ export default function SlabForm() {
           </svg>
         </div>
         <div className="flex-1">
-          <h1 className="text-xl font-semibold text-text flex items-center gap-3">
-            Losa
-            {loadedSaveName ? (
-              <span className="text-sm font-normal text-text-muted bg-surface-alt border border-border px-2.5 py-0.5 rounded-full">
-                {loadedSaveName}
-              </span>
-            ) : (
-              <span className="text-sm font-normal text-warning bg-warning/10 border border-warning/30 px-2.5 py-0.5 rounded-full">
-                Sin guardar
-              </span>
-            )}
-          </h1>
-          <p className="text-sm text-text-muted">CIRSOC 201-05</p>
+          <h1 className="text-xl font-semibold text-text">Dimensionado de Losas</h1>
+          {loadedSaveName ? (
+            <span className="inline-flex items-center mt-1 text-sm font-semibold text-primary bg-primary/10 border border-primary/30 px-2.5 py-0.5 rounded-full">
+              {/^\d+$/.test(loadedSaveName)
+                ? `Losa Nº ${loadedSaveName}`
+                : loadedSaveName}
+            </span>
+          ) : (
+            <span className="inline-flex items-center mt-1 text-sm font-semibold text-warning bg-warning/10 border border-warning/30 px-2.5 py-0.5 rounded-full">
+              Sin guardar
+            </span>
+          )}
         </div>
-        <button
-          type="button"
-          onClick={handleSaveData}
-          className="text-sm bg-primary/10 text-primary border border-primary/20 px-3 py-1.5 rounded-lg hover:bg-primary/20 transition-colors"
-        >
-          Guardar datos
-        </button>
+        <span className="ml-auto text-xs text-text-muted">CIRSOC 201-05</span>
         <button
           type="button"
           onClick={() => {
@@ -491,12 +484,21 @@ export default function SlabForm() {
           </div>
         </section>
 
-        <button
-          type="submit"
-          className="self-center bg-primary text-white font-semibold px-8 py-3 rounded-lg hover:bg-primary-hover transition-colors"
-        >
-          Calcular
-        </button>
+        <div className="self-center flex gap-3">
+          <button
+            type="submit"
+            className="bg-primary text-white font-semibold px-8 py-3 rounded-lg hover:bg-primary-hover transition-colors"
+          >
+            Calcular
+          </button>
+          <button
+            type="button"
+            onClick={handleSaveData}
+            className="bg-surface-alt border border-border text-text-muted font-semibold px-6 py-3 rounded-lg hover:bg-surface transition-colors"
+          >
+            Guardar
+          </button>
+        </div>
       </form>
     </MainLayout>
   );

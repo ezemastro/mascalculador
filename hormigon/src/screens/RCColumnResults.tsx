@@ -9,7 +9,9 @@ import {
 } from "../lib/rc-column-calc";
 import type { RCColumnState } from "./RCColumnForm";
 import { ArmadoLayoutSVG } from "./RCColumnForm";
-import { saveBeam, updateSave } from "../lib/storage";
+import { saveBeam, updateSave, getSavedBeams } from "../lib/storage";
+import { buildColumnaSheet } from "../lib/print-planilla";
+import PrintDialog from "../components/PrintDialog";
 
 /** Stepper control: +/- buttons with a label. */
 function StepperInput({
@@ -223,12 +225,12 @@ export default function RCColumnResults() {
   const astProviso = armaduraManual.astTotal;
   const astVerifica = astProviso >= astNeeded;
 
-  // Diameter options for select
-  const DB_OPTIONS = [8, 10, 12, 16, 20, 25, 32];
+  const [printOpen, setPrintOpen] = useState(false);
 
-  // ─── Guardar desde results ───
-  function handleSaveFromResults() {
-    const data: Record<string, unknown> = {
+  // Payload de guardado/impresión: los mismos campos que persiste el botón
+  // "Guardar" (referencia única para no divergir).
+  const saveData = useMemo<Record<string, unknown>>(
+    () => ({
       fc,
       fy,
       PD,
@@ -250,7 +252,38 @@ export default function RCColumnResults() {
       dbEsquinas,
       dbCarasX,
       dbCarasY,
-    };
+    }),
+    [
+      fc,
+      fy,
+      PD,
+      PL,
+      lu,
+      MxSup,
+      MxInf,
+      MySup,
+      MyInf,
+      result.Cx,
+      result.Cy,
+      betaD,
+      includeSelfWeight,
+      contributedColumns,
+      contributedBeams,
+      nEsquinas,
+      nCarasX,
+      nCarasY,
+      dbEsquinas,
+      dbCarasX,
+      dbCarasY,
+    ],
+  );
+
+  // Diameter options for select
+  const DB_OPTIONS = [8, 10, 12, 16, 20, 25, 32];
+
+  // ─── Guardar desde results ───
+  function handleSaveFromResults() {
+    const data = saveData;
     // Si venimos de una columna guardada, actualizamos la misma (mismo id/nombre)
     if (savedId) {
       updateSave(savedId, data);
@@ -306,7 +339,7 @@ export default function RCColumnResults() {
           </div>
         </div>
         <div className="flex gap-1.5">
-          <PrintButton />
+          <PrintButton onClick={() => setPrintOpen(true)} />
           <button
             type="button"
             onClick={handleSaveFromResults}
@@ -930,6 +963,30 @@ export default function RCColumnResults() {
           {result.steps.join("\n")}
         </pre>
       </section>
+
+      <PrintDialog
+        open={printOpen}
+        onClose={() => setPrintOpen(false)}
+        title="Imprimir planilla de columnas"
+        currentLabel={savedName ?? "Elemento actual (sin guardar)"}
+        savedCount={getSavedBeams("rc-columna").length}
+        savedCountLabel={(n) =>
+          `${n} columna${n === 1 ? "" : "s"} guardada${n === 1 ? "" : "s"}`
+        }
+        buildSheet={(scope) =>
+          scope === "single"
+            ? buildColumnaSheet([
+                {
+                  id: savedId ?? "current",
+                  name: savedName ?? "Elemento actual",
+                  type: "rc-columna",
+                  date: new Date().toLocaleString(),
+                  data: saveData,
+                },
+              ])
+            : buildColumnaSheet(getSavedBeams("rc-columna"))
+        }
+      />
     </MainLayout>
   );
 }

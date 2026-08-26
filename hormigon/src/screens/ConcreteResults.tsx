@@ -5,9 +5,11 @@ import { MainLayout } from "@mascalculador/shared";
 import { PrintButton } from "@mascalculador/shared";
 import { formatForce } from "@mascalculador/shared";
 import { designConcreteDetailed } from "../lib/concrete-design";
-import { saveBeam, updateSave } from "../lib/storage";
+import { saveBeam, updateSave, getSavedBeams } from "../lib/storage";
 import { CONCRETE_DENSITY } from "../lib/constants";
 import { calculateBeamEnvelope } from "../lib/beam-envelope";
+import { buildVigaSheet } from "../lib/print-planilla";
+import PrintDialog from "../components/PrintDialog";
 import type { ConcreteState } from "./ConcreteForm";
 
 function sanitizeDecimal(val: string): string {
@@ -205,6 +207,7 @@ export default function ConcreteResults() {
   const [savedName, setSavedName] = useState<string | null>(
     s?.loadedSaveName ?? null,
   );
+  const [printOpen, setPrintOpen] = useState(false);
 
   // ---- Memoización (antes del early return: orden de hooks estable) ----
   // Payload estable para la envolvente
@@ -329,6 +332,47 @@ export default function ConcreteResults() {
     stirrupSpacing,
   ]);
 
+  // Payload de guardado/impresión: los mismos campos que persiste el botón
+  // "Guardar resultados" (referencia única para no divergir).
+  const saveData = useMemo<Record<string, unknown>>(
+    () => ({
+      spans: s?.spans ?? [],
+      supportTypes: s?.supportTypes ?? [],
+      concreteLoads: s?.concreteLoads ?? [],
+      bw: s?.bw ?? 0,
+      h: s?.h ?? 0,
+      cover: s?.cover ?? 0,
+      fc: s?.fc ?? 0,
+      fy: s?.fy ?? 0,
+      includeSelfWeight: s?.includeSelfWeight,
+      directSupport,
+      barQty,
+      barDiam,
+      compBarQty,
+      compBarDiam,
+      stirrupLegs,
+      stirrupDiam,
+      stirrupSpacing,
+      supportWidths,
+      supBarQty,
+      supBarDiam,
+    }),
+    [
+      s,
+      directSupport,
+      barQty,
+      barDiam,
+      compBarQty,
+      compBarDiam,
+      stirrupLegs,
+      stirrupDiam,
+      stirrupSpacing,
+      supportWidths,
+      supBarQty,
+      supBarDiam,
+    ],
+  );
+
   if (!s) {
     return (
       <MainLayout>
@@ -438,32 +482,11 @@ export default function ConcreteResults() {
           </p>
         </div>
         <div className="flex gap-1.5">
-          <PrintButton />
+          <PrintButton onClick={() => setPrintOpen(true)} />
           <button
             type="button"
             onClick={() => {
-              const data: Record<string, unknown> = {
-                spans,
-                supportTypes,
-                concreteLoads,
-                bw,
-                h,
-                cover,
-                fc,
-                fy,
-                includeSelfWeight,
-                directSupport,
-                barQty,
-                barDiam,
-                compBarQty,
-                compBarDiam,
-                stirrupLegs,
-                stirrupDiam,
-                stirrupSpacing,
-                supportWidths,
-                supBarQty,
-                supBarDiam,
-              };
+              const data = saveData;
               if (savedId) {
                 updateSave(savedId, data);
                 return;
@@ -1213,6 +1236,30 @@ export default function ConcreteResults() {
           </div>
         </section>
       </div>
+
+      <PrintDialog
+        open={printOpen}
+        onClose={() => setPrintOpen(false)}
+        title="Imprimir planilla de vigas"
+        currentLabel={savedName ?? "Elemento actual (sin guardar)"}
+        savedCount={getSavedBeams("hormigon").length}
+        savedCountLabel={(n) =>
+          `${n} viga${n === 1 ? "" : "s"} guardada${n === 1 ? "" : "s"}`
+        }
+        buildSheet={(scope) =>
+          scope === "single"
+            ? buildVigaSheet([
+                {
+                  id: savedId ?? "current",
+                  name: savedName ?? "Elemento actual",
+                  type: "hormigon",
+                  date: new Date().toLocaleString(),
+                  data: saveData,
+                },
+              ])
+            : buildVigaSheet(getSavedBeams("hormigon"))
+        }
+      />
     </MainLayout>
   );
 }
