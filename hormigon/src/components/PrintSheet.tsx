@@ -1,4 +1,5 @@
 import type { PlanillaSheet } from "../lib/print-planilla";
+import { getActiveObraName } from "../lib/storage";
 
 function cellClass(align: string | undefined): string {
   if (align === "right") return "num";
@@ -16,7 +17,7 @@ export default function PrintSheet({ sheet }: { sheet: PlanillaSheet }) {
         <div className="planilla-fields">
           <div className="planilla-field">
             <span>Obra:</span>
-            <span className="planilla-underline" />
+            <span className="planilla-underline">{getActiveObraName()}</span>
           </div>
           <div className="planilla-field">
             <span>Fecha:</span>
