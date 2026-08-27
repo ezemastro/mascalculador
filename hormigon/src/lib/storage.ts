@@ -171,12 +171,14 @@ export function getActiveObraName(): string {
 }
 
 /**
- * ¿Hay que preguntar a qué obra corresponde un guardado nuevo? Solo cuando
- * existen varias obras y la activa es la "default" (Sin obra). El disparador
- * es por id (no por nombre): renombrar "Sin obra" no silencia la pregunta.
+ * ¿Hay que preguntar a qué obra corresponde un guardado nuevo? Sí cuando la
+ * obra activa es "default" (Sin obra). "Sin obra" es el bucket legacy de
+ * migración, NO un destino válido: por eso se pregunta siempre que esté
+ * activa, sin importar cuántas obras existan. El disparador es por id (no por
+ * nombre): renombrar "Sin obra" no silencia la pregunta.
  */
 export function shouldAskObraOnSave(): boolean {
-  return getObras().length > 1 && getCurrentObraId() === "default";
+  return getCurrentObraId() === "default";
 }
 
 // ---- Migración (OC-4) ----

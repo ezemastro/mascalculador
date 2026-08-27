@@ -240,7 +240,7 @@ function Layout({
         obras={obras}
         onObraChange={handleObraChange}
       />
-      <ObraPickerHost />
+      <ObraPickerHost onObraCreated={handleObraChange} />
       <div className="pt-10">
         <Outlet key={obraId} />
       </div>

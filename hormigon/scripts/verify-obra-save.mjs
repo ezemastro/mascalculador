@@ -7,8 +7,11 @@
 // stubs de react/react-dom (el host renderiza un árbol plano de objetos, lo
 // que permite "hacer clic" en los botones del modal sin navegador).
 //
-// Casos: QT-1, QT-2, QT-3, QTE-1, QTE-2, QU-3, TW-1, TW-2, TW-3, UR-1, UR-2
-// y compat/support target-obra (12 grupos).
+// Casos: QT-1, QT-2, QT-3, QTE-1, QTE-2, QU-3, TW-1, TW-2, TW-3, UR-1, UR-2,
+// COMPAT/SUPPORT y CR-1 (crear obra desde el picker) — 13 grupos.
+//
+// Regla central: "Sin obra" (id "default") NUNCA es destino de un guardado
+// nuevo. El picker la excluye y ofrece "Nueva obra..." en su lugar.
 //
 // Uso:  node scripts/verify-obra-save.mjs
 //       SDD_RED=1 node scripts/verify-obra-save.mjs   # bundlea storage desde
@@ -39,6 +42,9 @@ globalThis.localStorage = {
 // createPortal(árbol, document.body) evalúa el target aunque el stub de
 // react-dom lo ignore.
 globalThis.document = { body: null };
+// El flujo "Nueva obra..." usa window.prompt / alert. Se redefine por caso.
+globalThis.alert = () => {};
+globalThis.window = { prompt: () => null };
 
 // ---- Build ----
 rmSync(TMP, { recursive: true, force: true });
@@ -164,39 +170,56 @@ function collectButtons(node, out = []) {
   return out;
 }
 const tick = () => new Promise((r) => setTimeout(r, 5));
+const pickerButtons = () => collectButtons(picker.ObraPickerHost());
+// Abre el modal (registra resolver pendiente) y devuelve la promesa + botones.
+const openPicker = () => {
+  const p = picker.pickObraIfNeeded();
+  return { p, buttons: pickerButtons() };
+};
+const click = (buttons, label) => buttons.find((b) => b.props.children === label).props.onClick();
 
 // =================== QT-1 ===================
-console.log("QT-1 única obra → guarda directo, sin pregunta");
+console.log("QT-1 única obra (solo Sin obra) → AHORA pregunta; solo Nueva obra + Cancelar");
 seedObras([OBRA("default", "Sin obra")], "default");
-assert.strictEqual(storage.shouldAskObraOnSave(), false, "single obra → no ask");
-const q1 = await picker.pickObraIfNeeded();
-assert.strictEqual(q1, "default", "resuelve con la obra activa sin modal");
-assert.strictEqual(picker.ObraPickerHost(), null, "no se monta el modal");
-ok("QT-1 única obra → directo");
+assert.strictEqual(storage.shouldAskObraOnSave(), true, "solo Sin obra activa → ask");
+{
+  const { p, buttons } = openPicker();
+  assert.deepStrictEqual(
+    buttons.map((b) => b.props.children),
+    ["Nueva obra...", "Cancelar"],
+    "Sin obra excluida: solo Nueva obra + Cancelar",
+  );
+  click(buttons, "Cancelar");
+  assert.strictEqual(await p, null, "cancelar → null");
+  assert.strictEqual(picker.ObraPickerHost(), null, "modal cerrado");
+}
+ok("QT-1 única obra Sin obra → pregunta y excluye default");
 
 // =================== QT-2 ===================
-console.log("QT-2 multi + default → pregunta; elegir obra resuelve el id");
+console.log("QT-2 multi + default → pregunta; obras reales + Nueva obra + Cancelar");
 seedObras(TRES(), "default");
 assert.strictEqual(storage.shouldAskObraOnSave(), true, "multi + default → ask");
-let settled = false;
-const q2 = picker.pickObraIfNeeded().then((v) => {
-  settled = true;
-  return v;
-});
-await tick();
-assert.strictEqual(settled, false, "registra resolver pendiente (promesa colgada)");
-const host2 = picker.ObraPickerHost();
-assert.ok(host2, "host renderiza el modal");
-const buttons2 = collectButtons(host2);
-assert.deepStrictEqual(
-  buttons2.map((b) => b.props.children),
-  ["Sin obra", "Edificio Norte", "Casa Sur", "Cancelar"],
-  "un botón por obra + Cancelar",
-);
-buttons2.find((b) => b.props.children === "Edificio Norte").props.onClick();
-assert.strictEqual(await q2, "norte", "elegir obra resuelve con su id");
-assert.strictEqual(picker.ObraPickerHost(), null, "modal cerrado tras elegir");
-ok("QT-2 multi + default → pregunta y resuelve");
+{
+  let settled = false;
+  const q = picker.pickObraIfNeeded().then((v) => {
+    settled = true;
+    return v;
+  });
+  await tick();
+  assert.strictEqual(settled, false, "registra resolver pendiente (promesa colgada)");
+  const host = picker.ObraPickerHost();
+  assert.ok(host, "host renderiza el modal");
+  const buttons = collectButtons(host);
+  assert.deepStrictEqual(
+    buttons.map((b) => b.props.children),
+    ["Edificio Norte", "Casa Sur", "Nueva obra...", "Cancelar"],
+    "obras reales + Nueva obra + Cancelar (Sin obra NO ofrecida)",
+  );
+  click(buttons, "Edificio Norte");
+  assert.strictEqual(await q, "norte", "elegir obra resuelve con su id");
+  assert.strictEqual(picker.ObraPickerHost(), null, "modal cerrado tras elegir");
+}
+ok("QT-2 multi + default → pregunta y resuelve obra real");
 
 // =================== QT-3 ===================
 console.log("QT-3 obra activa nombrada → guarda directo en ella");
@@ -216,39 +239,39 @@ assert.strictEqual(q4, "norte", "resuelve con la activa");
 ok("QTE-1 default eliminada → directo");
 
 // =================== QTE-2 ===================
-console.log("QTE-2 renombrar Sin obra → sigue preguntando (id) y muestra el nombre nuevo");
+console.log("QTE-2 renombrar Sin obra → sigue preguntando (id) y la excluye de opciones");
 seedObras([OBRA("default", "Obra general"), OBRA("norte", "Edificio Norte")], "default");
 assert.strictEqual(storage.shouldAskObraOnSave(), true, "renombrada sigue disparando (id)");
-const q5 = picker.pickObraIfNeeded();
-const host5 = picker.ObraPickerHost();
-const buttons5 = collectButtons(host5);
-assert.deepStrictEqual(
-  buttons5.map((b) => b.props.children),
-  ["Obra general", "Edificio Norte", "Cancelar"],
-  "el modal muestra el nombre nuevo",
-);
-buttons5.find((b) => b.props.children === "Obra general").props.onClick();
-assert.strictEqual(await q5, "default", "elegir Sin obra renombrada → id default");
-ok("QTE-2 renombrada → pregunta y muestra nombre nuevo");
+{
+  const { p, buttons } = openPicker();
+  assert.deepStrictEqual(
+    buttons.map((b) => b.props.children),
+    ["Edificio Norte", "Nueva obra...", "Cancelar"],
+    "Sin obra renombrada NO se ofrece (id default filtrado)",
+  );
+  click(buttons, "Edificio Norte");
+  assert.strictEqual(await p, "norte", "elegir obra real resuelve su id");
+}
+ok("QTE-2 renombrada → pregunta y excluye default");
 
 // =================== QU-3 ===================
 console.log("QU-3 cancelar → null y cero escrituras");
 seedObras(TRES(), "default");
-const before6 = keysSnapshot();
-const q6 = picker.pickObraIfNeeded();
-const host6 = picker.ObraPickerHost();
-const cancel6 = collectButtons(host6).find((b) => b.props.children === "Cancelar");
-cancel6.props.onClick();
-const target6 = await q6;
-assert.strictEqual(target6, null, "Cancelar → null");
-assert.strictEqual(keysSnapshot(), before6, "cero escrituras en storage");
-// Emulación del gate de pantalla (`if (target === null) return;`):
-if (target6 !== null) storage.saveBeam("NUNCA", "hormigon", {}, target6);
-assert.strictEqual(store.get("concrete:obra:default:beam_saves"), undefined, "el elemento no se guarda");
+{
+  const before = keysSnapshot();
+  const { p, buttons } = openPicker();
+  click(buttons, "Cancelar");
+  const target = await p;
+  assert.strictEqual(target, null, "Cancelar → null");
+  assert.strictEqual(keysSnapshot(), before, "cero escrituras en storage");
+  // Emulación del gate de pantalla (`if (target === null) return;`):
+  if (target !== null) storage.saveBeam("NUNCA", "hormigon", {}, target);
+  assert.strictEqual(store.get("concrete:obra:default:beam_saves"), undefined, "el elemento no se guarda");
+}
 ok("QU-3 cancelar → null + cero escrituras");
 
 // =================== TW-1 ===================
-console.log("TW-1 el guardado cae solo en la obra elegida (y Sin obra explícita → default)");
+console.log("TW-1 el guardado cae solo en la obra elegida; Sin obra no es opción");
 seedObras(TRES(), "default");
 storage.saveBeam("V1", "hormigon", { a: 1 }, "norte");
 assert.deepStrictEqual(
@@ -258,13 +281,21 @@ assert.deepStrictEqual(
 );
 assert.strictEqual(store.get("concrete:obra:default:beam_saves"), undefined, "default intacta");
 assert.strictEqual(store.get("concrete:obra:sur:beam_saves"), undefined, "otras obras intactas");
-storage.saveBeam("V0", "hormigon", { a: 0 }, "default");
-assert.deepStrictEqual(
-  listed("concrete:obra:default:beam_saves").map((b) => b.name),
-  ["V0"],
-  "elección explícita de Sin obra → key default",
-);
-ok("TW-1 write solo en la obra elegida");
+{
+  // El picker nunca ofrece "Sin obra"/"default" como destino.
+  const { p, buttons } = openPicker();
+  assert.ok(
+    !buttons.some((b) => b.props.children === "Sin obra"),
+    "Sin obra NO aparece como opción",
+  );
+  assert.ok(
+    !buttons.some((b) => b.props.children === "default"),
+    "el id default NO aparece como opción",
+  );
+  click(buttons, "Cancelar");
+  await p;
+}
+ok("TW-1 write solo en la obra elegida; Sin obra no es opción");
 
 // =================== TW-2 ===================
 console.log("TW-2 unicidad contra la obra elegida (case-insensitive, español)");
@@ -326,7 +357,7 @@ assert.strictEqual(storage.updateSave("missing-id", { v: 9 }), null, "devuelve n
 assert.strictEqual(keysSnapshot(), before8, "sin escrituras ni creación silenciosa");
 ok("UR-2 id inexistente → null sin tocar storage");
 
-// =================== COMPAT / SUPPORT (TW-1/TW-2 sobre saveCompat/saveSupport) ====
+// =================== COMPAT / SUPPORT (target-obra + upsert/unicidad) ===================
 console.log("COMPAT/SUPPORT: guardado y unicidad sobre la obra elegida");
 seedObras(TRES(), "default");
 storage.saveCompat(
@@ -358,20 +389,6 @@ assert.throws(
   /Ya existe una compatibilización con nombre "Apoyo A-B"/,
   "dup en la elegida → error español",
 );
-storage.saveCompat(
-  "Apoyo A-B",
-  { id: "a", name: "A" },
-  { id: "b", name: "B" },
-  0,
-  1,
-  { compatMoment: 12 },
-  "default",
-);
-assert.deepStrictEqual(
-  listed("concrete:obra:default:saved-compats").map((c) => c.name),
-  ["Apoyo A-B"],
-  "mismo nombre en default no bloquea la elegida",
-);
 storage.saveSupport(
   { name: "S1", slabId: "a", slabName: "A", edge: 0, diam: 8, sep: 15 },
   "sur",
@@ -384,6 +401,71 @@ assert.strictEqual(listed("concrete:obra:sur:saved-supports").length, 1, "upsert
 assert.strictEqual(listed("concrete:obra:sur:saved-supports")[0].diam, 10, "valores actualizados");
 assert.strictEqual(store.get("concrete:obra:default:saved-supports"), undefined, "support no toca otras obras");
 ok("COMPAT/SUPPORT target-obra + upsert/unicidad");
+
+// =================== CR-1 (crear obra desde el picker) ===================
+console.log("CR-1 'Nueva obra...' desde el picker: crea, notifica, resuelve id nuevo");
+// CR-1a: flujo feliz
+seedObras([OBRA("default", "Sin obra")], "default");
+assert.strictEqual(storage.shouldAskObraOnSave(), true, "pregunta con solo Sin obra");
+{
+  globalThis.window.prompt = () => "Obra Nueva";
+  const { p, buttons } = openPicker();
+  assert.ok(
+    buttons.some((b) => b.props.children === "Nueva obra..."),
+    "ofrece 'Nueva obra...'",
+  );
+  click(buttons, "Nueva obra...");
+  const target = await p;
+  assert.ok(target !== null && target !== "default", "resuelve con un id nuevo (≠ default)");
+  assert.strictEqual(storage.getCurrentObraId(), target, "createObra dejó la nueva obra activa");
+  assert.ok(
+    storage.getObras().some((o) => o.id === target && o.name === "Obra Nueva"),
+    "la obra nueva quedó en el directorio",
+  );
+  // El elemento se guarda en la obra nueva, no en default.
+  storage.saveBeam("E1", "hormigon", { x: 1 }, target);
+  assert.deepStrictEqual(
+    listed(`concrete:obra:${target}:beam_saves`).map((b) => b.name),
+    ["E1"],
+    "elemento guardado bajo la obra nueva",
+  );
+  assert.strictEqual(store.get("concrete:obra:default:beam_saves"), undefined, "nada en Sin obra");
+}
+ok("CR-1a crear obra desde el picker guarda en la nueva");
+
+// CR-1b: nombre duplicado → alert + el picker se queda abierto
+{
+  seedObras(TRES(), "default");
+  let alertMsg = null;
+  globalThis.alert = (m) => {
+    alertMsg = m;
+  };
+  globalThis.window.prompt = () => "Edificio Norte"; // ya existe
+  const { p, buttons } = openPicker();
+  click(buttons, "Nueva obra...");
+  await tick();
+  assert.ok(alertMsg && /Ya existe una obra con el nombre/.test(alertMsg), "alerta con mensaje español de duplicado");
+  assert.ok(picker.ObraPickerHost() !== null, "el picker SIGUE abierto tras error");
+  assert.ok(picker.ObraPickerHost() !== null, "pendiente sigue vivo (no resolvió)");
+  // Limpieza: cancelar.
+  click(pickerButtons(), "Cancelar");
+  await p;
+  globalThis.alert = () => {};
+}
+ok("CR-1b duplicado → alert y picker abierto");
+
+// CR-1c: nombre vacío/nulo → no cierra el picker
+{
+  seedObras([OBRA("default", "Sin obra")], "default");
+  globalThis.window.prompt = () => ""; // vacío tras trim
+  const { p, buttons } = openPicker();
+  click(buttons, "Nueva obra...");
+  await tick();
+  assert.ok(picker.ObraPickerHost() !== null, "picker abierto tras nombre vacío");
+  click(pickerButtons(), "Cancelar");
+  await p;
+}
+ok("CR-1c nombre vacío → picker abierto");
 
 console.log(`\n${passed} grupos de aserción en verde.`);
 rmSync(TMP, { recursive: true, force: true });
