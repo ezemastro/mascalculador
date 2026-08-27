@@ -1,8 +1,18 @@
 /* eslint-disable react-refresh/only-export-components -- baseline: NavBar is a local helper; extraction to NavBar.tsx tracked in follow-up */
-import { StrictMode, Component, type ReactNode } from "react";
+import { StrictMode, Component, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
-import { flushCloudStorage, installCloudStorage } from "./lib/cloud-storage.ts";
+import { flushCloudStorage } from "./lib/cloud-storage.ts";
+import {
+  bootstrapStorage,
+  createObra,
+  deleteObra,
+  getCurrentObraId,
+  getObras,
+  renameObra,
+  setCurrentObraId,
+  type SavedObra,
+} from "./lib/storage";
 import {
   createBrowserRouter,
   RouterProvider,
@@ -76,13 +86,90 @@ function NavBar({
   username,
   admin,
   onLogout,
+  obraId,
+  obras,
+  onObraChange,
 }: {
   username: string;
   admin: boolean;
   onLogout: () => void;
+  obraId: string;
+  obras: SavedObra[];
+  onObraChange: (id: string) => void;
 }) {
+  const activeName = obras.find((o) => o.id === obraId)?.name ?? "";
+
+  const handleNewObra = () => {
+    const name = prompt("Nombre de la nueva obra:");
+    if (name === null) return;
+    try {
+      onObraChange(createObra(name).id);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handleRenameObra = () => {
+    const name = prompt("Nuevo nombre de la obra:", activeName);
+    if (name === null) return;
+    try {
+      renameObra(obraId, name);
+      onObraChange(obraId);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handleDeleteObra = () => {
+    const confirmed = confirm(
+      `¿Eliminar la obra "${activeName}"? Se borrarán todos sus elementos guardados.`,
+    );
+    if (!confirmed) return;
+    try {
+      const nextId = deleteObra(obraId);
+      onObraChange(nextId ?? getCurrentObraId());
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   return (
     <div className="no-print fixed top-0 left-0 right-0 z-50 bg-surface border-b border-border px-4 py-2 flex gap-4 items-center">
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-text-muted">Obra</span>
+        <select
+          value={obraId}
+          onChange={(e) => onObraChange(e.target.value)}
+          className="text-xs bg-surface border border-border rounded px-1 py-0.5 max-w-32"
+        >
+          {obras.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={handleNewObra}
+          className="text-xs text-text-muted hover:text-text"
+        >
+          Nueva obra
+        </button>
+        <button
+          type="button"
+          onClick={handleRenameObra}
+          className="text-xs text-text-muted hover:text-text"
+        >
+          Renombrar obra
+        </button>
+        <button
+          type="button"
+          onClick={handleDeleteObra}
+          className="text-xs text-text-muted hover:text-danger"
+        >
+          Eliminar obra
+        </button>
+      </div>
       <Link to="/slab" className="text-sm text-text-muted hover:text-text">
         Losas
       </Link>
@@ -133,11 +220,27 @@ function Layout({
   admin: boolean;
   onLogout: () => void;
 }) {
+  const [obraId, setObraId] = useState(getCurrentObraId);
+  const [obras, setObras] = useState<SavedObra[]>(() => getObras());
+
+  const handleObraChange = (id: string) => {
+    setCurrentObraId(id);
+    setObraId(id);
+    setObras(getObras());
+  };
+
   return (
     <>
-      <NavBar username={username} admin={admin} onLogout={onLogout} />
+      <NavBar
+        username={username}
+        admin={admin}
+        onLogout={onLogout}
+        obraId={obraId}
+        obras={obras}
+        onObraChange={handleObraChange}
+      />
       <div className="pt-10">
-        <Outlet />
+        <Outlet key={obraId} />
       </div>
     </>
   );
@@ -186,7 +289,7 @@ async function fetchSession(): Promise<Session> {
 async function main() {
   const root = createRoot(document.getElementById("root")!);
   const session = await fetchSession();
-  if (session) await installCloudStorage();
+  if (session) await bootstrapStorage();
 
   function render(s: Session) {
     root.render(
@@ -201,7 +304,7 @@ async function main() {
           ) : (
             <AuthScreen
               onAuthenticated={async () => {
-                await installCloudStorage();
+                await bootstrapStorage();
                 render(await fetchSession());
               }}
             />
