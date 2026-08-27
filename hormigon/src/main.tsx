@@ -32,6 +32,7 @@ import BasesForm from "./screens/BasesForm.tsx";
 import BasesResults from "./screens/BasesResults.tsx";
 import RCColumnForm from "./screens/RCColumnForm.tsx";
 import RCColumnResults from "./screens/RCColumnResults.tsx";
+import { ObraPickerHost } from "./components/ObraPicker.tsx";
 
 class ErrorBoundary extends Component<
   { children: ReactNode },
@@ -239,6 +240,7 @@ function Layout({
         obras={obras}
         onObraChange={handleObraChange}
       />
+      <ObraPickerHost />
       <div className="pt-10">
         <Outlet key={obraId} />
       </div>
