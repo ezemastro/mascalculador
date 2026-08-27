@@ -10,6 +10,7 @@ import {
   saveLastBasesFormState,
   type BasesFormState,
 } from "../lib/storage";
+import { pickObraIfNeeded } from "../components/ObraPicker";
 import {
   suggestBaseDims,
   suggestBaseHeight,
@@ -249,7 +250,7 @@ export default function BasesForm() {
   // ------------------------------------------------------------------
   // Save / Load
   // ------------------------------------------------------------------
-  function handleSave() {
+  async function handleSave() {
     // El payload incluye la vinculación con la columna cargada, para que
     // sobreviva al round-trip (guardar -> cargar -> guardar).
     const data = {
@@ -264,8 +265,10 @@ export default function BasesForm() {
     }
     const name = prompt("Nombre de la base:");
     if (!name) return;
+    const target = await pickObraIfNeeded();
+    if (target === null) return;
     try {
-      const saved = saveBeam(name, "bases", data);
+      const saved = saveBeam(name, "bases", data, target);
       setLoadedSaveId(saved.id);
       setLoadedSaveName(name);
     } catch (err: unknown) {

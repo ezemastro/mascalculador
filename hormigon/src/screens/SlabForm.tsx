@@ -9,6 +9,7 @@ import {
   saveSlabInput,
   updateSlabInput,
 } from "../lib/storage";
+import { pickObraIfNeeded } from "../components/ObraPicker";
 import { DecimalInput } from "@mascalculador/shared";
 
 export interface SlabState {
@@ -210,7 +211,7 @@ export default function SlabForm() {
     });
   }
 
-  function handleSaveData() {
+  async function handleSaveData() {
     const slabInput: SlabInput = {
       lx,
       ly,
@@ -236,8 +237,10 @@ export default function SlabForm() {
     }
     const name = prompt("Nombre para guardar los datos:");
     if (!name) return;
+    const target = await pickObraIfNeeded();
+    if (target === null) return;
     try {
-      const saved = saveSlabInput(name, slabInput);
+      const saved = saveSlabInput(name, slabInput, target);
       setLoadedSaveId(saved.id);
       setLoadedSaveName(name);
     } catch (err: unknown) {

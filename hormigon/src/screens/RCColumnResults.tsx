@@ -10,6 +10,7 @@ import {
 import type { RCColumnState } from "./RCColumnForm";
 import { ArmadoLayoutSVG } from "./RCColumnForm";
 import { saveBeam, updateSave, getSavedBeams } from "../lib/storage";
+import { pickObraIfNeeded } from "../components/ObraPicker";
 import { buildColumnaSheet } from "../lib/print-planilla";
 import PrintDialog from "../components/PrintDialog";
 
@@ -282,7 +283,7 @@ export default function RCColumnResults() {
   const DB_OPTIONS = [8, 10, 12, 16, 20, 25, 32];
 
   // ─── Guardar desde results ───
-  function handleSaveFromResults() {
+  async function handleSaveFromResults() {
     const data = saveData;
     // Si venimos de una columna guardada, actualizamos la misma (mismo id/nombre)
     if (savedId) {
@@ -291,8 +292,10 @@ export default function RCColumnResults() {
     }
     const name = prompt("Nombre para guardar esta columna:");
     if (!name) return;
+    const target = await pickObraIfNeeded();
+    if (target === null) return;
     try {
-      const saved = saveBeam(name, "rc-columna", data);
+      const saved = saveBeam(name, "rc-columna", data, target);
       setSavedId(saved.id);
       setSavedName(name);
     } catch (err: unknown) {

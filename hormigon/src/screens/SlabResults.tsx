@@ -12,6 +12,7 @@ import {
 import { hasSlabDL, slabReactionToBeamLoad } from "../lib/slab-to-beam";
 import type { SlabEdge } from "../lib/slab-to-beam";
 import { saveSlab, updateSlab, getSavedSlabs } from "../lib/storage";
+import { pickObraIfNeeded } from "../components/ObraPicker";
 import type { SlabInput } from "../lib/slab-calc";
 import { buildLosaSheet } from "../lib/print-planilla";
 import PrintDialog from "../components/PrintDialog";
@@ -424,7 +425,7 @@ export default function SlabResults() {
           <PrintButton onClick={() => setPrintOpen(true)} />
           <button
             type="button"
-            onClick={() => {
+            onClick={async () => {
               const slabInput = currentSlabInput;
               if (savedId) {
                 updateSlab(savedId, slabInput, {
@@ -436,12 +437,14 @@ export default function SlabResults() {
               }
               const name = prompt("Nombre para guardar la losa:");
               if (!name) return;
+              const target = await pickObraIfNeeded();
+              if (target === null) return;
               try {
                 const saved = saveSlab(name, slabInput, {
                   ...result,
                   adoptedAsX,
                   adoptedAsY,
-                });
+                }, target);
                 setSavedId(saved.id);
                 setSavedName(name);
               } catch (err: unknown) {

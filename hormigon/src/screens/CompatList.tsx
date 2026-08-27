@@ -15,6 +15,7 @@ import {
   type SavedCompatData,
   type SavedSupportData,
 } from "../lib/storage";
+import { pickObraIfNeeded } from "../components/ObraPicker";
 import {
   designSupportMoment,
   type DirectionResult,
@@ -377,11 +378,13 @@ export default function CompatList() {
     if (loadedCompatName === name) setLoadedCompatName(null);
   }
 
-  function handleSaveSupport() {
+  async function handleSaveSupport() {
     if (!slab || supportEdge === undefined || supSep <= 0) return;
     const slabName =
       savedSlabs.find((s) => s.id === selectedSlabId)?.name || "Losa";
     const name = `${slabName} — Borde ${EDGE_LABELS[supportEdge]}`;
+    const target = await pickObraIfNeeded();
+    if (target === null) return;
     saveSupport({
       name,
       slabId: selectedSlabId,
@@ -389,7 +392,7 @@ export default function CompatList() {
       edge: supportEdge,
       diam: supDiam,
       sep: supSep,
-    });
+    }, target);
     setSavedDesigns(getSavedSupports());
   }
 

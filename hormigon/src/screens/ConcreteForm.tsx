@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import { SavedBeams } from "@mascalculador/shared";
 import { saveBeam, updateSave, getSavedSlabs, loadSlab } from "../lib/storage";
+import { pickObraIfNeeded } from "../components/ObraPicker";
 import { calculateBeam } from "@mascalculador/shared";
 import { DecimalInput } from "@mascalculador/shared";
 import { hasSlabDL, slabReactionToBeamLoad } from "../lib/slab-to-beam";
@@ -269,7 +270,7 @@ export default function ConcreteForm() {
     );
   }
 
-  function handleSave() {
+  async function handleSave() {
     const data: Record<string, unknown> = {
       spans: spanLengths,
       supportTypes,
@@ -291,8 +292,10 @@ export default function ConcreteForm() {
 
     const name = prompt("Nombre para guardar esta viga:");
     if (!name) return;
+    const target = await pickObraIfNeeded();
+    if (target === null) return;
     try {
-      const saved = saveBeam(name, "hormigon", data);
+      const saved = saveBeam(name, "hormigon", data, target);
       setLoadedSaveId(saved.id);
       setLoadedSaveName(name);
     } catch (err: unknown) {

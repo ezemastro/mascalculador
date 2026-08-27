@@ -5,6 +5,7 @@ import { PrintButton } from "@mascalculador/shared";
 import { designBase } from "../lib/bases-calc";
 import type { BaseInput } from "../lib/bases-calc";
 import { saveBeam, updateSave, getSavedBeams } from "../lib/storage";
+import { pickObraIfNeeded } from "../components/ObraPicker";
 import { buildBasesSheet } from "../lib/print-planilla";
 import PrintDialog from "../components/PrintDialog";
 
@@ -295,7 +296,7 @@ export default function BasesResults() {
   const [printOpen, setPrintOpen] = useState(false);
 
   // ─── Save handler ───
-  function handleSave() {
+  async function handleSave() {
     const data = { input: fullInput, result } as Record<string, unknown>;
     // Si venimos de una base guardada, actualizamos la misma (mismo id/nombre)
     if (savedId) {
@@ -304,8 +305,10 @@ export default function BasesResults() {
     }
     const name = prompt("Nombre para guardar estos resultados:");
     if (!name) return;
+    const target = await pickObraIfNeeded();
+    if (target === null) return;
     try {
-      const saved = saveBeam(name, "bases", data);
+      const saved = saveBeam(name, "bases", data, target);
       setSavedId(saved.id);
       setSavedName(name);
     } catch (err: unknown) {

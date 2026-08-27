@@ -9,6 +9,7 @@ import {
   saveCompat,
   type SavedSlabData,
 } from "../lib/storage";
+import { pickObraIfNeeded } from "../components/ObraPicker";
 import {
   detectSharedEdge,
   compatibilizeSlabs,
@@ -134,11 +135,13 @@ export default function SlabCompat() {
     alert(`Losa ${result.recalculatedSlab} guardada con borde articulado.`);
   }
 
-  function handleSaveCompat() {
+  async function handleSaveCompat() {
     if (!result || !slabA || !slabB) return;
     const nameA = savedSlabs.find((s) => s.id === selectedA)?.name || "?";
     const nameB = savedSlabs.find((s) => s.id === selectedB)?.name || "?";
     const name = `Apoyo ${nameA}-${nameB}`;
+    const target = await pickObraIfNeeded();
+    if (target === null) return;
     try {
       saveCompat(
         name,
@@ -147,6 +150,7 @@ export default function SlabCompat() {
         edgeA,
         edgeB,
         result,
+        target,
       );
       alert(`Compatibilización "${name}" guardada.`);
     } catch (err: unknown) {

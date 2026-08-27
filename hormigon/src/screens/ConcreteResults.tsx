@@ -6,6 +6,7 @@ import { PrintButton } from "@mascalculador/shared";
 import { formatForce } from "@mascalculador/shared";
 import { designConcreteDetailed } from "../lib/concrete-design";
 import { saveBeam, updateSave, getSavedBeams } from "../lib/storage";
+import { pickObraIfNeeded } from "../components/ObraPicker";
 import { CONCRETE_DENSITY } from "../lib/constants";
 import { calculateBeamEnvelope } from "../lib/beam-envelope";
 import { buildVigaSheet } from "../lib/print-planilla";
@@ -485,7 +486,7 @@ export default function ConcreteResults() {
           <PrintButton onClick={() => setPrintOpen(true)} />
           <button
             type="button"
-            onClick={() => {
+            onClick={async () => {
               const data = saveData;
               if (savedId) {
                 updateSave(savedId, data);
@@ -493,8 +494,10 @@ export default function ConcreteResults() {
               }
               const name = prompt("Nombre para guardar los resultados:");
               if (!name) return;
+              const target = await pickObraIfNeeded();
+              if (target === null) return;
               try {
-                const saved = saveBeam(name, "hormigon", data);
+                const saved = saveBeam(name, "hormigon", data, target);
                 setSavedId(saved.id);
                 setSavedName(name);
               } catch (err: unknown) {

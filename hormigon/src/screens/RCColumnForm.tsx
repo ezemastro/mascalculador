@@ -8,6 +8,7 @@ import {
   loadLastRCColumnFormState,
   saveLastRCColumnFormState,
 } from "../lib/storage";
+import { pickObraIfNeeded } from "../components/ObraPicker";
 import { DecimalInput } from "@mascalculador/shared";
 import { CONCRETE_DENSITY } from "../lib/constants";
 import {
@@ -390,7 +391,7 @@ export default function RCColumnForm() {
     contributedBeams,
   ]);
 
-  function handleSave() {
+  async function handleSave() {
     const data: Record<string, unknown> = {
       fc,
       fy,
@@ -416,8 +417,10 @@ export default function RCColumnForm() {
 
     const name = prompt("Nombre para guardar esta columna:");
     if (!name) return;
+    const target = await pickObraIfNeeded();
+    if (target === null) return;
     try {
-      const saved = saveBeam(name, "rc-columna", data);
+      const saved = saveBeam(name, "rc-columna", data, target);
       setLoadedSaveId(saved.id);
       setLoadedSaveName(name);
     } catch (err: unknown) {
