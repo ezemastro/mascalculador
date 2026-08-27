@@ -170,6 +170,15 @@ export function getActiveObraName(): string {
   return readObras().find((o) => o.id === currentObraId)?.name ?? "Sin obra";
 }
 
+/**
+ * ¿Hay que preguntar a qué obra corresponde un guardado nuevo? Solo cuando
+ * existen varias obras y la activa es la "default" (Sin obra). El disparador
+ * es por id (no por nombre): renombrar "Sin obra" no silencia la pregunta.
+ */
+export function shouldAskObraOnSave(): boolean {
+  return getObras().length > 1 && getCurrentObraId() === "default";
+}
+
 // ---- Migración (OC-4) ----
 
 /**
@@ -222,9 +231,9 @@ export async function bootstrapStorage(): Promise<{
 
 // ---- Vigas (por obra) ----
 
-function getElementSaves(): shared.SavedBeam[] {
+function getElementSaves(obraId: string = getCurrentObraId()): shared.SavedBeam[] {
   try {
-    const raw = localStorage.getItem(obraKey("beam_saves"));
+    const raw = localStorage.getItem(obraKeyFor(obraId, "beam_saves"));
     if (!raw) return [];
     return JSON.parse(raw) as shared.SavedBeam[];
   } catch {
@@ -232,21 +241,30 @@ function getElementSaves(): shared.SavedBeam[] {
   }
 }
 
-function writeElementSaves(saves: shared.SavedBeam[]): void {
-  localStorage.setItem(obraKey("beam_saves"), JSON.stringify(saves));
+function writeElementSaves(saves: shared.SavedBeam[], obraId?: string): void {
+  localStorage.setItem(
+    obraKeyFor(obraId ?? getCurrentObraId(), "beam_saves"),
+    JSON.stringify(saves),
+  );
 }
 
 export function listSaves(): shared.SavedBeam[] {
   return getElementSaves();
 }
 
-/** Crea un nuevo guardado en la obra activa. Lanza si ya existe uno con el mismo nombre. */
+/**
+ * Crea un nuevo guardado. Por defecto en la obra activa; con `obraId`
+ * (elegida por el usuario) en esa obra puntual. Las lecturas y la
+ * unicidad nombre+tipo corren contra la obra de destino. Lanza si ya
+ * existe uno con el mismo nombre en esa obra.
+ */
 export function saveBeam(
   name: string,
   type: shared.SaveType,
   data: Record<string, unknown>,
+  obraId?: string,
 ): shared.SavedBeam {
-  const saves = getElementSaves();
+  const saves = getElementSaves(obraId);
 
   const existing = saves.find(
     (s) => s.name.toLowerCase() === name.toLowerCase() && s.type === type,
@@ -265,28 +283,40 @@ export function saveBeam(
     data: dataWithName,
   };
   saves.push(beam);
-  writeElementSaves(saves);
+  writeElementSaves(saves, obraId);
   return beam;
 }
 
-/** Actualiza un guardado existente por id. Mantiene el mismo id, nombre y fecha original. */
+/**
+ * Actualiza un guardado existente por id en la obra que lo contiene, sin
+ * importar cuál es la obra activa. Mantiene el mismo id, nombre y fecha
+ * original. Devuelve null (y no escribe nada) si el id no está en ninguna
+ * obra — nunca crea un elemento en silencio.
+ */
 export function updateSave(
   id: string,
   data: Record<string, unknown>,
 ): shared.SavedBeam | null {
-  const saves = getElementSaves();
-  const idx = saves.findIndex((s) => s.id === id);
-  if (idx === -1) return null;
+  // La obra activa primero (caso más común), después el resto del directorio.
+  const obraIds = Array.from(
+    new Set([currentObraId, ...readObras().map((o) => o.id)]),
+  );
+  for (const obraId of obraIds) {
+    const saves = getElementSaves(obraId);
+    const idx = saves.findIndex((s) => s.id === id);
+    if (idx === -1) continue;
 
-  const dataWithName = { ...data, name: saves[idx].name };
+    const dataWithName = { ...data, name: saves[idx].name };
 
-  saves[idx] = {
-    ...saves[idx],
-    data: dataWithName,
-    date: new Date().toLocaleString(),
-  };
-  writeElementSaves(saves);
-  return saves[idx];
+    saves[idx] = {
+      ...saves[idx],
+      data: dataWithName,
+      date: new Date().toLocaleString(),
+    };
+    writeElementSaves(saves, obraId);
+    return saves[idx];
+  }
+  return null;
 }
 
 export function deleteSave(id: string): void {
@@ -309,12 +339,14 @@ export function saveSlab(
   name: string,
   input: shared.SlabInput,
   result: shared.SlabResult,
+  obraId?: string,
 ): shared.SavedBeam {
   const data: shared.SavedSlabData = { input, result };
   return saveBeam(
     name,
     "losa",
     data as unknown as Record<string, unknown>,
+    obraId,
   );
 }
 
@@ -330,9 +362,10 @@ export function updateSlab(
 export function saveSlabInput(
   name: string,
   input: shared.SlabInput,
+  obraId?: string,
 ): shared.SavedBeam {
   const data = { input };
-  return saveBeam(name, "losa", data as unknown as Record<string, unknown>);
+  return saveBeam(name, "losa", data as unknown as Record<string, unknown>, obraId);
 }
 
 export function updateSlabInput(
@@ -363,9 +396,11 @@ export function saveCompat(
   edgeA: shared.EdgeIndex,
   edgeB: shared.EdgeIndex,
   result: shared.CompatResult,
+  obraId?: string,
 ): void {
+  const key = obraKeyFor(obraId ?? getCurrentObraId(), "saved-compats");
   const saved: shared.SavedCompatData[] = JSON.parse(
-    localStorage.getItem(obraKey("saved-compats")) || "[]",
+    localStorage.getItem(key) || "[]",
   );
   if (saved.some((c) => c.name === name)) {
     throw new Error(`Ya existe una compatibilización con nombre "${name}".`);
@@ -379,7 +414,7 @@ export function saveCompat(
     edgeB,
     result,
   });
-  localStorage.setItem(obraKey("saved-compats"), JSON.stringify(saved));
+  localStorage.setItem(key, JSON.stringify(saved));
 }
 
 export function getSavedCompats(): shared.SavedCompatData[] {
@@ -403,11 +438,16 @@ export function getSavedSupports(): shared.SavedSupportData[] {
   return JSON.parse(localStorage.getItem(obraKey("saved-supports")) || "[]");
 }
 
-/** Guarda (o actualiza si ya existe con el mismo nombre) un diseño de apoyo. */
+/** Guarda (o actualiza si ya existe con el mismo nombre) un diseño de apoyo.
+ *  Por defecto en la obra activa; con `obraId` en esa obra puntual. */
 export function saveSupport(
   data: Omit<shared.SavedSupportData, "savedAt">,
+  obraId?: string,
 ): void {
-  const saved = getSavedSupports();
+  const key = obraKeyFor(obraId ?? getCurrentObraId(), "saved-supports");
+  const saved: shared.SavedSupportData[] = JSON.parse(
+    localStorage.getItem(key) || "[]",
+  );
   const entry: shared.SavedSupportData = {
     ...data,
     savedAt: new Date().toISOString(),
@@ -418,7 +458,7 @@ export function saveSupport(
   } else {
     saved.push(entry);
   }
-  localStorage.setItem(obraKey("saved-supports"), JSON.stringify(saved));
+  localStorage.setItem(key, JSON.stringify(saved));
 }
 
 export function deleteSupport(name: string): void {
