@@ -1,4 +1,5 @@
-import type { SavedBeam, SavedSupportData } from "./storage";
+import type { SavedBeam, SavedSupportData, SavedCompatData } from "./storage";
+import { loadSlab, getCompatReinf } from "./storage";
 import type {
   SupportType,
   SlabInput,
@@ -285,7 +286,7 @@ function buildVigaRows(save: SavedBeam): string[][] {
       i > 0 || supportTypes[0] === "fixed"
         ? (envelope.supportMuNeg[i] ?? 0)
         : 0;
-    const mnegR = i < n - 1 ? envelope.supportMuNeg[i + 1] ?? 0 : 0;
+    const mnegR = i < n - 1 ? (envelope.supportMuNeg[i + 1] ?? 0) : 0;
     const ok = spanOK[i] && (supL?.ok ?? true) && (supR?.ok ?? true);
 
     return [
@@ -392,9 +393,7 @@ function buildLosaRow(save: SavedBeam): string[] {
   ): boolean => {
     if (!dir) return false;
     if (adopted == null || adopted <= 0) return false;
-    const sep = diam
-      ? Math.round(((BAR_AREA[diam] ?? 0) * 100) / adopted)
-      : 0;
+    const sep = diam ? Math.round(((BAR_AREA[diam] ?? 0) * 100) / adopted) : 0;
     return adopted >= dir.AsReq && sep > 0 && sep <= dir.sMax / 10;
   };
 
@@ -415,9 +414,7 @@ function buildLosaRow(save: SavedBeam): string[] {
   return [
     save.name,
     `${input.lx ?? 0} × ${input.ly ?? 0}`,
-    edges
-      .map((c: string) => `${EDGE_COND[c] ?? c}`)
-      .join(" / "),
+    edges.map((c: string) => `${EDGE_COND[c] ?? c}`).join(" / "),
     `${fmt1(input.D ?? 0)}/${fmt1(input.L ?? 0)}`,
     ((result.h ?? 0) / 10).toFixed(1),
     `${input.fc ?? 0}/${input.fy ?? 0}`,
@@ -613,7 +610,9 @@ function buildBaseRow(save: SavedBeam): string[] {
   const result = data.result;
   if (!input || !result) throw new Error("Sin datos");
   const tipo = `${BASE_TYPE_LABELS[input.type ?? ""] ?? input.type ?? "—"}${
-    input.subType ? ` · ${BASE_SUBTYPE_LABELS[input.subType] ?? input.subType}` : ""
+    input.subType
+      ? ` · ${BASE_SUBTYPE_LABELS[input.subType] ?? input.subType}`
+      : ""
   }`;
   const muMax = Math.max(
     (result.Mux ?? 0) / 100,
@@ -621,9 +620,13 @@ function buildBaseRow(save: SavedBeam): string[] {
     (result.Mu ?? 0) / 100,
   );
   const armX =
-    result.db && result.nb_x ? `${result.nb_x}Ø${result.db} c/${result.sep_x}` : "—";
+    result.db && result.nb_x
+      ? `${result.nb_x}Ø${result.db} c/${result.sep_x}`
+      : "—";
   const armY =
-    result.db && result.nb_y ? `${result.nb_y}Ø${result.db} c/${result.sep_y}` : "—";
+    result.db && result.nb_y
+      ? `${result.nb_y}Ø${result.db} c/${result.sep_y}`
+      : "—";
   const ok =
     result.punchOK !== false &&
     result.beamShearOK !== false &&
@@ -669,31 +672,105 @@ export function buildBasesSheet(sources: SavedBeam[]): PlanillaSheet {
   };
 }
 
-// ---- Apoyos de losas (key "saved-supports": SavedSupportData[]) ----
+// ---- Apoyos de losas (individuales + compatibilizaciones) ----
 
 const APOYOS_COLUMNS: PlanillaColumn[] = [
-  { key: "elem", label: "Elemento", width: "18%" },
-  { key: "losa", label: "Losa de origen", width: "18%" },
+  { key: "elem", label: "Elemento", width: "13%" },
   { key: "edge", label: "Borde" },
-  { key: "diam", label: "Ø (mm)", align: "center" },
-  { key: "sep", label: "Separación (cm)", align: "center" },
+  { key: "mneg", label: "M⁻ apoyo (kN·m/m)", align: "right" },
+  { key: "losaA", label: "Losa A — armadura aportada", width: "28%" },
+  { key: "losaB", label: "Losa B — armadura aportada", width: "28%" },
+  { key: "adic", label: "Adicional — Ø c/sep", width: "15%" },
 ];
 
-/** Planilla de apoyos de losas (una fila por apoyo; sin verificación: son
- *  provisiones de compatibilización). */
-export function buildApoyosSheet(supports: SavedSupportData[]): PlanillaSheet {
-  const rows = supports.map((s) => [
-    s.name,
-    s.slabName,
-    EDGE_LABELS[s.edge] ?? "—",
-    String(s.diam),
-    String(s.sep),
-  ]);
+/** Momento negativo del borde indicado en el resultado de la losa. */
+function edgeMneg(
+  result: Partial<SlabResult> | undefined,
+  edge: number | undefined,
+): number {
+  if (!result || edge == null) return 0;
+  const v =
+    edge <= 1
+      ? edge === 0
+        ? result.MnegIzq
+        : result.MnegDer
+      : edge === 2
+        ? result.MnegArr
+        : result.MnegAba;
+  return v ?? 0;
+}
+
+/** Armadura del tramo que aporta sección al borde: Ø del input de la losa y
+ *  separación derivada de la As adoptada en ese borde. */
+function edgeArmadura(
+  result: Partial<SlabResult> | undefined,
+  input: Partial<SlabInput> | undefined,
+  edge: number | undefined,
+): string {
+  if (!result || edge == null || !input) return "—";
+  const diam = edge <= 1 ? input.dBarX : input.dBarY;
+  const adopted = (edge <= 1 ? result.adoptedAsX : result.adoptedAsY) ?? 0;
+  if (!diam) return "—";
+  if (adopted <= 0) return `Ø${diam} (sin As adoptada)`;
+  const sep = Math.round(((BAR_AREA[diam] ?? 0) * 100) / adopted);
+  return `Ø${diam} c/${sep} cm`;
+}
+
+function buildApoyoRow(item: SavedSupportData | SavedCompatData): string[] {
+  if ("slabA" in item) {
+    // Compatibilización: dos losas + refuerzo adicional elegido
+    const slabAData = loadSlab(item.slabA.id);
+    const slabBData = loadSlab(item.slabB.id);
+    const r = item.result;
+    const mneg = r.Mcompat ?? Math.max(r.MnegA, r.MnegB);
+    const reinf = getCompatReinf(item.name);
+    return [
+      item.name,
+      `${EDGE_LABELS[item.edgeA] ?? "—"}${
+        item.edgeB !== item.edgeA ? ` · ${EDGE_LABELS[item.edgeB] ?? "—"}` : ""
+      }`,
+      mneg > 0 ? fmt1(mneg) : "—",
+      `${item.slabA.name} — ${edgeArmadura(slabAData?.result, slabAData?.input, item.edgeA)}`,
+      `${item.slabB.name} — ${edgeArmadura(slabBData?.result, slabBData?.input, item.edgeB)}`,
+      reinf ? `Ø${reinf.diam} c/${reinf.sep} cm` : "—",
+    ];
+  }
+  // Apoyo individual (una losa + refuerzo propio)
+  const slabData = loadSlab(item.slabId);
+  const mneg = edgeMneg(slabData?.result, item.edge);
+  return [
+    item.name,
+    EDGE_LABELS[item.edge] ?? "—",
+    mneg > 0 ? fmt1(mneg) : "—",
+    `${item.slabName} — ${edgeArmadura(slabData?.result, slabData?.input, item.edge)}`,
+    "—",
+    `Ø${item.diam} c/${item.sep} cm`,
+  ];
+}
+
+/** Planilla de apoyos de losas (una fila por apoyo, individual o
+ *  compatibilizado; sin verificación: son provisiones). */
+export function buildApoyosSheet(
+  items: Array<SavedSupportData | SavedCompatData>,
+): PlanillaSheet {
+  const rows: string[][] = [];
+  const failed: string[] = [];
+  for (const item of items) {
+    try {
+      rows.push(buildApoyoRow(item));
+    } catch {
+      failed.push(item.name);
+    }
+  }
   return {
     title: "PLANILLA DE APOYOS — LOSAS H° A°",
     subtitle: "Memoria de cálculo",
     columns: APOYOS_COLUMNS,
     rows,
     countLabel: `Cantidad de apoyos: ${rows.length}`,
+    notes:
+      failed.length > 0
+        ? [`No se pudieron procesar: ${failed.join(", ")}`]
+        : undefined,
   };
 }

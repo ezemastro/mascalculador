@@ -849,27 +849,7 @@ export default function BasesResults() {
         open={printOpen}
         onClose={() => setPrintOpen(false)}
         title="Imprimir planilla de bases"
-        currentLabel={savedName ?? "Elemento actual (sin guardar)"}
-        savedCount={getSavedBeams("bases").length}
-        savedCountLabel={(n) =>
-          `${n} base${n === 1 ? "" : "s"} guardada${n === 1 ? "" : "s"}`
-        }
-        buildSheet={(scope) =>
-          scope === "single"
-            ? buildBasesSheet([
-                {
-                  id: savedId ?? "current",
-                  name: savedName ?? "Elemento actual",
-                  type: "bases",
-                  date: new Date().toLocaleString(),
-                  data: { input: fullInput, result } as unknown as Record<
-                    string,
-                    unknown
-                  >,
-                },
-              ])
-            : buildBasesSheet(getSavedBeams("bases"))
-        }
+        buildSheet={() => buildBasesSheet(getSavedBeams("bases"))}
       />
     </MainLayout>
   );

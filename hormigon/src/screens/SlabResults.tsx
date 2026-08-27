@@ -660,27 +660,7 @@ export default function SlabResults() {
         open={printOpen}
         onClose={() => setPrintOpen(false)}
         title="Imprimir planilla de losas"
-        currentLabel={savedName ?? "Elemento actual (sin guardar)"}
-        savedCount={getSavedSlabs().length}
-        savedCountLabel={(n) =>
-          `${n} losa${n === 1 ? "" : "s"} guardada${n === 1 ? "" : "s"}`
-        }
-        buildSheet={(scope) =>
-          scope === "single"
-            ? buildLosaSheet([
-                {
-                  id: savedId ?? "current",
-                  name: savedName ?? "Elemento actual",
-                  type: "losa",
-                  date: new Date().toLocaleString(),
-                  data: {
-                    input: currentSlabInput,
-                    result: { ...result, adoptedAsX, adoptedAsY },
-                  } as unknown as Record<string, unknown>,
-                },
-              ])
-            : buildLosaSheet(getSavedSlabs())
-        }
+        buildSheet={() => buildLosaSheet(getSavedSlabs())}
       />
     </MainLayout>
   );

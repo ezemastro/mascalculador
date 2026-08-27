@@ -3,8 +3,6 @@ import { createPortal } from "react-dom";
 import type { PlanillaSheet } from "../lib/print-planilla";
 import PrintSheet from "./PrintSheet";
 
-export type PrintScope = "single" | "all";
-
 const TIMEOUT_MS = 30_000;
 
 function ensurePrintRoot(): HTMLDivElement {
@@ -16,32 +14,20 @@ function ensurePrintRoot(): HTMLDivElement {
   return el;
 }
 
-/** Modal de impresión: elige qué imprimir (solo el elemento actual o todo lo
- *  guardado) y orquesta la impresión — oculta #root, inyecta @page A4
- *  horizontal y limpia todo al terminar. */
+/** Modal de impresión: imprime SIEMPRE todo lo guardado del tipo actual y
+ *  orquesta la impresión — oculta #root, inyecta @page A4 horizontal y
+ *  limpia todo al terminar. */
 export default function PrintDialog({
   open,
   onClose,
   title,
-  currentLabel,
-  savedCount,
-  savedCountLabel,
   buildSheet,
-  allowSingle = true,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
-  currentLabel: string;
-  savedCount: number;
-  /** Texto de la opción "Todo lo guardado", p. ej. "3 losas guardadas". */
-  savedCountLabel: (count: number) => string;
-  buildSheet: (scope: PrintScope) => PlanillaSheet | null;
-  allowSingle?: boolean;
+  buildSheet: () => PlanillaSheet | null;
 }) {
-  const [scope, setScope] = useState<PrintScope>(
-    allowSingle ? "single" : "all",
-  );
   const [sheet, setSheet] = useState<PlanillaSheet | null>(null);
 
   useEffect(() => {
@@ -81,7 +67,7 @@ export default function PrintDialog({
   const printRoot = document.getElementById("print-root");
 
   const handlePrint = () => {
-    const s = buildSheet(scope);
+    const s = buildSheet();
     if (!s) {
       onClose();
       return;
@@ -102,51 +88,7 @@ export default function PrintDialog({
           onClick={(e) => e.stopPropagation()}
           className="w-full max-w-md rounded-xl border border-border bg-surface p-5"
         >
-          <h2 className="mb-4 text-base font-semibold text-text">{title}</h2>
-
-          <div className="mb-5 space-y-2">
-            {allowSingle && (
-              <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border p-3 hover:bg-surface-alt">
-                <input
-                  type="radio"
-                  name="print-scope"
-                  className="mt-1"
-                  checked={scope === "single"}
-                  onChange={() => setScope("single")}
-                />
-                <span>
-                  <span className="block text-sm font-semibold text-text">
-                    Solo este elemento
-                  </span>
-                  <span className="block text-xs text-text-muted">
-                    {currentLabel}
-                  </span>
-                </span>
-              </label>
-            )}
-            <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border p-3 hover:bg-surface-alt">
-              <input
-                type="radio"
-                name="print-scope"
-                className="mt-1"
-                checked={scope === "all"}
-                onChange={() => setScope("all")}
-              />
-              <span>
-                <span className="block text-sm font-semibold text-text">
-                  Todo lo guardado
-                </span>
-                <span className="block text-xs text-text-muted">
-                    {savedCountLabel(savedCount)}
-                  </span>
-              </span>
-            </label>
-          </div>
-
-          <p className="mb-4 text-xs text-text-muted">
-            Salida: planilla municipal A4 horizontal, una fila por tramo de
-            viga, con datos y resultados de verificación.
-          </p>
+          <h2 className="mb-5 text-base font-semibold text-text">{title}</h2>
 
           <div className="flex justify-end gap-2">
             <button

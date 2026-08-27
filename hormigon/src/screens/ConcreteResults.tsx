@@ -1241,24 +1241,7 @@ export default function ConcreteResults() {
         open={printOpen}
         onClose={() => setPrintOpen(false)}
         title="Imprimir planilla de vigas"
-        currentLabel={savedName ?? "Elemento actual (sin guardar)"}
-        savedCount={getSavedBeams("hormigon").length}
-        savedCountLabel={(n) =>
-          `${n} viga${n === 1 ? "" : "s"} guardada${n === 1 ? "" : "s"}`
-        }
-        buildSheet={(scope) =>
-          scope === "single"
-            ? buildVigaSheet([
-                {
-                  id: savedId ?? "current",
-                  name: savedName ?? "Elemento actual",
-                  type: "hormigon",
-                  date: new Date().toLocaleString(),
-                  data: saveData,
-                },
-              ])
-            : buildVigaSheet(getSavedBeams("hormigon"))
-        }
+        buildSheet={() => buildVigaSheet(getSavedBeams("hormigon"))}
       />
     </MainLayout>
   );

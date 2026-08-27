@@ -729,13 +729,7 @@ export default function CompatList() {
         open={printOpen}
         onClose={() => setPrintOpen(false)}
         title="Imprimir planilla de apoyos"
-        currentLabel=""
-        savedCount={savedItems.length}
-        savedCountLabel={(n) =>
-          `${n} apoyo${n === 1 ? "" : "s"} guardado${n === 1 ? "" : "s"}`
-        }
-        allowSingle={false}
-        buildSheet={() => buildApoyosSheet(getSavedSupports())}
+        buildSheet={() => buildApoyosSheet([...savedDesigns, ...compats])}
       />
     </MainLayout>
   );

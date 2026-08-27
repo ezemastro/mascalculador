@@ -968,24 +968,7 @@ export default function RCColumnResults() {
         open={printOpen}
         onClose={() => setPrintOpen(false)}
         title="Imprimir planilla de columnas"
-        currentLabel={savedName ?? "Elemento actual (sin guardar)"}
-        savedCount={getSavedBeams("rc-columna").length}
-        savedCountLabel={(n) =>
-          `${n} columna${n === 1 ? "" : "s"} guardada${n === 1 ? "" : "s"}`
-        }
-        buildSheet={(scope) =>
-          scope === "single"
-            ? buildColumnaSheet([
-                {
-                  id: savedId ?? "current",
-                  name: savedName ?? "Elemento actual",
-                  type: "rc-columna",
-                  date: new Date().toLocaleString(),
-                  data: saveData,
-                },
-              ])
-            : buildColumnaSheet(getSavedBeams("rc-columna"))
-        }
+        buildSheet={() => buildColumnaSheet(getSavedBeams("rc-columna"))}
       />
     </MainLayout>
   );
