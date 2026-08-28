@@ -6,6 +6,8 @@ import {
   saveBeam,
   updateSave,
   listSaves,
+  getSavedBeams,
+  deleteSave,
   loadLastBasesFormState,
   saveLastBasesFormState,
   type BasesFormState,
@@ -336,6 +338,17 @@ export default function BasesForm() {
   }
 
   // ------------------------------------------------------------------
+  // Reset (Nueva)
+  // ------------------------------------------------------------------
+  function handleNew() {
+    setState(initialState);
+    setLoadedSaveId(null);
+    setLoadedSaveName(null);
+    setColumnId(null);
+    setColumnName(null);
+  }
+
+  // ------------------------------------------------------------------
   // Submit
   // ------------------------------------------------------------------
   function handleSubmit(e: React.FormEvent) {
@@ -391,10 +404,24 @@ export default function BasesForm() {
           )}
         </div>
         <span className="ml-auto text-xs text-text-muted">CIRSOC 201</span>
+        <button
+          type="button"
+          onClick={handleNew}
+          className="text-sm bg-surface-alt border border-border text-text-muted px-3 py-1.5 rounded-lg hover:bg-surface hover:text-text transition-colors"
+        >
+          + Nueva
+        </button>
       </header>
 
       {/* Load saved bases */}
-      <SavedBeams app="concrete" type="bases" onLoad={handleLoadBases} label="Bases guardadas" />
+      <SavedBeams
+        app="concrete"
+        type="bases"
+        listSaves={() => getSavedBeams("bases")}
+        deleteSave={(id) => deleteSave(id)}
+        onLoad={handleLoadBases}
+        label="Bases guardadas"
+      />
 
       <form
         onSubmit={handleSubmit}

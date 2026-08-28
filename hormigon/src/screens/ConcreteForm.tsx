@@ -2,7 +2,7 @@ import { useState, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import { SavedBeams } from "@mascalculador/shared";
-import { saveBeam, updateSave, getSavedSlabs, loadSlab } from "../lib/storage";
+import { saveBeam, updateSave, getSavedSlabs, loadSlab, getSavedBeams, deleteSave } from "../lib/storage";
 import { pickObraIfNeeded } from "../components/ObraPicker";
 import { calculateBeam } from "@mascalculador/shared";
 import { DecimalInput } from "@mascalculador/shared";
@@ -303,6 +303,20 @@ export default function ConcreteForm() {
     }
   }
 
+  function handleNew() {
+    setSpanCount(1);
+    setConcreteLoads([]);
+    setBw(200);
+    setH(500);
+    setCover(30);
+    setFc(25);
+    setFy(420);
+    setIncludeSelfWeight(true);
+    setLoadedSaveId(null);
+    setLoadedSaveName(null);
+    savedReinf.current = {};
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     navigate("/concrete-results", {
@@ -381,11 +395,20 @@ export default function ConcreteForm() {
           )}
         </div>
         <span className="ml-auto text-xs text-text-muted">CIRSOC 201-05</span>
+        <button
+          type="button"
+          onClick={handleNew}
+          className="text-sm bg-surface-alt border border-border text-text-muted px-3 py-1.5 rounded-lg hover:bg-surface hover:text-text transition-colors"
+        >
+          + Nueva
+        </button>
       </header>
 
       <SavedBeams
         app="concrete"
         type="hormigon"
+        listSaves={() => getSavedBeams("hormigon")}
+        deleteSave={(id) => deleteSave(id)}
         onLoad={(data, save) => {
           setLoadedSaveId(save.id);
           setLoadedSaveName(save.name);

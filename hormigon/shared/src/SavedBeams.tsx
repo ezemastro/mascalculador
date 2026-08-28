@@ -1,5 +1,10 @@
 import { useState, useEffect } from "react";
-import { listSaves, deleteSave, type SavedBeam, type App } from "./storage";
+import {
+  listSaves as listSavesShared,
+  deleteSave as deleteSaveShared,
+  type SavedBeam,
+  type App,
+} from "./storage";
 
 interface Props {
   app: App;
@@ -7,15 +12,28 @@ interface Props {
   onLoad: (data: Record<string, unknown>, save: SavedBeam) => void;
   onDelete?: (id: string) => void;
   label?: string;
+  /** Override the list of saves (e.g. obra-scoped). Defaults to the shared, app-scoped list. */
+  listSaves?: () => SavedBeam[];
+  /** Override deletion (e.g. obra-scoped). Defaults to the shared, app-scoped delete. */
+  deleteSave?: (id: string) => void;
 }
 
-export default function SavedBeams({ app, type, onLoad, onDelete, label }: Props) {
+export default function SavedBeams({
+  app,
+  type,
+  onLoad,
+  onDelete,
+  label,
+  listSaves: listSavesProp,
+  deleteSave: deleteSaveProp,
+}: Props) {
   const [saves, setSaves] = useState<SavedBeam[]>([]);
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    setSaves(listSaves(app).filter((s) => s.type === type));
-  }, [open, type, app]);
+    const all = listSavesProp ? listSavesProp() : listSavesShared(app);
+    setSaves(all.filter((s) => s.type === type));
+  }, [open, type, app, listSavesProp]);
 
   function handleLoad(save: SavedBeam) {
     onLoad(save.data, save);
@@ -26,7 +44,11 @@ export default function SavedBeams({ app, type, onLoad, onDelete, label }: Props
     if (onDelete) {
       onDelete(id);
     }
-    deleteSave(app, id);
+    if (deleteSaveProp) {
+      deleteSaveProp(id);
+    } else {
+      deleteSaveShared(app, id);
+    }
     setSaves((prev) => prev.filter((s) => s.id !== id));
   }
 

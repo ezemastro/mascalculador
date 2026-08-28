@@ -8,6 +8,8 @@ import {
   loadLastSlabFormState,
   saveSlabInput,
   updateSlabInput,
+  getSavedSlabs,
+  deleteSlab,
 } from "../lib/storage";
 import { pickObraIfNeeded } from "../components/ObraPicker";
 import { DecimalInput } from "@mascalculador/shared";
@@ -313,6 +315,8 @@ export default function SlabForm() {
         app="concrete"
         type="losa"
         label="Losas guardadas"
+        listSaves={() => getSavedSlabs()}
+        deleteSave={(id) => deleteSlab(id)}
         onLoad={(data, save) => {
           setLoadedSaveId(save.id);
           setLoadedSaveName(save.name);

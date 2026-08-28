@@ -5,6 +5,8 @@ import { SavedBeams } from "@mascalculador/shared";
 import {
   saveBeam,
   updateSave,
+  getSavedBeams,
+  deleteSave,
   loadLastRCColumnFormState,
   saveLastRCColumnFormState,
 } from "../lib/storage";
@@ -531,6 +533,27 @@ export default function RCColumnForm() {
     setBeamAddInfo(null);
   }
 
+  function handleNew() {
+    setFc(25);
+    setFy(420);
+    setPD(500);
+    setPL(300);
+    setLu(3.0);
+    setMxSup(10);
+    setMxInf(30);
+    setMySup(0);
+    setMyInf(0);
+    setCx(undefined);
+    setCy(undefined);
+    setBetaD(0.6);
+    setAutoDim(true);
+    setIncludeSelfWeight(false);
+    setContributedColumns([]);
+    setContributedBeams([]);
+    setLoadedSaveId(null);
+    setLoadedSaveName(null);
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const rcState: RCColumnState = {
@@ -592,11 +615,20 @@ export default function RCColumnForm() {
           )}
         </div>
         <span className="ml-auto text-xs text-text-muted">CIRSOC 201</span>
+        <button
+          type="button"
+          onClick={handleNew}
+          className="text-sm bg-surface-alt border border-border text-text-muted px-3 py-1.5 rounded-lg hover:bg-surface hover:text-text transition-colors"
+        >
+          + Nueva
+        </button>
       </header>
 
       <SavedBeams
         app="concrete"
         type="rc-columna"
+        listSaves={() => getSavedBeams("rc-columna")}
+        deleteSave={(id) => deleteSave(id)}
         onLoad={handleLoad}
         label="Columnas guardadas"
       />
