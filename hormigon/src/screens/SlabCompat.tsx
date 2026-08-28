@@ -96,11 +96,12 @@ export default function SlabCompat() {
   const edgeB: EdgeIndex = OPPOSITE_EDGE[edgeA];
 
   // Momento negativo en los bordes elegidos: 0 → apoyo simple, no se avanza.
-  const MnegA = slabA
-    ? ((edgeA <= 1 ? slabA.result.x.Mneg : slabA.result.y.Mneg) ?? 0)
+  // Una losa guardada solo con datos (sin resultados) no puede aportar Mneg.
+  const MnegA = slabA?.result
+    ? ((edgeA <= 1 ? slabA.result.x?.Mneg : slabA.result.y?.Mneg) ?? 0)
     : 0;
-  const MnegB = slabB
-    ? ((edgeB <= 1 ? slabB.result.x.Mneg : slabB.result.y.Mneg) ?? 0)
+  const MnegB = slabB?.result
+    ? ((edgeB <= 1 ? slabB.result.x?.Mneg : slabB.result.y?.Mneg) ?? 0)
     : 0;
   const zeroMoment = !!detection && (MnegA === 0 || MnegB === 0);
 

@@ -65,15 +65,16 @@ function CompatCard({
 
   const requiredAs = supportDesign?.AsReq ?? 0;
 
-  // Available from bent bars: 50% of adopted span As from each slab
+  // Available from bent bars: 50% of adopted span As from each slab.
+  // Guard: la losa puede no existir en esta obra o estar guardada sin resultados.
   const slabA = loadSlab(data.slabA.id);
   const slabB = loadSlab(data.slabB.id);
-  const adoptedA = slabA
+  const adoptedA = slabA?.result
     ? data.edgeA <= 1
       ? (slabA.result.adoptedAsX ?? 0)
       : (slabA.result.adoptedAsY ?? 0)
     : 0;
-  const adoptedB = slabB
+  const adoptedB = slabB?.result
     ? data.edgeB <= 1
       ? (slabB.result.adoptedAsX ?? 0)
       : (slabB.result.adoptedAsY ?? 0)
@@ -272,6 +273,8 @@ export default function CompatList() {
   );
 
   const slab = selectedSlabId ? loadSlab(selectedSlabId) : null;
+  // Guard: la losa puede estar guardada solo con datos (sin resultados).
+  const slabResult = slab?.result ?? null;
   const continuousEdges: EdgeIndex[] = slab
     ? ([0, 1, 2, 3] as EdgeIndex[]).filter(
         (i) => slab.input.edges[i] === "continuo",
@@ -297,20 +300,20 @@ export default function CompatList() {
 
   // Get Mneg for the selected edge
   const mneg =
-    slab && supportEdge !== undefined && continuousEdges.includes(supportEdge)
+    slabResult && supportEdge !== undefined && continuousEdges.includes(supportEdge)
       ? supportEdge <= 1
         ? supportEdge === 0
-          ? slab.result.MnegIzq
-          : slab.result.MnegDer
+          ? slabResult.MnegIzq
+          : slabResult.MnegDer
         : supportEdge === 2
-          ? slab.result.MnegArr
-          : slab.result.MnegAba
+          ? slabResult.MnegArr
+          : slabResult.MnegAba
       : 0;
 
-  const adoptedSpanAs = slab
+  const adoptedSpanAs = slabResult
     ? supportEdge <= 1
-      ? (slab.result.adoptedAsX ?? 0)
-      : (slab.result.adoptedAsY ?? 0)
+      ? (slabResult.adoptedAsX ?? 0)
+      : (slabResult.adoptedAsY ?? 0)
     : 0;
 
   // Available from bent bars = 50% of adopted span As (from saved slab)
@@ -318,11 +321,11 @@ export default function CompatList() {
 
   // Required support As from Mneg
   const supportDesign =
-    slab && mneg !== 0
+    slab && slabResult && mneg !== 0
       ? designSupportMoment(
           Math.abs(mneg),
-          slab.result.d,
-          slab.result.h,
+          slabResult.d,
+          slabResult.h,
           slab.input.fc,
           slab.input.fy,
           1000,
@@ -354,7 +357,7 @@ export default function CompatList() {
           loadedCompat.result.Mcompat ??
           Math.min(loadedCompat.result.MnegA, loadedCompat.result.MnegB);
         const refSlab = loadSlab(loadedCompat.slabA.id);
-        return refSlab
+        return refSlab?.result
           ? designSupportMoment(
               Math.abs(supportMoment),
               refSlab.result.d,
@@ -561,6 +564,19 @@ export default function CompatList() {
                   </select>
                 </label>
               </div>
+
+              {slab && !slabResult && (
+                <p className="text-sm text-warning bg-warning/10 border border-warning/30 rounded-lg px-3 py-2">
+                  Esta losa está guardada sin resultados. Calculala desde Losas
+                  y volvé a guardarla para poder diseñar el apoyo.
+                </p>
+              )}
+              {slabResult && continuousEdges.length === 0 && (
+                <p className="text-sm text-warning bg-warning/10 border border-warning/30 rounded-lg px-3 py-2">
+                  Esta losa no tiene bordes continuos. Cambiá las condiciones de
+                  borde en Losas para poder diseñar el apoyo.
+                </p>
+              )}
 
               {slab &&
                 supportEdge !== undefined &&
