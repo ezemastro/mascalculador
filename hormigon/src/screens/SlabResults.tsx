@@ -18,11 +18,6 @@ import { buildLosaSheet } from "../lib/print-planilla";
 import PrintDialog from "../components/PrintDialog";
 import type { SlabState } from "./SlabForm";
 
-function sanitizeDecimal(val: string): string {
-  // Replace comma (both regular and numpad) with dot
-  return val.replace(/,/g, ".");
-}
-
 /** Convierte los pasos del motor (mm) a cm para su visualización.
  *  Solo se protegen los diámetros de barras (designación comercial en mm)
  *  y el ratio mm²/mm (el patrón mm²/m matchea dentro de "mm²/mm").
@@ -81,8 +76,6 @@ function SupportSection({
   label: string;
   dir: DirectionResult;
 }) {
-  const asReqCm = (dir.AsReq / 100).toFixed(2);
-  const asMinCm = (dir.AsMin / 100).toFixed(2);
   return (
     <div className="bg-surface rounded-xl border border-border p-4">
       <span className="text-xs text-text-muted uppercase tracking-wider font-semibold">
@@ -91,48 +84,6 @@ function SupportSection({
       <p className="text-sm mt-1">
         M<sub>u</sub> = {dir.Mu.toFixed(2)} kN·m/m
       </p>
-      <p className="text-sm font-bold text-primary">
-        A<sub>s</sub> req = {asReqCm} cm²/m
-      </p>
-      <p className="text-xs text-text-muted">
-        mín: {asMinCm} &middot; s<sub>máx</sub>: {(dir.sMax / 10).toFixed(1)} cm
-      </p>
-      <details className="mt-2 pt-2 border-t border-border">
-        <summary className="cursor-pointer text-xs text-text-muted hover:text-text">
-          Ver cuentas
-        </summary>
-        <div className="mt-2 p-2 bg-surface-alt rounded text-xs text-text-muted font-mono space-y-0.5">
-          <p>
-            M<sub>n</sub> = M<sub>u</sub> / φ = {(dir.Mu / 0.9).toFixed(2)}{" "}
-            kN·m/m
-          </p>
-          <p>
-            m<sub>n</sub> = {dir.mn.toFixed(4)}
-          </p>
-          <p>
-            K<sub>a</sub> = {dir.Ka.toFixed(4)}
-          </p>
-          <p>
-            K<sub>a,min</sub> = {dir.KaMin.toFixed(4)}
-          </p>
-          <p>
-            K<sub>a,max</sub> = {dir.KaMax.toFixed(4)}
-          </p>
-          <p className="text-primary font-semibold">{dir.caseLabel}</p>
-          <p>
-            A<sub>s,req</sub> = {asReqCm} cm²/m
-          </p>
-          <p>
-            A<sub>s,mín</sub> = {asMinCm} cm²/m
-          </p>
-          <p>
-            A<sub>s,temp</sub> = {(dir.AsTemp / 100).toFixed(2)} cm²/m
-          </p>
-          <p>
-            s<sub>máx</sub> = {(dir.sMax / 10).toFixed(1)} cm
-          </p>
-        </div>
-      </details>
     </div>
   );
 }
@@ -212,12 +163,18 @@ function DirSection({
         <label className="flex flex-col gap-0.5">
           <span className="text-xs text-text-muted">Sep (cm)</span>
           <input
-            type="text"
+            type="number"
+            min={1}
+            max={50}
+            step={1}
             value={sep === 0 ? "" : sep}
             onChange={(e) => {
-              const raw = sanitizeDecimal(e.target.value);
-              const num = parseFloat(raw);
-              setSep(isNaN(num) ? 0 : num);
+              const num = parseFloat(e.target.value);
+              if (isNaN(num)) {
+                setSep(0);
+                return;
+              }
+              setSep(Math.min(50, Math.max(1, Math.round(num))));
             }}
             className="w-20"
           />
@@ -406,8 +363,8 @@ export default function SlabResults() {
           <h1 className="text-xl font-semibold text-text flex items-center gap-3">
             Losa {lx}×{ly} m
             {savedName ? (
-              <span className="text-sm font-normal text-text-muted bg-surface-alt border border-border px-2.5 py-0.5 rounded-full">
-                {savedName}
+              <span className="inline-flex items-center text-sm font-semibold text-primary bg-primary/10 border border-primary/30 px-2.5 py-0.5 rounded-full">
+                {/^\d+$/.test(savedName) ? `Losa Nº ${savedName}` : savedName}
               </span>
             ) : (
               <span className="text-sm font-normal text-warning bg-warning/10 border border-warning/30 px-2.5 py-0.5 rounded-full">
@@ -416,9 +373,7 @@ export default function SlabResults() {
             )}
           </h1>
           <p className="text-sm text-text-muted">
-            h = {(result.h / 10).toFixed(1)} cm &middot; d ={" "}
-            {(result.d / 10).toFixed(1)} cm &middot; qu = {result.qu.toFixed(2)}{" "}
-            kN/m²
+            q<sub>u</sub> = {result.qu.toFixed(2)} kN/m²
           </p>
         </div>
         <div className="flex gap-1.5">
@@ -476,7 +431,7 @@ export default function SlabResults() {
         <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
           Datos
         </h2>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-sm">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-8 gap-3 text-sm">
           <div>
             <span className="text-xs text-text-muted">Lx (m)</span>
             <p className="font-semibold">{lx}</p>
@@ -485,7 +440,7 @@ export default function SlabResults() {
             <span className="text-xs text-text-muted">Ly (m)</span>
             <p className="font-semibold">{ly}</p>
           </div>
-          <div>
+          <div className="sm:col-span-2 lg:col-span-3">
             <span className="text-xs text-text-muted">Bordes</span>
             <p className="font-semibold">
               {[
@@ -520,9 +475,10 @@ export default function SlabResults() {
             </p>
           </div>
           <div>
-            <span className="text-xs text-text-muted">Rec. / h (cm)</span>
+            <span className="text-xs text-text-muted">Rec. / h / d (cm)</span>
             <p className="font-semibold">
-              {cover / 10} / {(result.h / 10).toFixed(1)}
+              {cover / 10} / {(result.h / 10).toFixed(1)} /{" "}
+              {(result.d / 10).toFixed(1)}
             </p>
           </div>
         </div>

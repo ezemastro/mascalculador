@@ -413,18 +413,23 @@ export default function SlabForm() {
                 </select>
               </label>
             ))}
-            <div className="col-span-2 sm:col-span-5 mt-2 flex flex-wrap items-center gap-4">
-              <div className="text-sm text-text-muted">
+            <div className="col-span-2 sm:col-span-5 mt-2 flex flex-wrap items-center gap-x-6 gap-y-2">
+              <div className="text-sm text-text-muted whitespace-nowrap">
                 h predim (cm):{" "}
                 <span className="font-semibold text-text">
                   {hPredim.toFixed(1)}
                 </span>
               </div>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-text-muted">
-                  h adop (cm) — 0 = usar predim
+              <label className="flex items-center gap-2 text-sm text-text-muted whitespace-nowrap">
+                h adop (cm):
+                <DecimalInput
+                  value={hAdop}
+                  onChange={setHAdop}
+                  className="w-24"
+                />
+                <span className="text-xs text-text-muted/60">
+                  (0 = usar predim)
                 </span>
-                <DecimalInput value={hAdop} onChange={setHAdop} />
               </label>
             </div>
           </div>
@@ -434,8 +439,8 @@ export default function SlabForm() {
           <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
             Cargas y materiales
           </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <label className="flex flex-row items-center gap-2 sm:col-span-2">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 items-end">
+            <label className="flex flex-row items-center gap-2 col-span-2 py-2">
               <input
                 type="checkbox"
                 checked={includeSelfWeight}
@@ -469,6 +474,7 @@ export default function SlabForm() {
               <select
                 value={fc}
                 onChange={(e) => setFc(Number(e.target.value))}
+                className="w-24"
               >
                 <option value={20}>20</option>
                 <option value={25}>25</option>
@@ -483,6 +489,7 @@ export default function SlabForm() {
               <select
                 value={fy}
                 onChange={(e) => setFy(Number(e.target.value))}
+                className="w-24"
               >
                 <option value={420}>420</option>
                 <option value={500}>500</option>

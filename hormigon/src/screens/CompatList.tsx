@@ -41,6 +41,47 @@ const EDGE_LABELS: Record<number, string> = {
   3: "Abajo",
 };
 
+/** Convierte los pasos del motor (mm) a cm para su visualización.
+ *  Solo se protegen los diámetros de barras (designación comercial en mm)
+ *  y el ratio mm²/mm (el patrón mm²/m matchea dentro de "mm²/mm").
+ *  La geometría lineal también pasa a cm. */
+function postSteps(steps: string[]): string[] {
+  const PROTECT_PATTERNS: RegExp[] = [
+    /Ø\s*[\d.,]+\s*mm/g,
+    /diámetro[^\n]*?mm/g,
+    /[\d.,]+\s*mm²\/mm/g,
+  ];
+
+  return steps.map((line) => {
+    const saved: string[] = [];
+    let out = line;
+    for (const re of PROTECT_PATTERNS) {
+      out = out.replace(re, (m) => {
+        saved.push(m);
+        return `@@P${saved.length - 1}@@`;
+      });
+    }
+    out = out
+      .replace(
+        /(\d+\.?\d*)\s*mm²\/m/g,
+        (_m: string, n: string) => `${(Number(n) / 100).toFixed(2)} cm²/m`,
+      )
+      .replace(
+        /(\d+\.?\d*)\s*mm²(?!\/)/g,
+        (_m: string, n: string) => `${(Number(n) / 100).toFixed(2)} cm²`,
+      )
+      .replace(
+        /(\d+\.?\d*)\s*mm(?!²)/g,
+        (_m: string, n: string) => `${(Number(n) / 10).toFixed(1)} cm`,
+      );
+    // Restaurar los tokens protegidos
+    for (let i = 0; i < saved.length; i++) {
+      out = out.replace(`@@P${i}@@`, () => saved[i]);
+    }
+    return out;
+  });
+}
+
 type SavedListItem =
   | { kind: "individual"; data: SavedSupportData }
   | { kind: "compat"; data: SavedCompatData };
@@ -79,7 +120,7 @@ function CompatCard({
       ? (slabB.result.adoptedAsX ?? 0)
       : (slabB.result.adoptedAsY ?? 0)
     : 0;
-  const availableFromSpan = (adoptedA + adoptedB) / 4; // 50% of avg adopted from both slabs
+  const availableFromSpan = (adoptedA + adoptedB) / 2; // 50% de cada losa que comparte el apoyo
   const additionalNeeded = Math.max(0, requiredAs - availableFromSpan);
 
   const barArea = BAR_AREA[diam] || 0;
@@ -167,8 +208,8 @@ function CompatCard({
               {(availableFromSpan / 100).toFixed(2)} cm²/m
             </p>
             <span className="text-text-muted/60">
-              = 50% × avg({(adoptedA / 100).toFixed(2)},{" "}
-              {(adoptedB / 100).toFixed(2)}) cm²/m
+              = 50% × {(adoptedA / 100).toFixed(2)} + 50% ×{" "}
+              {(adoptedB / 100).toFixed(2)} cm²/m
             </span>
           </div>
           <div>
@@ -176,11 +217,20 @@ function CompatCard({
             <p className="font-bold text-warning">
               {(additionalNeeded / 100).toFixed(2)} cm²/m
             </p>
-            <span className="text-text-muted/60">
-              = máx(0, nec − 50%·adopt)
-            </span>
+            <span className="text-text-muted/60">= máx(0, nec − disp)</span>
           </div>
         </div>
+
+        {supportDesign?.steps && (
+          <details className="mt-3 pt-2 border-t border-border">
+            <summary className="cursor-pointer text-xs text-text-muted hover:text-text">
+              Ver cuentas
+            </summary>
+            <pre className="mt-2 p-2 bg-surface rounded text-xs text-text-muted font-mono whitespace-pre-wrap overflow-x-auto">
+              {postSteps(supportDesign.steps).join("\n")}
+            </pre>
+          </details>
+        )}
 
         <div className="flex gap-3 items-end">
           <label className="flex flex-col gap-1">
@@ -200,15 +250,21 @@ function CompatCard({
           <label className="flex flex-col gap-1">
             <span className="text-xs text-text-muted">Sep (cm)</span>
             <input
-              type="text"
+              type="number"
+              min={1}
+              max={50}
+              step={1}
               value={sep ? sep / 10 : ""}
               onChange={(e) => {
-                const raw = e.target.value.replace(/,/g, ".");
-                const num = parseFloat(raw);
+                const num = parseFloat(e.target.value);
+                if (isNaN(num)) {
+                  setSep(0);
+                  return;
+                }
                 // Entrada en cm → estado en mm (unidad del motor)
-                setSep(isNaN(num) ? 0 : num * 10);
+                setSep(Math.min(50, Math.max(1, Math.round(num))) * 10);
               }}
-              className="w-20 bg-surface border border-border rounded px-2 py-1 text-text text-sm"
+              className="w-20"
             />
           </label>
           <div className="flex flex-col gap-1">
@@ -263,7 +319,8 @@ export default function CompatList() {
   const [listOpen, setListOpen] = useState(false);
   const [loadedCompatName, setLoadedCompatName] = useState<string | null>(null);
 
-  // Individual support designer state
+  // Individual support designer state — oculto hasta tocar "+ Nuevo apoyo individual"
+  const [individualOpen, setIndividualOpen] = useState(false);
   const [selectedSlabId, setSelectedSlabId] = useState("");
   const [selectedEdge, setSelectedEdge] = useState<EdgeIndex>(0);
   const [supDiam, setSupDiam] = useState(10);
@@ -403,6 +460,7 @@ export default function CompatList() {
     setListOpen(false);
     if (item.kind === "individual") {
       setLoadedCompatName(null);
+      setIndividualOpen(true);
       setSelectedSlabId(item.data.slabId);
       setSelectedEdge(item.data.edge);
       setSupDiam(item.data.diam);
@@ -410,12 +468,14 @@ export default function CompatList() {
       setAppliedDesignKey(`${item.data.slabId}:${item.data.edge}`);
     } else {
       setLoadedCompatName(item.data.name);
+      setIndividualOpen(false);
     }
   }
 
   function handleNewIndividual() {
     setListOpen(false);
     setLoadedCompatName(null);
+    setIndividualOpen(true);
     setSelectedSlabId("");
     setSelectedEdge(0);
     setSupDiam(10);
@@ -513,12 +573,21 @@ export default function CompatList() {
         )}
       </section>
 
-      {/* Individual support designer — oculto cuando hay un compartido cargado */}
-      {!loadedCompat && (
+      {/* Individual support designer — solo aparece al tocar "+ Nuevo apoyo individual" */}
+      {individualOpen && !loadedCompat && (
         <section className="bg-surface rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
-            Diseñar apoyo individual
-          </h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
+              Diseñar apoyo individual
+            </h2>
+            <button
+              type="button"
+              onClick={() => setIndividualOpen(false)}
+              className="text-xs text-text-muted hover:text-text px-2 py-1"
+            >
+              ✕ Cerrar
+            </button>
+          </div>
           {savedSlabs.length === 0 ? (
             <p className="text-sm text-text-muted">No hay losas guardadas.</p>
           ) : (
@@ -641,6 +710,17 @@ export default function CompatList() {
                       </div>
                     </div>
 
+                    {supportDesign.steps && (
+                      <details className="bg-surface-alt rounded-lg p-3">
+                        <summary className="cursor-pointer text-xs text-text-muted hover:text-text">
+                          Ver cuentas
+                        </summary>
+                        <pre className="mt-2 p-2 bg-surface rounded text-xs text-text-muted font-mono whitespace-pre-wrap overflow-x-auto">
+                          {postSteps(supportDesign.steps).join("\n")}
+                        </pre>
+                      </details>
+                    )}
+
                     {/* Additional bars selector */}
                     <div className="bg-surface-alt rounded-lg p-3">
                       <p className="text-sm font-semibold text-text mb-2">
@@ -673,15 +753,23 @@ export default function CompatList() {
                             Sep (cm)
                           </span>
                           <input
-                            type="text"
+                            type="number"
+                            min={1}
+                            max={50}
+                            step={1}
                             value={supSep ? supSep / 10 : ""}
                             onChange={(e) => {
-                              const raw = e.target.value.replace(/,/g, ".");
-                              const num = parseFloat(raw);
+                              const num = parseFloat(e.target.value);
+                              if (isNaN(num)) {
+                                setSupSep(0);
+                                return;
+                              }
                               // Entrada en cm → estado en mm (unidad del motor)
-                              setSupSep(isNaN(num) ? 0 : num * 10);
+                              setSupSep(
+                                Math.min(50, Math.max(1, Math.round(num))) * 10,
+                              );
                             }}
-                            className="w-20 bg-surface border border-border rounded px-2 py-1 text-text text-sm"
+                            className="w-20"
                           />
                         </label>
                         <div className="flex flex-col gap-1">

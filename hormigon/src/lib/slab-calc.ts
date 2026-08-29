@@ -40,6 +40,9 @@ export interface DirectionResult {
   ka1?: number;
   /** A_s sin mayorar por mínimos (mm²/m) — para la traza de la cuenta */
   AsRaw?: number;
+  /** Traza de cálculo paso a paso (mm) — presente cuando el diseño se genera
+   *  standalone (apoyos vía designSupportMoment). */
+  steps?: string[];
 }
 
 export interface SlabResult {
@@ -2202,6 +2205,44 @@ export function designSupportMoment(
   const AsReq = Math.max(AsRaw, AsMin, AsTemp);
   const sMax = Math.min(2.5 * h, 25 * dB, 300);
 
+  // Traza paso a paso (mismo formato que pushKaSteps en designSlab) para el
+  // desplegable "Ver cuentas" de la hoja de apoyos.
+  const st: string[] = [];
+  st.push(`M_n = M_u / φ = ${Mu.toFixed(3)} / 0.9 = ${Mn.toFixed(3)} kN·m/m`);
+  st.push(
+    `m_n = M_n·10⁶ / (0.85·f'_c·b·d²) = ${Mn.toFixed(3)}·10⁶ / (0.85·${fc}·${bw}·${d}²) = ${mn_val.toFixed(6)}`,
+  );
+  st.push(
+    `K_a = 1 - √(1 - 2·m_n) = 1 - √(1 - 2·${mn_val.toFixed(6)}) = ${Ka.toFixed(4)}`,
+  );
+  st.push(`K_a,min = ${KaMin.toFixed(4)} · K_a,max = ${KaMax.toFixed(4)}`);
+  if (ka1 !== undefined) {
+    const kUsed = ka1 >= KaMin ? KaMin : ka1;
+    st.push(`k₁ = 1.33·K_a = 1.33·${Ka.toFixed(4)} = ${ka1.toFixed(4)}`);
+    st.push(
+      `k = mín(k₁, K_a min) = mín(${ka1.toFixed(4)}, ${KaMin.toFixed(4)}) = ${kUsed.toFixed(4)}`,
+    );
+    st.push(
+      `A_s = (0.85·f'_c·b·k·d)/f_y = (0.85·${fc}·${bw}·${kUsed.toFixed(4)}·${d})/${fy} = ${AsRaw.toFixed(1)} mm²/m`,
+    );
+  } else if (Ka > KaMax) {
+    st.push(
+      `A_s = (0.85·f'_c·b·K_a max·d)/f_y = (0.85·${fc}·${bw}·${KaMax.toFixed(4)}·${d})/${fy} = ${AsRaw.toFixed(1)} mm²/m (sección sobre-reforzada)`,
+    );
+  } else {
+    st.push(
+      `A_s = (0.85·f'_c·b·K_a·d)/f_y = (0.85·${fc}·${bw}·${Ka.toFixed(4)}·${d})/${fy} = ${AsRaw.toFixed(1)} mm²/m`,
+    );
+  }
+  st.push(`A_s,temp = 0.0018·b·h = 0.0018·${bw}·${h} = ${AsTemp} mm²/m`);
+  st.push(`A_s,mín = ${AsMin} mm²/m`);
+  st.push(
+    `A_s = máx(A_s, A_s,mín, A_s,temp) = máx(${AsRaw.toFixed(1)}, ${AsMin}, ${AsTemp}) = ${AsReq} mm²/m`,
+  );
+  st.push(
+    `s_máx = mín(2.5·h, 25·Ø, 300) = mín(${(2.5 * h).toFixed(0)}, ${25 * dB}, 300) = ${sMax} mm`,
+  );
+
   return {
     Mu,
     Mn,
@@ -2218,6 +2259,7 @@ export function designSupportMoment(
     Mneg,
     ka1,
     AsRaw,
+    steps: st,
   };
 }
 
