@@ -869,18 +869,24 @@ export default function ConcreteResults() {
                     Separación (cm)
                   </span>
                   <input
-                    type="text"
+                    type="number"
+                    min={1}
+                    max={50}
+                    step={1}
                     value={sSpacing ? sSpacing / 10 : ""}
                     onChange={(e) => {
-                      const raw = sanitizeDecimal(e.target.value);
-                      const num = parseFloat(raw);
+                      const num = parseFloat(e.target.value);
+                      if (isNaN(num)) {
+                        setStirrupSpacing(patchArr(stirrupSpacing, i, 200, 0));
+                        return;
+                      }
                       // Entrada en cm → estado/guardado en mm (unidad del motor)
                       setStirrupSpacing(
                         patchArr(
                           stirrupSpacing,
                           i,
                           200,
-                          isNaN(num) ? 0 : num * 10,
+                          Math.min(50, Math.max(1, Math.round(num))) * 10,
                         ),
                       );
                     }}
