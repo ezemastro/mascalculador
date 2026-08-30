@@ -65,7 +65,7 @@ export function getBeamReactions(saveId: string): BeamReactionResult | null {
       const h = data.h as number;
       const totalLength = spans.reduce((a, b) => a + b, 0);
       if (bw && h && totalLength > 0) {
-        const selfWeightD = ((bw * h) / 10000) * CONCRETE_DENSITY;
+        const selfWeightD = ((bw * h) / 1e6) * CONCRETE_DENSITY;
         loads.push({
           id: "__sw__",
           type: "distributed",
