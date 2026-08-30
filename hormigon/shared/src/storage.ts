@@ -289,6 +289,8 @@ export interface BasesFormState {
   Lcol?: number;
   LcolX?: number;
   LcolY?: number;
+  bViga?: number;
+  hViga?: number;
   H?: number;
   Hx?: number;
   Hy?: number;

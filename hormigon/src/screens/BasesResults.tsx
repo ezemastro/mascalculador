@@ -106,10 +106,7 @@ function SteelEditor({
       <div className="grid grid-cols-2 gap-3">
         <label className="flex flex-col gap-1">
           <span className="text-xs text-text-muted">Ø (mm)</span>
-          <select
-            value={diam}
-            onChange={(e) => onDiam(Number(e.target.value))}
-          >
+          <select value={diam} onChange={(e) => onDiam(Number(e.target.value))}>
             {[8, 10, 12, 16, 20, 25].map((d) => (
               <option key={d} value={d}>
                 Ø{d}
@@ -131,9 +128,7 @@ function SteelEditor({
               type="number"
               min={1}
               value={qty}
-              onChange={(e) =>
-                onQty(Math.max(1, Number(e.target.value) || 1))
-              }
+              onChange={(e) => onQty(Math.max(1, Number(e.target.value) || 1))}
               className="w-14 text-center"
             />
             <button
@@ -168,7 +163,6 @@ function SteelEditor({
 export default function BasesResults() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [showSteps, setShowSteps] = useState(false);
   const [showTensorForm, setShowTensorForm] = useState(false);
 
   const locState = location.state as LocationState | null;
@@ -273,8 +267,7 @@ export default function BasesResults() {
     input.type === "medianera-x" ||
     input.type === "medianera-y";
   const isViga = isMedianera && input.subType === "viga-de-fundacion";
-  const isTensor =
-    input.subType === "tensor" && (isMedianera || isEsquina);
+  const isTensor = input.subType === "tensor" && (isMedianera || isEsquina);
   const tensorPending = result.tensorPending;
 
   const typeLabel =
@@ -354,7 +347,8 @@ export default function BasesResults() {
               {`f'c = ${input.fc} MPa · fy = ${input.fy} MPa · σadm = ${input.qa} kN/m²`}
               {isViga &&
                 ` · Viga de fundación (Lcol${isMedianera && input.type === "medianera-x" ? ` = ${input.Lcol} cm` : ` = ${input.Lcol ?? "—"} cm`})`}
-              {isTensor && (tensorPending ? " · Tensor: completar datos ↓" : " · Tensor")}
+              {isTensor &&
+                (tensorPending ? " · Tensor: completar datos ↓" : " · Tensor")}
             </p>
           </div>
         </div>
@@ -502,7 +496,7 @@ export default function BasesResults() {
               )} kN`}
               sub={
                 <span>
-                  PD·μ = {fmt(input.PD * (input.mu ?? 0.4), 1)} kN{" "}
+                  PD·μ = {fmt(input.PD * (input.mu ?? 0.4), 2)} kN{" "}
                   <Badge ok={result.FrictionOK} />
                 </span>
               }
@@ -770,12 +764,12 @@ export default function BasesResults() {
             />
             <DataCard
               label="Sección viga"
-              value={`${Math.max(input.cy, 20)} × ${fmt(result.h, 1)}`}
+              value={`${fmt(result.b_viga, 1)} × ${fmt(result.h_viga, 1)}`}
               sub="cm (b × h)"
             />
             <DataCard
               label="Altura útil viga (d)"
-              value={`${fmt(result.d, 1)}`}
+              value={`${fmt(result.d_viga, 1)}`}
               sub="cm"
             />
             <DataCard
@@ -789,23 +783,14 @@ export default function BasesResults() {
 
       {/* ─── Ver cuentas ─── */}
       <section className="no-print bg-surface rounded-xl border border-border p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
+        <details className="mt-1">
+          <summary className="cursor-pointer text-xs font-semibold text-text-muted uppercase tracking-wider hover:text-text">
             Ver cuentas
-          </h2>
-          <button
-            type="button"
-            onClick={() => setShowSteps(!showSteps)}
-            className="text-xs bg-surface-alt border border-border hover:bg-surface text-text-muted px-3 py-1.5 rounded-lg"
-          >
-            {showSteps ? "Ocultar cuentas ▲" : "Mostrar cuentas ▼"}
-          </button>
-        </div>
-        {showSteps && (
-          <pre className="p-3 bg-surface-alt rounded-lg text-xs text-text-muted font-mono whitespace-pre-wrap overflow-x-auto max-h-[32rem] overflow-y-auto">
+          </summary>
+          <pre className="mt-3 p-3 bg-surface-alt rounded-lg text-xs text-text-muted font-mono whitespace-pre-wrap overflow-x-auto max-h-[32rem] overflow-y-auto">
             {result.steps.join("\n")}
           </pre>
-        )}
+        </details>
       </section>
 
       {/* ─── Warnings ─── */}

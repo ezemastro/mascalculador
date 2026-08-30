@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import { SavedBeams } from "@mascalculador/shared";
+import { DecimalInput } from "@mascalculador/shared";
 import {
   saveBeam,
   updateSave,
@@ -108,7 +109,15 @@ function BasePlanSketch({ type }: { type: string }) {
   if (type === "centrada") {
     return (
       <svg width="56" height="40" viewBox="0 0 56 40" className="shrink-0">
-        <rect x="13" y="5" width="30" height="30" fill="none" stroke={stroke} strokeWidth="1.5" />
+        <rect
+          x="13"
+          y="5"
+          width="30"
+          height="30"
+          fill="none"
+          stroke={stroke}
+          strokeWidth="1.5"
+        />
         <rect x="24" y="16" width="8" height="8" fill={col} />
       </svg>
     );
@@ -116,7 +125,15 @@ function BasePlanSketch({ type }: { type: string }) {
   if (type === "medianera-x") {
     return (
       <svg width="56" height="40" viewBox="0 0 56 40" className="shrink-0">
-        <rect x="3" y="10" width="50" height="20" fill="none" stroke={stroke} strokeWidth="1.5" />
+        <rect
+          x="3"
+          y="10"
+          width="50"
+          height="20"
+          fill="none"
+          stroke={stroke}
+          strokeWidth="1.5"
+        />
         <rect x="24" y="22" width="8" height="8" fill={col} />
       </svg>
     );
@@ -124,7 +141,15 @@ function BasePlanSketch({ type }: { type: string }) {
   if (type === "medianera-y") {
     return (
       <svg width="56" height="40" viewBox="0 0 56 40" className="shrink-0">
-        <rect x="18" y="3" width="20" height="34" fill="none" stroke={stroke} strokeWidth="1.5" />
+        <rect
+          x="18"
+          y="3"
+          width="20"
+          height="34"
+          fill="none"
+          stroke={stroke}
+          strokeWidth="1.5"
+        />
         <rect x="18" y="16" width="8" height="8" fill={col} />
       </svg>
     );
@@ -132,7 +157,15 @@ function BasePlanSketch({ type }: { type: string }) {
   // esquina
   return (
     <svg width="56" height="40" viewBox="0 0 56 40" className="shrink-0">
-      <rect x="13" y="5" width="30" height="30" fill="none" stroke={stroke} strokeWidth="1.5" />
+      <rect
+        x="13"
+        y="5"
+        width="30"
+        height="30"
+        fill="none"
+        stroke={stroke}
+        strokeWidth="1.5"
+      />
       <rect x="13" y="5" width="8" height="8" fill={col} />
     </svg>
   );
@@ -232,7 +265,25 @@ export default function BasesForm() {
       dFlex: hgt.dFlex,
       hTalonSug: Math.max(25, (state.h ?? hgt.h) - kmin),
     };
-  }, [state.qa, state.Df, state.PD, state.PL, state.cx, state.cy, state.fc, state.fy, state.type, state.subType, state.Lx, state.Ly, state.Lcol, state.LcolX, state.LcolY, state.cover, state.h]);
+  }, [
+    state.qa,
+    state.Df,
+    state.PD,
+    state.PL,
+    state.cx,
+    state.cy,
+    state.fc,
+    state.fy,
+    state.type,
+    state.subType,
+    state.Lx,
+    state.Ly,
+    state.Lcol,
+    state.LcolX,
+    state.LcolY,
+    state.cover,
+    state.h,
+  ]);
   const savedColumns = useMemo(() => getSavedColumns(), []);
 
   function handleLoadColumn(colId: string) {
@@ -430,7 +481,10 @@ export default function BasesForm() {
             // Commit and exit the field instead of submitting (calculating).
             e.preventDefault();
             const target = e.target as HTMLElement;
-            if (target.tagName === "INPUT" && typeof target.blur === "function") {
+            if (
+              target.tagName === "INPUT" &&
+              typeof target.blur === "function"
+            ) {
               target.blur();
             }
           }
@@ -531,24 +585,24 @@ export default function BasesForm() {
               </span>
             </div>
             <select
-                className="w-full"
-                defaultValue=""
-                onChange={(e) => {
-                  if (e.target.value) handleLoadColumn(e.target.value);
-                }}
-              >
-                <option value="" disabled>
-                  {savedColumns.length === 0
-                    ? "No hay columnas guardadas"
-                    : "Seleccionar columna guardada..."}
+              className="w-full"
+              defaultValue=""
+              onChange={(e) => {
+                if (e.target.value) handleLoadColumn(e.target.value);
+              }}
+            >
+              <option value="" disabled>
+                {savedColumns.length === 0
+                  ? "No hay columnas guardadas"
+                  : "Seleccionar columna guardada..."}
+              </option>
+              {savedColumns.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} — P<sub>D</sub>={c.PD.toFixed(2)}, P<sub>L</sub>=
+                  {c.PL.toFixed(2)} kN, {c.cx}×{c.cy} cm
                 </option>
-                {savedColumns.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} — P<sub>D</sub>={c.PD.toFixed(1)}, P<sub>L</sub>=
-                    {c.PL.toFixed(1)} kN, {c.cx}×{c.cy} cm
-                  </option>
-                ))}
-              </select>
+              ))}
+            </select>
             {columnName && (
               <p className="text-xs text-primary mt-1">
                 Columna cargada: {columnName}
@@ -562,30 +616,24 @@ export default function BasesForm() {
               <span className="text-xs text-text-muted">
                 P<sub>D</sub> (kN) {columnName && "(columna)"}
               </span>
-              <input
-                type="number"
-                step="0.1"
-                min="0"
-                value={state.PD || ""}
-                onKeyDown={handleCommaKey}
-                onChange={(e) =>
-                  setState((prev) => ({ ...prev, PD: Number(e.target.value) }))
+              <DecimalInput
+                value={state.PD || 0}
+                onChange={(n) =>
+                  setState((prev) => ({ ...prev, PD: Math.max(0, n) }))
                 }
+                decimals={2}
               />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
                 P<sub>L</sub> (kN) {columnName && "(columna)"}
               </span>
-              <input
-                type="number"
-                step="0.1"
-                min="0"
-                value={state.PL || ""}
-                onKeyDown={handleCommaKey}
-                onChange={(e) =>
-                  setState((prev) => ({ ...prev, PL: Number(e.target.value) }))
+              <DecimalInput
+                value={state.PL || 0}
+                onChange={(n) =>
+                  setState((prev) => ({ ...prev, PL: Math.max(0, n) }))
                 }
+                decimals={2}
               />
             </label>
           </div>
@@ -774,10 +822,11 @@ export default function BasesForm() {
 
                 {state.type === "esquina" && state.subType === "tensor" ? (
                   <p className="text-xs text-text-muted">
-                    Los datos de los tensores X e Y (altura al fondo de la base y
-                    sección) se cargan en la hoja de resultados.
+                    Los datos de los tensores X e Y (altura al fondo de la base
+                    y sección) se cargan en la hoja de resultados.
                   </p>
-                ) : state.type === "esquina" && state.subType === "viga-de-equilibrio" ? (
+                ) : state.type === "esquina" &&
+                  state.subType === "viga-de-equilibrio" ? (
                   <div className="grid grid-cols-2 gap-3">
                     <label className="flex flex-col gap-1">
                       <span className="text-xs text-text-muted">
@@ -826,26 +875,65 @@ export default function BasesForm() {
                     se cargan en la hoja de resultados.
                   </p>
                 ) : (
-                  <label className="flex flex-col gap-1">
-                    <span className="text-xs text-text-muted">
-                      L<sub>col</sub> (cm) — luz entre ejes de columnas
-                    </span>
-                    <input
-                      type="number"
-                      step="1"
-                      min="1"
-                      value={state.Lcol ?? ""}
-                      onKeyDown={handleCommaKey}
-                      onChange={(e) =>
-                        setState((prev) => ({
-                          ...prev,
-                          Lcol: e.target.value
-                            ? Number(e.target.value)
-                            : undefined,
-                        }))
-                      }
-                    />
-                  </label>
+                  <>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs text-text-muted">
+                        L<sub>col</sub> (cm) — luz entre ejes de columnas
+                      </span>
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        value={state.Lcol ?? ""}
+                        onKeyDown={handleCommaKey}
+                        onChange={(e) =>
+                          setState((prev) => ({
+                            ...prev,
+                            Lcol: e.target.value
+                              ? Number(e.target.value)
+                              : undefined,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs text-text-muted">
+                        Ancho viga b (cm){" "}
+                        {state.bViga === undefined &&
+                          `(auto: ${state.type === "medianera-x" ? Math.max(state.cx, 20) : Math.max(state.cy, 20)})`}
+                      </span>
+                      <DecimalInput
+                        value={
+                          state.bViga ??
+                          (state.type === "medianera-x"
+                            ? Math.max(state.cx, 20)
+                            : Math.max(state.cy, 20))
+                        }
+                        onChange={(n) =>
+                          setState((prev) => ({
+                            ...prev,
+                            bViga: n > 0 ? n : undefined,
+                          }))
+                        }
+                        decimals={1}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs text-text-muted">
+                        Alto viga h (cm) {state.hViga === undefined && "(auto)"}
+                      </span>
+                      <DecimalInput
+                        value={state.hViga ?? 0}
+                        onChange={(n) =>
+                          setState((prev) => ({
+                            ...prev,
+                            hViga: n > 0 ? n : undefined,
+                          }))
+                        }
+                        decimals={1}
+                      />
+                    </label>
+                  </>
                 )}
               </div>
             )}
@@ -977,9 +1065,11 @@ export default function BasesForm() {
                 Altura útil d (cm)
               </span>
               <input
-                value={(state.h ?? 0) > 0
-                  ? ((state.h ?? 0) - (state.cover ?? 7)).toFixed(1)
-                  : geo.dSug.toFixed(1)}
+                value={
+                  (state.h ?? 0) > 0
+                    ? ((state.h ?? 0) - (state.cover ?? 7)).toFixed(1)
+                    : geo.dSug.toFixed(1)
+                }
                 readOnly
                 className="bg-surface-alt"
               />

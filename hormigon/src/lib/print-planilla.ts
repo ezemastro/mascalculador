@@ -639,7 +639,7 @@ function buildBaseRow(save: SavedBeam): string[] {
     tipo,
     `${result.Lx ?? 0}×${result.Ly ?? 0}×${result.h ?? 0}`,
     fmt1(input.qa ?? 0),
-    `${fmt1(input.PD ?? 0)}/${fmt1(input.PL ?? 0)}`,
+    `${fmt2(input.PD ?? 0)}/${fmt2(input.PL ?? 0)}`,
     `${input.fc ?? 0}/${input.fy ?? 0}`,
     fmt1(result.Pu ?? 0),
     fmt1(result.qu ?? 0),
