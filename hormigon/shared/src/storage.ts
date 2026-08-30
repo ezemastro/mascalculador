@@ -337,6 +337,8 @@ export interface RCColumnFormState {
   betaD?: number;
   PD_direct?: number;
   PL_direct?: number;
+  PD_adicional?: number;
+  PL_adicional?: number;
   includeSelfWeight?: boolean;
   contributedColumns?: { id: string; name: string; PD: number; PL: number }[];
   contributedBeams?: {

@@ -38,6 +38,10 @@ export interface RCColumnState {
   PD_direct?: number;
   /** Raw direct PL before contributions (for form restoration) */
   PL_direct?: number;
+  /** Additional floor-level dead load, added on top of direct PD */
+  PD_adicional?: number;
+  /** Additional floor-level live load, added on top of direct PL */
+  PL_adicional?: number;
   includeSelfWeight?: boolean;
   contributedColumns?: ContributedColumn[];
   contributedBeams?: ContributedBeam[];
@@ -238,6 +242,12 @@ export default function RCColumnForm() {
   const [PL, setPL] = useState<number>(
     state?.PL_direct ?? state?.PL ?? lastForm?.PL ?? 300,
   );
+  const [PDAdic, setPDAdic] = useState<number>(
+    state?.PD_adicional ?? lastForm?.PD_adicional ?? 0,
+  );
+  const [PLAdic, setPLAdic] = useState<number>(
+    state?.PL_adicional ?? lastForm?.PL_adicional ?? 0,
+  );
   const [lu, setLu] = useState<number>(
     state?.lu ?? lastForm?.lu ?? 3.0,
   );
@@ -323,14 +333,16 @@ export default function RCColumnForm() {
     return (bEff && hEff) ? (bEff * hEff / 10000) * lu * CONCRETE_DENSITY : 0;
   }, [Cx, Cy, autoDim, autoDims.Cx, autoDims.Cy, lu]);
 
-  // Totals: direct loads + self-weight + contributed
+  // Totals: direct loads + additional + self-weight + contributed
   const totalPD =
     PD +
+    PDAdic +
     (includeSelfWeight ? selfWeight : 0) +
     contributedColumns.reduce((s, c) => s + c.PD, 0) +
     contributedBeams.reduce((s, b) => s + b.rD, 0);
   const totalPL =
     PL +
+    PLAdic +
     contributedColumns.reduce((s, c) => s + c.PL, 0) +
     contributedBeams.reduce((s, b) => s + b.rL, 0);
 
@@ -353,6 +365,8 @@ export default function RCColumnForm() {
       fy,
       PD,
       PL,
+      PD_adicional: PDAdic,
+      PL_adicional: PLAdic,
       lu,
       MxSup,
       MxInf,
@@ -376,6 +390,8 @@ export default function RCColumnForm() {
     fy,
     PD,
     PL,
+    PDAdic,
+    PLAdic,
     lu,
     MxSup,
     MxInf,
@@ -393,8 +409,12 @@ export default function RCColumnForm() {
     const data: Record<string, unknown> = {
       fc,
       fy,
-      PD,
-      PL,
+      PD: totalPD,
+      PL: totalPL,
+      PD_direct: PD,
+      PL_direct: PL,
+      PD_adicional: PDAdic,
+      PL_adicional: PLAdic,
       lu,
       MxSup,
       MxInf,
@@ -454,13 +474,19 @@ export default function RCColumnForm() {
     if (typeof d.MxInf !== "number" && typeof d.M2u === "number") setMxInf(d.M2u as number);
     if (typeof d.PD_direct === "number") setPD(d.PD_direct);
     if (typeof d.PL_direct === "number") setPL(d.PL_direct);
-    // Backward compat: guardados previos a PD_direct/PL_direct (guardados
-    // desde resultados) traían en PD/PL el TOTAL con reacciones/columnas
-    // contribuidas y además las listas por separado → se contaban doble.
-    // Recuperar el valor directo restando lo contribuido.
+    if (typeof d.PD_adicional === "number") setPDAdic(d.PD_adicional);
+    if (typeof d.PL_adicional === "number") setPLAdic(d.PL_adicional);
+    // Legacy repair — SOLO guardados hechos desde RESULTADOS (se detectan por
+    // los campos de armado que solo ellos persisten): ahí PD/PL se guardaron
+    // como TOTALES con reacciones/columnas contribuidas también por separado
+    // → al recargar se contaban doble y al borrar una viga el total no bajaba
+    // (el valor quedaba cocinado en PD/PL). Recuperar el directo restando lo
+    // contribuido. Los guardados del FORM (sin campos de armado) ya traen
+    // PD/PL directos — no se tocan.
     if (
       typeof d.PD_direct !== "number" &&
-      typeof d.PL_direct !== "number"
+      typeof d.PL_direct !== "number" &&
+      typeof d.nEsquinas === "number"
     ) {
       let sumD = 0;
       let sumL = 0;
@@ -476,6 +502,16 @@ export default function RCColumnForm() {
           sumL += c.PL ?? 0;
         }
       }
+      // El peso propio también quedó cocinado en PD de esos guardados:
+      // si la columna lo incluía, restarlo para no sumarlo dos veces.
+      if (d.includeSelfWeight) {
+        const cx = (d.Cx as number | undefined) ?? 0;
+        const cy = (d.Cy as number | undefined) ?? 0;
+        const luD = (d.lu as number | undefined) ?? 0;
+        if (cx > 0 && cy > 0) {
+          sumD += ((cx * cy) / 10000) * luD * CONCRETE_DENSITY;
+        }
+      }
       if (sumD > 0 && typeof d.PD === "number") setPD(d.PD - sumD);
       if (sumL > 0 && typeof d.PL === "number") setPL(d.PL - sumL);
     }
@@ -486,8 +522,26 @@ export default function RCColumnForm() {
       );
     }
     if (Array.isArray(d.contributedBeams)) {
+      // Recalcular las reacciones desde las vigas guardadas (por id): así los
+      // valores viejos (inflados por el bug de unidades) se actualizan solos
+      // al cargar la columna.
       setContributedBeams(
-        d.contributedBeams as unknown as ContributedBeam[],
+        (d.contributedBeams as unknown as ContributedBeam[]).map((b) => {
+          const r = b.id ? getBeamReactions(b.id) : null;
+          if (
+            r &&
+            b.supportIdx >= 0 &&
+            b.supportIdx < r.supportCount
+          ) {
+            return {
+              ...b,
+              rD: r.dReactions[b.supportIdx],
+              rL: r.lReactions[b.supportIdx],
+              rU: r.uReactions[b.supportIdx],
+            };
+          }
+          return b;
+        }),
       );
     }
   }
@@ -559,6 +613,8 @@ export default function RCColumnForm() {
     setFy(420);
     setPD(500);
     setPL(300);
+    setPDAdic(0);
+    setPLAdic(0);
     setLu(3.0);
     setMxSup(10);
     setMxInf(30);
@@ -592,6 +648,8 @@ export default function RCColumnForm() {
       betaD,
       PD_direct: PD,
       PL_direct: PL,
+      PD_adicional: PDAdic,
+      PL_adicional: PLAdic,
       includeSelfWeight,
       contributedColumns,
       contributedBeams,
@@ -704,7 +762,7 @@ export default function RCColumnForm() {
           </h2>
 
           {/* Axial loads row */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+          <div className="grid grid-cols-2 gap-3 mb-4">
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
                 P<sub>D</sub> (kN)
@@ -716,6 +774,18 @@ export default function RCColumnForm() {
                 P<sub>L</sub> (kN)
               </span>
               <DecimalInput value={PL} onChange={setPL} />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-text-muted">
+                P<sub>D</sub> adicional (kN)
+              </span>
+              <DecimalInput value={PDAdic} onChange={setPDAdic} />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-text-muted">
+                P<sub>L</sub> adicional (kN)
+              </span>
+              <DecimalInput value={PLAdic} onChange={setPLAdic} />
             </label>
           </div>
 
@@ -771,10 +841,6 @@ export default function RCColumnForm() {
               </span>
               <span className="text-xs text-text-muted">
                 D = {selfWeight.toFixed(2)} kN
-              </span>
-              <span className="text-xs text-text-muted">|</span>
-              <span className="text-xs text-text-muted">
-                U = {(1.2 * selfWeight).toFixed(2)} kN
               </span>
               <span className="text-xs text-text-muted">|</span>
               <span className="text-xs text-text-muted">
@@ -1022,11 +1088,24 @@ export default function RCColumnForm() {
         {/* Total combinado */}
         <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
           <span className="text-xs text-text-muted">
-            Carga total = carga directa + columnas superiores + reacciones de vigas
+            Carga total = directas + adicionales + columnas superiores +
+            reacciones de vigas
           </span>
           <p className="text-lg font-bold text-primary mt-1">
             P<sub>D</sub>={totalPD.toFixed(1)} + P<sub>L</sub>=
             {totalPL.toFixed(1)} → P<sub>u</sub> = {PuPreview.Pu.toFixed(1)} kN
+          </p>
+          <p className="text-xs text-text-muted mt-1 space-y-0.5">
+            P<sub>D</sub> = directa {PD.toFixed(1)} + adicional{" "}
+            {PDAdic.toFixed(1)} + peso propio{" "}
+            {(includeSelfWeight ? selfWeight : 0).toFixed(1)} + columnas{" "}
+            {contributedColumns.reduce((s, c) => s + c.PD, 0).toFixed(1)} +
+            vigas {contributedBeams.reduce((s, b) => s + b.rD, 0).toFixed(1)}
+            <br />
+            P<sub>L</sub> = directa {PL.toFixed(1)} + adicional{" "}
+            {PLAdic.toFixed(1)} + columnas{" "}
+            {contributedColumns.reduce((s, c) => s + c.PL, 0).toFixed(1)} +
+            vigas {contributedBeams.reduce((s, b) => s + b.rL, 0).toFixed(1)}
           </p>
         </div>
 
