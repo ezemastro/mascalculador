@@ -198,10 +198,8 @@ export default function ConcreteResults() {
         : arr(nInterior, v)
       : arr(nInterior, 16);
   });
-  const [supportWidths, setSupportWidths] = useState<number[]>(
-    () => s?.supportWidths ?? [],
-  );
-  const [directSupport, setDirectSupport] = useState(s?.directSupport ?? true);
+  const [supportWidths] = useState<number[]>(() => s?.supportWidths ?? []);
+  const [directSupport] = useState(s?.directSupport ?? true);
   const [savedId, setSavedId] = useState<string | null>(
     s?.loadedSaveId ?? null,
   );
@@ -599,49 +597,6 @@ export default function ConcreteResults() {
               </strong>
             </p>
           ))}
-        </div>
-      </section>
-
-      {/* Anchos de apoyo */}
-      <section className="bg-surface rounded-xl border border-border p-5">
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
-          Anchos de apoyo (cm)
-        </h2>
-        <div className="flex flex-wrap gap-2 items-end">
-          {supports.map((_sup, i) => (
-            <label key={i} className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">
-                {supportTypes.length === 2
-                  ? i === 0
-                    ? "Ap. A"
-                    : "Ap. B"
-                  : `Ap. ${i + 1}`}
-              </span>
-              <input
-                type="text"
-                value={String(
-                  (ensure(supportWidths, nSupports, 300)[i] ?? 0) / 10,
-                )}
-                onChange={(e) => {
-                  const raw = sanitizeDecimal(e.target.value);
-                  const num = parseFloat(raw);
-                  // Entrada en cm → estado/guardado en mm (unidad del motor)
-                  if (!isNaN(num)) {
-                    setSupportWidths(patchArr(supportWidths, i, 300, num * 10));
-                  }
-                }}
-                className="w-20"
-              />
-            </label>
-          ))}
-          <label className="flex items-center gap-1 pb-2 ml-4">
-            <input
-              type="checkbox"
-              checked={directSupport}
-              onChange={(e) => setDirectSupport(e.target.checked)}
-            />
-            <span className="text-xs text-text-muted">Apoyo directo</span>
-          </label>
         </div>
       </section>
 

@@ -11,7 +11,6 @@ import {
   deleteSave,
 } from "../lib/storage";
 import { pickObraIfNeeded } from "../components/ObraPicker";
-import { calculateBeam } from "@mascalculador/shared";
 import { DecimalInput } from "@mascalculador/shared";
 import { hasSlabDL, slabReactionToBeamLoad } from "../lib/slab-to-beam";
 import type { SlabEdge } from "../lib/slab-to-beam";
@@ -145,6 +144,14 @@ export default function ConcreteForm() {
   const [includeSelfWeight, setIncludeSelfWeight] = useState(
     state?.includeSelfWeight ?? true,
   );
+  const [supportWidths, setSupportWidths] = useState<number[]>(() =>
+    state?.supportWidths?.length
+      ? state.supportWidths
+      : Array(supportTypes.length).fill(300),
+  );
+  const [directSupport, setDirectSupport] = useState(
+    state?.directSupport ?? true,
+  );
 
   // Armaduras elegidas en resultados (se pasan de vuelta al calcular)
   const savedReinf = useRef<Record<string, unknown>>({});
@@ -157,56 +164,6 @@ export default function ConcreteForm() {
     [bw, h, includeSelfWeight],
   );
 
-  const ultimateLoads: Load[] = useMemo(() => {
-    const loads: Load[] = concreteLoads.map((cl) => ({
-      id: cl.id,
-      // En modo importación la carga es distribuida (0 → luz total por defecto)
-      type: cl.importMode ? "distributed" : cl.type,
-      magnitude: 1.2 * cl.D + 1.6 * cl.L,
-      position: cl.position,
-      start: cl.start,
-      end: cl.end,
-    }));
-    if (includeSelfWeight && selfWeightD > 0) {
-      loads.push({
-        id: "__selfweight__",
-        type: "distributed",
-        magnitude: 1.2 * selfWeightD, // L = 0 → 1.2·D
-        start: 0,
-        end: totalLength,
-      });
-    }
-    return loads;
-  }, [concreteLoads, includeSelfWeight, selfWeightD, totalLength]);
-
-  // Preview Mu/Vu
-  const preview = useMemo(() => {
-    if (
-      ultimateLoads.length === 0 ||
-      ultimateLoads.some((l) => (l.magnitude ?? 0) === 0)
-    )
-      return null;
-    if (spanLengths.some((l) => l <= 0)) return null;
-    const cfg: BeamConfig = { spans: spanLengths, supportTypes };
-    try {
-      const r = calculateBeam(cfg, ultimateLoads);
-      let maxM = 0,
-        maxV = 0;
-      for (let k = 0; k <= 200; k++) {
-        const x = (k / 200) * totalLength;
-        maxM = Math.max(maxM, Math.abs(r.bendingMoment(x)));
-        maxV = Math.max(maxV, Math.abs(r.shearForce(x)));
-      }
-      for (const x of r.criticalPoints) {
-        maxM = Math.max(maxM, Math.abs(r.bendingMoment(x)));
-        maxV = Math.max(maxV, Math.abs(r.shearForce(x)));
-      }
-      return { Mu: maxM, Vu: maxV };
-    } catch {
-      return null;
-    }
-  }, [spanLengths, supportTypes, ultimateLoads, totalLength]);
-
   function setSpanCountAndAdjust(count: number) {
     setSpanLengths((prev) =>
       count > prev.length
@@ -218,7 +175,11 @@ export default function ConcreteForm() {
         ? [...prev, ...Array(count + 1 - prev.length).fill("simple")]
         : prev.slice(0, count + 1),
     );
-    setSpanCount(count);
+    setSupportWidths((prev) =>
+      count + 1 > prev.length
+        ? [...prev, ...Array(count + 1 - prev.length).fill(300)]
+        : prev.slice(0, count + 1),
+    );
   }
 
   function addLoad() {
@@ -319,6 +280,8 @@ export default function ConcreteForm() {
     setFc(25);
     setFy(420);
     setIncludeSelfWeight(true);
+    setSupportWidths([300, 300]);
+    setDirectSupport(true);
     setLoadedSaveId(null);
     setLoadedSaveName(null);
     savedReinf.current = {};
@@ -337,6 +300,8 @@ export default function ConcreteForm() {
         fc,
         fy,
         includeSelfWeight,
+        supportWidths,
+        directSupport,
         loadedSaveId,
         loadedSaveName,
         // Armaduras de un guardado cargado...
@@ -351,10 +316,8 @@ export default function ConcreteForm() {
               stirrupLegs: state.stirrupLegs,
               stirrupDiam: state.stirrupDiam,
               stirrupSpacing: state.stirrupSpacing,
-              supportWidths: state.supportWidths,
               supBarQty: state.supBarQty,
               supBarDiam: state.supBarDiam,
-              directSupport: state.directSupport,
             }
           : {}),
       } as ConcreteState,
@@ -879,9 +842,9 @@ export default function ConcreteForm() {
 
         <section className="bg-surface rounded-xl border border-border p-5">
           <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-            Sección
+            Geometría
           </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 items-end">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 items-end">
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
                 b<sub>w</sub> (cm)
@@ -934,26 +897,44 @@ export default function ConcreteForm() {
                 <option value={500}>500 (ADN 500)</option>
               </select>
             </label>
-            {preview && (
-              <div className="flex flex-col gap-1">
-                <span className="text-xs text-text-muted">
-                  M<sub>u</sub>
-                </span>
-                <span className="text-sm font-semibold text-primary bg-surface-alt rounded px-2 py-1.5">
-                  {preview.Mu.toFixed(1)} kN·m
-                </span>
-              </div>
-            )}
-            {preview && (
-              <div className="flex flex-col gap-1">
-                <span className="text-xs text-text-muted">
-                  V<sub>u</sub>
-                </span>
-                <span className="text-sm font-semibold text-primary bg-surface-alt rounded px-2 py-1.5">
-                  {preview.Vu.toFixed(1)} kN
-                </span>
-              </div>
-            )}
+          </div>
+          <div className="mt-4 pt-3 border-t border-border">
+            <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
+              Anchos de apoyo (cm)
+            </span>
+            <div className="flex flex-wrap gap-3 items-end mt-2">
+              {supportTypes.map((_t, i) => (
+                <label key={i} className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">
+                    {supportTypes.length === 2
+                      ? i === 0
+                        ? "Ap. A"
+                        : "Ap. B"
+                      : `Ap. ${i + 1}`}
+                  </span>
+                  <DecimalInput
+                    value={(supportWidths[i] ?? 300) / 10}
+                    onChange={(n) =>
+                      setSupportWidths((p) => {
+                        const arr = supportTypes.map((_s, j) => p[j] ?? 300);
+                        arr[i] = n * 10;
+                        return arr;
+                      })
+                    }
+                    className="w-20"
+                  />
+                </label>
+              ))}
+              <label className="flex items-center gap-1 pb-2">
+                <input
+                  type="checkbox"
+                  checked={directSupport}
+                  onChange={(e) => setDirectSupport(e.target.checked)}
+                  className="w-4 h-4 accent-primary"
+                />
+                <span className="text-xs text-text-muted">Apoyo directo</span>
+              </label>
+            </div>
           </div>
         </section>
 
