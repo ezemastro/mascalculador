@@ -42,6 +42,7 @@ export interface ConcreteResult {
   VsProv: number;
   VnMax: number;
   shearOK: boolean;
+  shearFailReason: string | null;
   AvSMin: number; // mm²/m
   sMax: number; // mm
   steps: string[];
@@ -251,7 +252,8 @@ export function designConcreteDetailed(input: ConcreteInput): ConcreteResult {
 
   // 9. Check provided
   let VsProv = 0,
-    shearOK = false;
+    shearOK = false,
+    shearFailReason: string | null = null;
   if (Av > 0 && nLegs > 0 && s > 0) {
     VsProv = (nLegs * Av * fy * d) / s / 1000;
     const AvSProv = (nLegs * Av * 1000) / s;
@@ -263,9 +265,24 @@ export function designConcreteDetailed(input: ConcreteInput): ConcreteResult {
     );
     const req = Math.max(VsReq > 0 ? AvSReq : AvSMin, AvSMin);
     shearOK = VsProv >= VsReq && s <= sMax && AvSProv >= req;
-    st.push(`   ${shearOK ? "✓ Verifica corte" : "✗ No verifica"}`);
+    if (!shearOK) {
+      const fail: string[] = [];
+      if (s > sMax)
+        fail.push(
+          `separación ${(s / 10).toFixed(1)} cm > s_máx ${(sMax / 10).toFixed(1)} cm`,
+        );
+      if (AvSProv < req)
+        fail.push(
+          `A_v/s ${(AvSProv / 100).toFixed(2)} cm²/m < requerido ${(req / 100).toFixed(2)} cm²/m`,
+        );
+      shearFailReason = fail.join(" · ");
+    }
+    st.push(
+      `   ${shearOK ? "✓ Verifica corte" : `✗ No verifica — ${shearFailReason}`}`,
+    );
   } else if (VsReq > 0) {
     shearOK = false;
+    shearFailReason = "no se colocaron estribos";
     st.push(`9. No se colocaron estribos → no verifica`);
   } else {
     shearOK = true;
@@ -294,6 +311,7 @@ export function designConcreteDetailed(input: ConcreteInput): ConcreteResult {
     VsProv,
     VnMax,
     shearOK,
+    shearFailReason,
     AvSMin,
     sMax,
     steps: st,

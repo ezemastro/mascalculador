@@ -942,7 +942,9 @@ export default function ConcreteResults() {
               <div
                 className={`p-2 rounded-lg text-sm font-bold ${shearChk.shearOK ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}
               >
-                {shearChk.shearOK ? "✓ Verifica corte" : "✗ No verifica corte"}{" "}
+                {shearChk.shearOK
+                  ? "✓ Verifica corte"
+                  : `✗ No verifica corte — ${shearChk.shearFailReason ?? "verificar datos"}`}{" "}
                 &middot; V<sub>s</sub> colocado = {shearChk.VsProv.toFixed(1)}{" "}
                 kN
               </div>
