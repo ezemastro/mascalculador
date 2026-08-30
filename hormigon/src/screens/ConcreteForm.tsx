@@ -2,7 +2,14 @@ import { useState, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import { SavedBeams } from "@mascalculador/shared";
-import { saveBeam, updateSave, getSavedSlabs, loadSlab, getSavedBeams, deleteSave } from "../lib/storage";
+import {
+  saveBeam,
+  updateSave,
+  getSavedSlabs,
+  loadSlab,
+  getSavedBeams,
+  deleteSave,
+} from "../lib/storage";
 import { pickObraIfNeeded } from "../components/ObraPicker";
 import { calculateBeam } from "@mascalculador/shared";
 import { DecimalInput } from "@mascalculador/shared";
@@ -481,9 +488,7 @@ export default function ConcreteForm() {
                   <DecimalInput
                     value={len}
                     onChange={(n) =>
-                      setSpanLengths((p) =>
-                        p.map((l, j) => (j === i ? n : l)),
-                      )
+                      setSpanLengths((p) => p.map((l, j) => (j === i ? n : l)))
                     }
                   />
                 </label>
@@ -773,6 +778,7 @@ export default function ConcreteForm() {
                           <DecimalInput
                             value={load.D ?? 0}
                             onChange={(n) => updateLoad(load.id, { D: n })}
+                            decimals={2}
                             className="w-20"
                           />
                         </label>
@@ -783,6 +789,7 @@ export default function ConcreteForm() {
                           <DecimalInput
                             value={load.L ?? 0}
                             onChange={(n) => updateLoad(load.id, { L: n })}
+                            decimals={2}
                             className="w-20"
                           />
                         </label>

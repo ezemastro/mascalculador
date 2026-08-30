@@ -8,12 +8,16 @@ export function DecimalInput({
   value,
   onChange,
   className,
+  decimals,
 }: {
   value: number;
   onChange: (n: number) => void;
   className?: string;
+  decimals?: number;
 }) {
-  const [text, setText] = useState(String(value));
+  const format = (v: number): string =>
+    decimals === undefined ? String(v) : v.toFixed(decimals);
+  const [text, setText] = useState(() => format(value));
   const internalRef = useRef(false);
 
   // Sync text ONLY when value changes from outside (not from user typing)
@@ -22,8 +26,8 @@ export function DecimalInput({
       internalRef.current = false;
       return;
     }
-    setText(String(value));
-  }, [value]);
+    setText(decimals === undefined ? String(value) : value.toFixed(decimals));
+  }, [value, decimals]);
 
   return (
     <input
@@ -48,7 +52,7 @@ export function DecimalInput({
       }}
       onBlur={() => {
         internalRef.current = false;
-        setText(String(value));
+        setText(format(value));
       }}
       className={className}
     />
