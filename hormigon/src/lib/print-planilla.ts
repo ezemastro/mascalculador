@@ -72,6 +72,7 @@ function stirrupText(
 }
 
 const fmt1 = (x: number): string => x.toFixed(1);
+const fmt2 = (x: number): string => x.toFixed(2);
 
 function fmtLoad(l: {
   type: "point" | "distributed";
@@ -82,9 +83,9 @@ function fmtLoad(l: {
   end?: number;
 }): string {
   if (l.type === "point") {
-    return `P ${fmt1(l.D ?? 0)}/${fmt1(l.L ?? 0)} kN @${fmt1(l.position ?? 0)} m`;
+    return `P ${fmt2(l.D ?? 0)}/${fmt2(l.L ?? 0)} kN @${fmt1(l.position ?? 0)} m`;
   }
-  return `q ${fmt1(l.D ?? 0)}/${fmt1(l.L ?? 0)} kN/m (${fmt1(l.start ?? 0)}→${fmt1(l.end ?? 0)} m)`;
+  return `q ${fmt2(l.D ?? 0)}/${fmt2(l.L ?? 0)} kN/m (${fmt1(l.start ?? 0)}→${fmt1(l.end ?? 0)} m)`;
 }
 
 interface VigaSaveData {

@@ -594,7 +594,7 @@ export default function ConcreteResults() {
                 :
               </span>{" "}
               <strong>
-                D = {cl.D} / L = {cl.L} kN
+                D = {cl.D.toFixed(2)} / L = {cl.L.toFixed(2)} kN
                 {cl.type === "distributed" ? "/m" : ""}
               </strong>
             </p>
