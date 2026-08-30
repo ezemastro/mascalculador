@@ -254,19 +254,15 @@ export default function RCColumnForm() {
     state?.MyInf ?? lastForm?.MyInf ?? 0,
   );
   const [Cx, setCx] = useState<number | undefined>(
-    state?.Cx ?? lastForm?.Cx ?? undefined,
+    state?.Cx ?? lastForm?.Cx ?? 20,
   );
   const [Cy, setCy] = useState<number | undefined>(
-    state?.Cy ?? lastForm?.Cy ?? undefined,
+    state?.Cy ?? lastForm?.Cy ?? 20,
   );
   const [betaD, setBetaD] = useState<number>(
     state?.betaD ?? lastForm?.betaD ?? 0.6,
   );
-  const [autoDim, setAutoDim] = useState<boolean>(
-    (state?.Cx === undefined && state?.Cy === undefined) ??
-    (lastForm?.Cx === undefined && lastForm?.Cy === undefined) ??
-    true,
-  );
+  const [autoDim, setAutoDim] = useState<boolean>(false);
   const [includeSelfWeight, setIncludeSelfWeight] = useState<boolean>(
     state?.includeSelfWeight ?? lastForm?.includeSelfWeight ?? false,
   );
@@ -458,6 +454,31 @@ export default function RCColumnForm() {
     if (typeof d.MxInf !== "number" && typeof d.M2u === "number") setMxInf(d.M2u as number);
     if (typeof d.PD_direct === "number") setPD(d.PD_direct);
     if (typeof d.PL_direct === "number") setPL(d.PL_direct);
+    // Backward compat: guardados previos a PD_direct/PL_direct (guardados
+    // desde resultados) traían en PD/PL el TOTAL con reacciones/columnas
+    // contribuidas y además las listas por separado → se contaban doble.
+    // Recuperar el valor directo restando lo contribuido.
+    if (
+      typeof d.PD_direct !== "number" &&
+      typeof d.PL_direct !== "number"
+    ) {
+      let sumD = 0;
+      let sumL = 0;
+      if (Array.isArray(d.contributedBeams)) {
+        for (const b of d.contributedBeams as ContributedBeam[]) {
+          sumD += b.rD ?? 0;
+          sumL += b.rL ?? 0;
+        }
+      }
+      if (Array.isArray(d.contributedColumns)) {
+        for (const c of d.contributedColumns as ContributedColumn[]) {
+          sumD += c.PD ?? 0;
+          sumL += c.PL ?? 0;
+        }
+      }
+      if (sumD > 0 && typeof d.PD === "number") setPD(d.PD - sumD);
+      if (sumL > 0 && typeof d.PL === "number") setPL(d.PL - sumL);
+    }
     if (d.Cx !== undefined || d.Cy !== undefined || d.b !== undefined || d.h !== undefined) setAutoDim(false);
     if (Array.isArray(d.contributedColumns)) {
       setContributedColumns(
@@ -543,10 +564,10 @@ export default function RCColumnForm() {
     setMxInf(30);
     setMySup(0);
     setMyInf(0);
-    setCx(undefined);
-    setCy(undefined);
+    setCx(20);
+    setCy(20);
     setBetaD(0.6);
-    setAutoDim(true);
+    setAutoDim(false);
     setIncludeSelfWeight(false);
     setContributedColumns([]);
     setContributedBeams([]);

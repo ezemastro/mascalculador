@@ -224,7 +224,15 @@ export default function RCColumnResults() {
 
   const result = resultRecalculado;
   const astProviso = armaduraManual.astTotal;
-  const astVerifica = astProviso >= astNeeded;
+  const astReqX = resultBase.dirX.Ast;
+  const astReqY = resultBase.dirY.Ast;
+  const astProvX = armaduraManual.astXface * 2;
+  const astProvY = armaduraManual.astYface * 2;
+  const astVerifX = astProvX >= astReqX;
+  const astVerifY = astProvY >= astReqY;
+  const astVerifica = astVerifX && astVerifY;
+  const faltanX = Math.max(0, astReqX - astProvX);
+  const faltanY = Math.max(0, astReqY - astProvY);
 
   const [printOpen, setPrintOpen] = useState(false);
 
@@ -236,6 +244,8 @@ export default function RCColumnResults() {
       fy,
       PD,
       PL,
+      PD_direct: state?.PD_direct ?? PD,
+      PL_direct: state?.PL_direct ?? PL,
       lu,
       MxSup,
       MxInf,
@@ -259,6 +269,8 @@ export default function RCColumnResults() {
       fy,
       PD,
       PL,
+      state?.PD_direct,
+      state?.PL_direct,
       lu,
       MxSup,
       MxInf,
@@ -379,7 +391,7 @@ export default function RCColumnResults() {
               Cargas P<sub>D</sub> / P<sub>L</sub> (kN)
             </span>
             <p className="font-semibold">
-              {PD} / {PL}
+              {PD.toFixed(2)} / {PL.toFixed(2)}
             </p>
           </div>
           <div>
@@ -407,7 +419,7 @@ export default function RCColumnResults() {
           <div>
             <span className="text-xs text-text-muted">Sección Cx×Cy (cm)</span>
             <p className="font-semibold">
-              {Cx}×{Cy}
+              {result.Cx}×{result.Cy}
             </p>
           </div>
           <div>
@@ -429,7 +441,7 @@ export default function RCColumnResults() {
             {result.Pu.toFixed(1)} kN
           </p>
           <span className="text-xs text-text-muted">
-            P<sub>D</sub>={PD} + P<sub>L</sub>={PL}
+            P<sub>D</sub>={PD.toFixed(2)} + P<sub>L</sub>={PL.toFixed(2)}
           </span>
         </div>
         <div className="bg-surface rounded-xl border border-border p-4">
@@ -509,81 +521,87 @@ export default function RCColumnResults() {
 
         {/* Inputs */}
         <div className="flex flex-wrap items-center justify-center gap-4 mb-4">
-          <StepperInput
-            label="Esquinas"
-            value={nEsquinas}
-            onChange={(v) => updateArmado(setNEsquinas, v)}
-            min={4}
-            max={8}
-            step={2}
-          />
-          <StepperInput
-            label="Caras X"
-            value={nCarasX}
-            onChange={(v) => updateArmado(setNCarasX, v)}
-            min={0}
-            max={6}
-          />
-          <StepperInput
-            label="Caras Y"
-            value={nCarasY}
-            onChange={(v) => updateArmado(setNCarasY, v)}
-            min={0}
-            max={6}
-          />
-          <div className="flex flex-col items-center gap-1">
-            <span className="text-xs text-text-muted">
-              Ø<sub>esq</sub>
-            </span>
-            <select
-              value={dbEsquinas}
-              onChange={(e) =>
-                updateArmado(setDbEsquinas, Number(e.target.value))
-              }
-              className="text-sm font-semibold"
-            >
-              {DB_OPTIONS.map((d) => (
-                <option key={d} value={d}>
-                  {d} mm
-                </option>
-              ))}
-            </select>
+          <div className="flex items-end gap-2">
+            <StepperInput
+              label="Esquinas"
+              value={nEsquinas}
+              onChange={(v) => updateArmado(setNEsquinas, v)}
+              min={4}
+              max={8}
+              step={2}
+            />
+            <div className="flex flex-col items-center gap-1">
+              <span className="text-xs text-text-muted">
+                Ø<sub>esq</sub>
+              </span>
+              <select
+                value={dbEsquinas}
+                onChange={(e) =>
+                  updateArmado(setDbEsquinas, Number(e.target.value))
+                }
+                className="text-sm font-semibold"
+              >
+                {DB_OPTIONS.map((d) => (
+                  <option key={d} value={d}>
+                    {d} mm
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
-          <div className="flex flex-col items-center gap-1">
-            <span className="text-xs text-text-muted">
-              Ø<sub>caras X</sub>
-            </span>
-            <select
-              value={dbCarasX}
-              onChange={(e) =>
-                updateArmado(setDbCarasX, Number(e.target.value))
-              }
-              className="text-sm font-semibold"
-            >
-              {DB_OPTIONS.map((d) => (
-                <option key={d} value={d}>
-                  {d} mm
-                </option>
-              ))}
-            </select>
+          <div className="flex items-end gap-2">
+            <StepperInput
+              label="Caras X"
+              value={nCarasX}
+              onChange={(v) => updateArmado(setNCarasX, v)}
+              min={0}
+              max={6}
+            />
+            <div className="flex flex-col items-center gap-1">
+              <span className="text-xs text-text-muted">
+                Ø<sub>caras X</sub>
+              </span>
+              <select
+                value={dbCarasX}
+                onChange={(e) =>
+                  updateArmado(setDbCarasX, Number(e.target.value))
+                }
+                className="text-sm font-semibold"
+              >
+                {DB_OPTIONS.map((d) => (
+                  <option key={d} value={d}>
+                    {d} mm
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
-          <div className="flex flex-col items-center gap-1">
-            <span className="text-xs text-text-muted">
-              Ø<sub>caras Y</sub>
-            </span>
-            <select
-              value={dbCarasY}
-              onChange={(e) =>
-                updateArmado(setDbCarasY, Number(e.target.value))
-              }
-              className="text-sm font-semibold"
-            >
-              {DB_OPTIONS.map((d) => (
-                <option key={d} value={d}>
-                  {d} mm
-                </option>
-              ))}
-            </select>
+          <div className="flex items-end gap-2">
+            <StepperInput
+              label="Caras Y"
+              value={nCarasY}
+              onChange={(v) => updateArmado(setNCarasY, v)}
+              min={0}
+              max={6}
+            />
+            <div className="flex flex-col items-center gap-1">
+              <span className="text-xs text-text-muted">
+                Ø<sub>caras Y</sub>
+              </span>
+              <select
+                value={dbCarasY}
+                onChange={(e) =>
+                  updateArmado(setDbCarasY, Number(e.target.value))
+                }
+                className="text-sm font-semibold"
+              >
+                {DB_OPTIONS.map((d) => (
+                  <option key={d} value={d}>
+                    {d} mm
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
@@ -592,19 +610,41 @@ export default function RCColumnResults() {
           className={`p-4 rounded-lg mb-4 text-center ${astVerifica ? "bg-success/5 border border-success/20" : "bg-danger/5 border border-danger/20"}`}
         >
           <div className="text-xs text-text-muted space-y-0.5 mb-2">
+            <p className="font-semibold text-text">
+              As nec X: {astReqX.toFixed(2)} cm² ({(astReqX / 2).toFixed(2)} cm²
+              por cara)
+            </p>
+            <p className="font-semibold text-text">
+              As nec Y: {astReqY.toFixed(2)} cm² ({(astReqY / 2).toFixed(2)} cm²
+              por cara)
+            </p>
             <p>
               Esquinas: {nEsquinas} Ø{dbEsquinas} ={" "}
-              {armaduraManual.astEsquinas.toFixed(2)} cm²
+              {armaduraManual.astEsquinas.toFixed(2)} cm² — cuentan en ambas
+              direcciones
             </p>
             <p>
-              Caras X: 2 × {nCarasX} Ø{dbCarasX} ={" "}
-              {armaduraManual.astCarasX.toFixed(2)} cm²
+              Cara X: 2 esquinas + {nCarasX} Ø{dbCarasX} ={" "}
+              {armaduraManual.astXface.toFixed(2)} cm² por cara → Dir X (2
+              caras): {astProvX.toFixed(2)} cm²
             </p>
             <p>
-              Caras Y: 2 × {nCarasY} Ø{dbCarasY} ={" "}
-              {armaduraManual.astCarasY.toFixed(2)} cm²
+              Cara Y: 2 esquinas + {nCarasY} Ø{dbCarasY} ={" "}
+              {armaduraManual.astYface.toFixed(2)} cm² por cara → Dir Y (2
+              caras): {astProvY.toFixed(2)} cm²
             </p>
           </div>
+          <p
+            className={`text-sm font-semibold ${astVerifica ? "text-success" : "text-danger"}`}
+          >
+            {astVerifX
+              ? `✓ Dir X: provisto ${astProvX.toFixed(2)} ≥ nec ${astReqX.toFixed(2)} cm²`
+              : `✗ Dir X: provisto ${astProvX.toFixed(2)} < nec ${astReqX.toFixed(2)} cm² (faltan ${faltanX.toFixed(2)})`}
+            {" · "}
+            {astVerifY
+              ? `✓ Dir Y: provisto ${astProvY.toFixed(2)} ≥ nec ${astReqY.toFixed(2)} cm²`
+              : `✗ Dir Y: provisto ${astProvY.toFixed(2)} < nec ${astReqY.toFixed(2)} cm² (faltan ${faltanY.toFixed(2)})`}
+          </p>
           <p
             className={`text-2xl font-bold mt-1 ${astVerifica ? "text-primary" : "text-danger"}`}
           >
@@ -616,9 +656,7 @@ export default function RCColumnResults() {
           <span
             className={`text-sm font-semibold ${astVerifica ? "text-success" : "text-danger"}`}
           >
-            {astVerifica
-              ? `✓ Ast provisto ≥ Ast necesario (${astNeeded.toFixed(2)} cm²)`
-              : `⚠ NO VERIFICA — se necesitan ${astNeeded.toFixed(2)} cm²`}
+            {astVerifica ? "✓ VERIFICA" : "✗ NO VERIFICA"}
           </span>
           <p className="text-xs text-text-muted mt-1">
             {nEsquinas} esquinas + {2 * nCarasX} caras X + {2 * nCarasY} caras Y
@@ -725,7 +763,7 @@ export default function RCColumnResults() {
             {result.dirX.passes ? "✓ Verifica" : "✗ No verifica"}
           </span>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-7 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <div className="bg-surface-alt rounded-lg p-3">
             <span className="text-xs text-text-muted">
               M<sub>1u</sub>
@@ -767,24 +805,6 @@ export default function RCColumnResults() {
               {result.dirX.Mu.toFixed(1)} kN·m
             </p>
           </div>
-          <div className="bg-surface-alt rounded-lg p-3">
-            <span className="text-xs text-text-muted">ν*</span>
-            <p className="text-base font-bold text-primary">
-              {result.dirX.n_raw.toFixed(1)} kN/cm²
-            </p>
-            <span className="text-xs text-text-muted">
-              sin f'<sub>c</sub>
-            </span>
-          </div>
-          <div className="bg-surface-alt rounded-lg p-3">
-            <span className="text-xs text-text-muted">μ*</span>
-            <p className="text-base font-bold text-primary">
-              {result.dirX.m_raw.toFixed(1)} kN·m/cm²
-            </p>
-            <span className="text-xs text-text-muted">
-              sin f'<sub>c</sub>
-            </span>
-          </div>
         </div>
       </section>
 
@@ -805,7 +825,7 @@ export default function RCColumnResults() {
             {result.dirY.passes ? "✓ Verifica" : "✗ No verifica"}
           </span>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-7 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <div className="bg-surface-alt rounded-lg p-3">
             <span className="text-xs text-text-muted">
               M<sub>1u</sub>
@@ -846,24 +866,6 @@ export default function RCColumnResults() {
             <p className="text-lg font-bold text-primary">
               {result.dirY.Mu.toFixed(1)} kN·m
             </p>
-          </div>
-          <div className="bg-surface-alt rounded-lg p-3">
-            <span className="text-xs text-text-muted">ν*</span>
-            <p className="text-base font-bold text-primary">
-              {result.dirY.n_raw.toFixed(1)} kN/cm²
-            </p>
-            <span className="text-xs text-text-muted">
-              sin f'<sub>c</sub>
-            </span>
-          </div>
-          <div className="bg-surface-alt rounded-lg p-3">
-            <span className="text-xs text-text-muted">μ*</span>
-            <p className="text-base font-bold text-primary">
-              {result.dirY.m_raw.toFixed(1)} kN·m/cm²
-            </p>
-            <span className="text-xs text-text-muted">
-              sin f'<sub>c</sub>
-            </span>
           </div>
         </div>
       </section>
