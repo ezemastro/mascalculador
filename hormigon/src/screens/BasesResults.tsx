@@ -156,6 +156,121 @@ function SteelEditor({
   );
 }
 
+/** Armadura del tensor: lados de sección editables + Ø y cantidad → As prov, con cuantía 1–8%. */
+function TensorEditor({
+  label,
+  asNec,
+  sugSide,
+}: {
+  label: string;
+  asNec: number;
+  sugSide: number;
+}) {
+  const [b, setB] = useState<number>(sugSide);
+  const [h, setH] = useState<number>(sugSide);
+  const [qty, setQty] = useState(4);
+  const [diam, setDiam] = useState(12);
+  const asProv = qty * aBar(diam);
+  const rho = (asProv / (b * h)) * 100; // %
+  const okAs = asProv >= asNec;
+  const okRho = rho >= 1 && rho <= 8;
+  const ok = okAs && okRho;
+
+  return (
+    <div className="bg-surface-alt rounded-lg p-4 flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-semibold text-text">{label}</span>
+        <span className="text-lg font-bold text-primary">
+          As nec {fmt(asNec, 2)}{" "}
+          <span className="text-xs font-normal text-text-muted">cm²</span>
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-text-muted">
+            Lado b (cm){" "}
+            <span className="text-text-muted/60">
+              (sugerido {Math.round(sugSide)})
+            </span>
+          </span>
+          <input
+            type="number"
+            step="1"
+            min="1"
+            value={b || ""}
+            onChange={(e) =>
+              setB(e.target.value ? Math.max(1, Number(e.target.value)) : 1)
+            }
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-text-muted">Lado h (cm)</span>
+          <input
+            type="number"
+            step="1"
+            min="1"
+            value={h || ""}
+            onChange={(e) =>
+              setH(e.target.value ? Math.max(1, Number(e.target.value)) : 1)
+            }
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-text-muted">Ø (mm)</span>
+          <select
+            value={diam}
+            onChange={(e) => setDiam(Number(e.target.value))}
+          >
+            {[8, 10, 12, 16, 20, 25].map((d) => (
+              <option key={d} value={d}>
+                Ø{d}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-text-muted">Cantidad</span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setQty(Math.max(2, qty - 1))}
+              className="w-8 h-8 rounded-lg bg-surface border border-border hover:bg-surface-alt text-text font-bold"
+            >
+              −
+            </button>
+            <input
+              type="number"
+              min={2}
+              value={qty}
+              onChange={(e) => setQty(Math.max(2, Number(e.target.value) || 2))}
+              className="w-14 text-center"
+            />
+            <button
+              type="button"
+              onClick={() => setQty(qty + 1)}
+              className="w-8 h-8 rounded-lg bg-surface border border-border hover:bg-surface-alt text-text font-bold"
+            >
+              +
+            </button>
+          </div>
+        </label>
+      </div>
+      <div
+        className={`p-2 rounded-lg text-sm font-bold ${ok ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}
+      >
+        As prov = {qty} Ø{diam} = {fmt(asProv, 2)} cm² {okAs ? "≥" : "<"} nec{" "}
+        {fmt(asNec, 2)} · ρ = {fmt(rho, 2)}%
+        {okRho ? " (1–8% ✓)" : " (fuera de 1–8% ✗)"}
+      </div>
+      <span
+        className={`text-xs font-semibold ${ok ? "text-success" : "text-danger"}`}
+      >
+        {ok ? "✓ VERIFICA" : "✗ NO VERIFICA"}
+      </span>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
@@ -701,12 +816,28 @@ export default function BasesResults() {
             </div>
           )}
           {!tensorPending && (
-            <p className="text-xs text-text-muted">
-              Sección sugerida del tensor:{" "}
-              {isEsquina
-                ? `${Math.round(result.h_tensorX ?? 0)} × ${Math.round(result.h_tensorX ?? 0)} cm (X) · ${Math.round(result.h_tensorY ?? 0)} × ${Math.round(result.h_tensorY ?? 0)} cm (Y)`
-                : `${Math.round(result.h_tensor)} × ${Math.round(result.h_tensor)} cm`}
-            </p>
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              {isEsquina ? (
+                <>
+                  <TensorEditor
+                    label="Tensor X"
+                    asNec={result.As_tensorX ?? 0}
+                    sugSide={Math.round(result.h_tensorX ?? 20)}
+                  />
+                  <TensorEditor
+                    label="Tensor Y"
+                    asNec={result.As_tensorY ?? 0}
+                    sugSide={Math.round(result.h_tensorY ?? 20)}
+                  />
+                </>
+              ) : (
+                <TensorEditor
+                  label="Tensor"
+                  asNec={result.As_tensor ?? 0}
+                  sugSide={Math.round(result.h_tensor ?? 20)}
+                />
+              )}
+            </div>
           )}
           {isEsquina && !tensorPending && (
             <div className="mt-4 grid grid-cols-2 sm:grid-cols-5 gap-3">
