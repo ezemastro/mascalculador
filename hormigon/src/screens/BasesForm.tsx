@@ -868,6 +868,72 @@ export default function BasesForm() {
                         }
                       />
                     </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs text-text-muted">
+                        Viga X — ancho b (cm){" "}
+                        {state.bVigaX === undefined &&
+                          `(auto: ${Math.max(state.cy, 20)})`}
+                      </span>
+                      <DecimalInput
+                        value={state.bVigaX ?? Math.max(state.cy, 20)}
+                        onChange={(n) =>
+                          setState((prev) => ({
+                            ...prev,
+                            bVigaX: n > 0 ? n : undefined,
+                          }))
+                        }
+                        decimals={1}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs text-text-muted">
+                        Viga X — alto h (cm){" "}
+                        {state.hVigaX === undefined && "(auto)"}
+                      </span>
+                      <DecimalInput
+                        value={state.hVigaX ?? 0}
+                        onChange={(n) =>
+                          setState((prev) => ({
+                            ...prev,
+                            hVigaX: n > 0 ? n : undefined,
+                          }))
+                        }
+                        decimals={1}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs text-text-muted">
+                        Viga Y — ancho b (cm){" "}
+                        {state.bVigaY === undefined &&
+                          `(auto: ${Math.max(state.cx, 20)})`}
+                      </span>
+                      <DecimalInput
+                        value={state.bVigaY ?? Math.max(state.cx, 20)}
+                        onChange={(n) =>
+                          setState((prev) => ({
+                            ...prev,
+                            bVigaY: n > 0 ? n : undefined,
+                          }))
+                        }
+                        decimals={1}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs text-text-muted">
+                        Viga Y — alto h (cm){" "}
+                        {state.hVigaY === undefined && "(auto)"}
+                      </span>
+                      <DecimalInput
+                        value={state.hVigaY ?? 0}
+                        onChange={(n) =>
+                          setState((prev) => ({
+                            ...prev,
+                            hVigaY: n > 0 ? n : undefined,
+                          }))
+                        }
+                        decimals={1}
+                      />
+                    </label>
                   </div>
                 ) : state.subType === "tensor" ? (
                   <p className="text-xs text-text-muted">

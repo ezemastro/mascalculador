@@ -68,6 +68,11 @@ export interface BaseInput {
   LcolY?: number; // cm — luz entre ejes Y (viga de equilibrio)
   Hx?: number; // cm — altura del tensor en dirección X
   Hy?: number; // cm — altura del tensor en dirección Y
+  // Viga de equilibrio — overrides manuales
+  bVigaX?: number; // cm — ancho viga X (auto si falta)
+  hVigaX?: number; // cm — alto viga X (auto si falta)
+  bVigaY?: number; // cm — ancho viga Y (auto si falta)
+  hVigaY?: number; // cm — alto viga Y (auto si falta)
   // Armado
   cover?: number; // cm — recubrimiento (default 5)
   rebD?: number; // mm — diámetro de barra (default 12)
@@ -148,6 +153,8 @@ export interface BaseResult {
   // Esquina — viga de equilibrio
   Rux: number; // kN — reacción viga X
   Ruy: number; // kN — reacción viga Y
+  b_vigaX: number; // cm — ancho viga X (efectivo)
+  b_vigaY: number; // cm — ancho viga Y (efectivo)
   h_vigaX: number; // cm — altura viga X
   h_vigaY: number; // cm — altura viga Y
   As_supX: number; // cm² — armadura superior viga X
@@ -823,6 +830,8 @@ function designCentrada(input: BaseInput): BaseResult {
     MuY_volc: 0,
     Rux: 0,
     Ruy: 0,
+    b_vigaX: 0,
+    b_vigaY: 0,
     h_vigaX: 0,
     h_vigaY: 0,
     As_supX: 0,
@@ -967,6 +976,8 @@ function designVigaFundacion(input: BaseInput): BaseResult {
     MuY_volc: 0,
     Rux: 0,
     Ruy: 0,
+    b_vigaX: 0,
+    b_vigaY: 0,
     h_vigaX: 0,
     h_vigaY: 0,
     As_supX: 0,
@@ -1083,6 +1094,8 @@ function designTensor(input: BaseInput): BaseResult {
     MuY_volc: 0,
     Rux: 0,
     Ruy: 0,
+    b_vigaX: 0,
+    b_vigaY: 0,
     h_vigaX: 0,
     h_vigaY: 0,
     As_supX: 0,
@@ -1169,6 +1182,8 @@ function designEsquina(input: BaseInput): BaseResult {
   let Ruy = 0;
   let h_vigaX = 0;
   let h_vigaY = 0;
+  let b_vigaX = 0;
+  let b_vigaY = 0;
   let As_supX = 0;
   let As_supY = 0;
   let As_infX = 0;
@@ -1212,40 +1227,48 @@ function designEsquina(input: BaseInput): BaseResult {
     const fc_kNcm2 = fc * 0.1;
 
     // Viga X: corre en dirección X, ancho perpendicular = cy
-    const bX = Math.max(cy, 20);
+    const bX =
+      input.bVigaX && input.bVigaX > 0 ? input.bVigaX : Math.max(cy, 20);
     const MnvX = MuX_volc / 0.9;
-    const dX = Math.sqrt((6.5 * MnvX) / (bX * fc_kNcm2));
-    const hX = dX + cover;
+    const dXauto = Math.sqrt((6.5 * MnvX) / (bX * fc_kNcm2));
+    const dX =
+      input.hVigaX && input.hVigaX > cover ? input.hVigaX - cover : dXauto;
+    const hX = input.hVigaX && input.hVigaX > 0 ? input.hVigaX : dX + cover;
     const mnX = MnvX / (0.85 * bX * dX * dX * fc_kNcm2);
     const kaX = Math.max(getKaFromMn(mnX), kamin);
     As_supX = (kaX * 0.85 * dX * bX * fc) / fy;
     As_infX = Math.max(As_supX / 3, 2 * aBar(12));
+    b_vigaX = bX;
     h_vigaX = hX;
 
     st.push(
-      `E4. Viga X: b = máx(cy,20) = ${bX} cm | MnvX = MuX / 0.90 = ${f1(MnvX)} kN·cm`,
+      `E4. Viga X: b = ${bX} cm${input.bVigaX ? " (adoptado por usuario)" : " = máx(cy,20) (automático)"} | MnvX = MuX / 0.90 = ${f1(MnvX)} kN·cm`,
     );
     st.push(
-      `    d = √(6.5·${f1(MnvX)}/(${bX}·${fmt(fc_kNcm2, 3)})) = ${f1(dX)} cm → h = ${f1(hX)} cm`,
+      `    d = √(6.5·${f1(MnvX)}/(${bX}·${fmt(fc_kNcm2, 3)})) = ${f1(dXauto)} cm${input.hVigaX ? ` → d = h − rec = ${f1(dX)} cm (h adoptada)` : ""} → h = ${f1(hX)} cm`,
     );
     st.push(`    As_supX = ${f2(As_supX)} cm² | As_infX = ${f2(As_infX)} cm²`);
 
     // Viga Y: corre en dirección Y, ancho perpendicular = cx
-    const bY = Math.max(cx, 20);
+    const bY =
+      input.bVigaY && input.bVigaY > 0 ? input.bVigaY : Math.max(cx, 20);
     const MnvY = MuY_volc / 0.9;
-    const dY = Math.sqrt((6.5 * MnvY) / (bY * fc_kNcm2));
-    const hY = dY + cover;
+    const dYauto = Math.sqrt((6.5 * MnvY) / (bY * fc_kNcm2));
+    const dY =
+      input.hVigaY && input.hVigaY > cover ? input.hVigaY - cover : dYauto;
+    const hY = input.hVigaY && input.hVigaY > 0 ? input.hVigaY : dY + cover;
     const mnY = MnvY / (0.85 * bY * dY * dY * fc_kNcm2);
     const kaY = Math.max(getKaFromMn(mnY), kamin);
     As_supY = (kaY * 0.85 * dY * bY * fc) / fy;
     As_infY = Math.max(As_supY / 3, 2 * aBar(12));
+    b_vigaY = bY;
     h_vigaY = hY;
 
     st.push(
-      `E5. Viga Y: b = máx(cx,20) = ${bY} cm | MnvY = MuY / 0.90 = ${f1(MnvY)} kN·cm`,
+      `E5. Viga Y: b = ${bY} cm${input.bVigaY ? " (adoptado por usuario)" : " = máx(cx,20) (automático)"} | MnvY = MuY / 0.90 = ${f1(MnvY)} kN·cm`,
     );
     st.push(
-      `    d = √(6.5·${f1(MnvY)}/(${bY}·${fmt(fc_kNcm2, 3)})) = ${f1(dY)} cm → h = ${f1(hY)} cm`,
+      `    d = √(6.5·${f1(MnvY)}/(${bY}·${fmt(fc_kNcm2, 3)})) = ${f1(dYauto)} cm${input.hVigaY ? ` → d = h − rec = ${f1(dY)} cm (h adoptada)` : ""} → h = ${f1(hY)} cm`,
     );
     st.push(`    As_supY = ${f2(As_supY)} cm² | As_infY = ${f2(As_infY)} cm²`);
     st.push("");
@@ -1333,6 +1356,8 @@ function designEsquina(input: BaseInput): BaseResult {
     MuY_volc,
     Rux,
     Ruy,
+    b_vigaX,
+    b_vigaY,
     h_vigaX,
     h_vigaY,
     As_supX,

@@ -437,12 +437,12 @@ export default function BasesResults() {
             />
             <DataCard
               label="Viga X"
-              value={`${fmt(result.h_vigaX ?? 0, 1)} cm`}
+              value={`${fmt(result.b_vigaX ?? 0, 1)}×${fmt(result.h_vigaX ?? 0, 1)} cm`}
               sub={`As sup ${fmt(result.As_supX ?? 0, 2)} · As inf ${fmt(result.As_infX ?? 0, 2)} cm²`}
             />
             <DataCard
               label="Viga Y"
-              value={`${fmt(result.h_vigaY ?? 0, 1)} cm`}
+              value={`${fmt(result.b_vigaY ?? 0, 1)}×${fmt(result.h_vigaY ?? 0, 1)} cm`}
               sub={`As sup ${fmt(result.As_supY ?? 0, 2)} · As inf ${fmt(result.As_infY ?? 0, 2)} cm²`}
             />
           </div>
