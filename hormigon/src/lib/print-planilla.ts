@@ -54,6 +54,22 @@ function nArr<T>(v: T[] | T | undefined, n: number, dflt: T): T[] {
   return arr(n, v);
 }
 
+/** Migra armaduras de apoyo guardadas a índice absoluto de apoyo. Los
+ *  guardados viejos guardaban solo apoyos interiores (j → apoyo j+1); los
+ *  nuevos guardan por índice absoluto (longitud = nSupports). */
+function migrateSup<T>(
+  v: T[] | T | undefined,
+  nSupports: number,
+  dflt: T,
+): T[] {
+  if (v == null) return arr(nSupports, dflt);
+  const src = Array.isArray(v) ? v : [v];
+  if (src.length >= nSupports) return src.slice(0, nSupports);
+  const out = arr(nSupports, dflt);
+  for (let j = 0; j < src.length; j++) out[j + 1] = src[j];
+  return out;
+}
+
 function barArea(diam: number | undefined): number {
   return diam != null && BAR_AREA[diam] ? BAR_AREA[diam] : 0;
 }
@@ -147,7 +163,6 @@ function buildVigaRows(save: SavedBeam): string[][] {
     throw new Error("Sin tramos");
   }
   const n = spans.length;
-  const nInterior = Math.max(0, n - 1);
   const supportTypes = d.supportTypes ?? [];
   const bw = d.bw ?? 0;
   const h = d.h ?? 0;
@@ -183,8 +198,8 @@ function buildVigaRows(save: SavedBeam): string[][] {
   const stirrupDiamArr = nArr(d.stirrupDiam, n, 8);
   const stirrupSpacingArr = nArr(d.stirrupSpacing, n, 200);
   const stirrupLegsArr = nArr(d.stirrupLegs, n, 2);
-  const supQtyArr = nArr(d.supBarQty, nInterior, 3);
-  const supDiamArr = nArr(d.supBarDiam, nInterior, 16);
+  const supQtyArr = migrateSup(d.supBarQty, n + 1, 3);
+  const supDiamArr = migrateSup(d.supBarDiam, n + 1, 16);
 
   const spanMu: number[] = [];
   const spanVu: number[] = [];
@@ -246,12 +261,13 @@ function buildVigaRows(save: SavedBeam): string[][] {
     );
   }
 
-  // Apoyos interiores: armadura superior provista y verificación, por índice
-  // de apoyo. Se reportan por lado en cada tramo adyacente.
+  // Apoyos con armadura superior: interiores + extremos empotrados (voladizos),
+  // por índice absoluto de apoyo. Se reportan por lado en cada tramo adyacente.
   const sups = new Map<number, { ok: boolean; text: string }>();
-  for (let j = 0; j < nInterior; j++) {
-    const idx = j + 1;
+  for (let idx = 0; idx < n + 1; idx++) {
+    if (supportTypes[idx] === "free") continue;
     const Mneg = envelope.supportMuNeg[idx] ?? 0;
+    if (Mneg <= 1e-6) continue;
     const req = designConcreteDetailed({
       bw,
       h,
@@ -270,9 +286,9 @@ function buildVigaRows(save: SavedBeam): string[][] {
       nLegs: 0,
       s: 0,
     });
-    const asProv = (supQtyArr[j] || 0) * barArea(supDiamArr[j]);
+    const asProv = supQtyArr[idx] * barArea(supDiamArr[idx]);
     const ok = asProv >= Math.max(req.AsReq, req.AsMin) && req.AspReq <= 0;
-    sups.set(idx, { ok, text: rebar(supQtyArr[j], supDiamArr[j]) });
+    sups.set(idx, { ok, text: rebar(supQtyArr[idx], supDiamArr[idx]) });
   }
 
   const loadText = loads.length > 0 ? loads.map(fmtLoad).join(" · ") : "—";
@@ -280,14 +296,19 @@ function buildVigaRows(save: SavedBeam): string[][] {
   const mat = `${fc}/${fy}`;
 
   return spans.map((_sp, i) => {
-    const supL = i > 0 ? sups.get(i) : undefined;
-    const supR = i < n - 1 ? sups.get(i + 1) : undefined;
+    // Apoyos de extremo empotrados (voladizos) también llevan armadura superior
+    const supL = i > 0 || supportTypes[0] === "fixed" ? sups.get(i) : undefined;
+    const supR =
+      i < n - 1 || supportTypes[n] === "fixed" ? sups.get(i + 1) : undefined;
     // Momento negativo por lado; extremos empotrados (fixed) también lo tienen
     const mnegL =
       i > 0 || supportTypes[0] === "fixed"
         ? (envelope.supportMuNeg[i] ?? 0)
         : 0;
-    const mnegR = i < n - 1 ? (envelope.supportMuNeg[i + 1] ?? 0) : 0;
+    const mnegR =
+      i < n - 1 || supportTypes[n] === "fixed"
+        ? (envelope.supportMuNeg[i + 1] ?? 0)
+        : 0;
     const ok = spanOK[i] && (supL?.ok ?? true) && (supR?.ok ?? true);
 
     return [

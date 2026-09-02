@@ -95,6 +95,22 @@ function patchArr(
   return nxt;
 }
 
+/** Migra armaduras de apoyo guardadas a índice absoluto de apoyo.
+ *  Los guardados viejos guardaban solo apoyos interiores (j → apoyo j+1);
+ *  los nuevos guardan por índice absoluto (longitud = nSupports). */
+function migrateSupArray<T>(
+  v: T[] | T | undefined,
+  nSupports: number,
+  fill: T,
+): T[] | null {
+  if (v == null) return null;
+  const src = Array.isArray(v) ? v : [v];
+  if (src.length >= nSupports) return src.slice(0, nSupports);
+  const out = new Array<T>(nSupports).fill(fill);
+  for (let j = 0; j < src.length; j++) out[j + 1] = src[j];
+  return out;
+}
+
 function peak(
   fn: (x: number) => number,
   pts: number[],
@@ -137,7 +153,6 @@ export default function ConcreteResults() {
   const s = location.state as ConcreteState | null;
 
   const nSpans = s?.spans.length ?? 1;
-  const nInterior = Math.max(0, nSpans - 1);
   const nSupports = nSpans + 1;
 
   // ---- Estado de armaduras por tramo (arrays; acepta escalares de guardados viejos) ----
@@ -181,22 +196,23 @@ export default function ConcreteResults() {
         : arr(nSpans, v)
       : arr(nSpans, 200);
   });
-  // Armadura de apoyo (momentos negativos) — flexión únicamente
+  // Armadura de apoyo (momentos negativos) — flexión únicamente. Indexada por
+  // índice ABSOLUTO de apoyo (0..nSupports-1) para poder diseñar también los
+  // extremos empotrados (voladizos); los guardados viejos (solo interiores)
+  // se migran al inicializar.
   const [supBarQty, setSupBarQty] = useState<number[]>(() => {
-    const v = s?.supBarQty;
-    return v != null
-      ? Array.isArray(v)
-        ? v
-        : arr(nInterior, v)
-      : arr(nInterior, 3);
+    const migrated = migrateSupArray(s?.supBarQty, nSupports, 3);
+    if (migrated) return migrated;
+    return (s?.supportTypes ?? arr(nSupports, "simple")).map((t) =>
+      t === "free" ? 0 : 3,
+    );
   });
   const [supBarDiam, setSupBarDiam] = useState<number[]>(() => {
-    const v = s?.supBarDiam;
-    return v != null
-      ? Array.isArray(v)
-        ? v
-        : arr(nInterior, v)
-      : arr(nInterior, 16);
+    const migrated = migrateSupArray(s?.supBarDiam, nSupports, 16);
+    if (migrated) return migrated;
+    return (s?.supportTypes ?? arr(nSupports, "simple")).map((t) =>
+      t === "free" ? 0 : 16,
+    );
   });
   const [supportWidths] = useState<number[]>(() => s?.supportWidths ?? []);
   const [directSupport] = useState(s?.directSupport ?? true);
@@ -423,6 +439,13 @@ export default function ConcreteResults() {
     reactionsL,
   } = envelope;
 
+  // Apoyos que requieren armadura de apoyo (tracción superior): todos los
+  // no-libres con M⁻ > 0 — interiores y extremos empotrados (p. ej. el
+  // apoyo de un voladizo, o un extremo empotrado simple).
+  const designSupportIdx = supportPositions
+    .map((_p, i) => i)
+    .filter((i) => supportTypes[i] !== "free" && (supportMuNeg[i] ?? 0) > 1e-6);
+
   const spanDomains = spans.map((_s, i) => ({
     start: supportPositions[i],
     end: supportPositions[i + 1],
@@ -455,9 +478,9 @@ export default function ConcreteResults() {
       supportPositions[i + 1],
     ),
   );
-  const supportMneg = supportPositions.slice(1, nSpans).map((p) => ({
-    x: p,
-    v: momentNeg(p),
+  const supportMneg = designSupportIdx.map((si) => ({
+    x: supportPositions[si],
+    v: supportMuNeg[si],
   }));
   const supportV = supportPositions.map((p, i) => ({
     x: p,
@@ -924,14 +947,14 @@ export default function ConcreteResults() {
         );
       })}
 
-      {/* Apoyos interiores (armadura de flexión por momento negativo) */}
-      {nInterior > 0 && (
+      {/* Apoyos con momento negativo (armadura de flexión por tracción superior):
+          interiores + extremos empotrados (voladizos). */}
+      {designSupportIdx.length > 0 && (
         <div className="space-y-4">
           <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
             Armadura de apoyo (momento negativo)
           </h2>
-          {Array.from({ length: nInterior }, (_v, j) => {
-            const supportIdx = j + 1; // índice de apoyo interior (1..nSpans-1)
+          {designSupportIdx.map((supportIdx) => {
             const Mneg = supportMuNeg[supportIdx] ?? 0;
             const c = ensure(supportWidths, nSupports, 300)[supportIdx];
 
@@ -959,8 +982,8 @@ export default function ConcreteResults() {
             const supAsReqT = supDesign.AsReq;
             const supAsReqC = supDesign.AspReq;
 
-            const qty = ensure(supBarQty, nInterior, 3)[j];
-            const diam = ensure(supBarDiam, nInterior, 16)[j];
+            const qty = ensure(supBarQty, nSupports, 3)[supportIdx];
+            const diam = ensure(supBarDiam, nSupports, 16)[supportIdx];
             const supAsProv = (qty || 0) * (BAR_AREA[diam] || 0);
             const supCompAs = 0;
 
@@ -975,8 +998,8 @@ export default function ConcreteResults() {
                 className="bg-surface rounded-xl border border-border p-5"
               >
                 <h3 className="text-sm font-semibold text-primary uppercase tracking-wider mb-3">
-                  Apoyo {supportIdx} — M<sub>u,apoyo</sub> = {Mneg.toFixed(1)}{" "}
-                  kN·m
+                  Apoyo {supportIdx + 1} — M<sub>u,apoyo</sub> ={" "}
+                  {Mneg.toFixed(1)} kN·m
                 </h3>
                 <p className="text-xs text-text-muted mb-2">
                   Necesaria: <strong>{(supAsReqT / 100).toFixed(2)} cm²</strong>{" "}
@@ -1002,7 +1025,12 @@ export default function ConcreteResults() {
                         const raw = sanitizeDecimal(e.target.value);
                         const num = parseFloat(raw);
                         setSupBarQty(
-                          patchArr(supBarQty, j, 3, isNaN(num) ? 0 : num),
+                          patchArr(
+                            supBarQty,
+                            supportIdx,
+                            3,
+                            isNaN(num) ? 0 : num,
+                          ),
                         );
                       }}
                       className="w-20"
@@ -1014,7 +1042,12 @@ export default function ConcreteResults() {
                       value={diam}
                       onChange={(e) =>
                         setSupBarDiam(
-                          patchArr(supBarDiam, j, 16, Number(e.target.value)),
+                          patchArr(
+                            supBarDiam,
+                            supportIdx,
+                            16,
+                            Number(e.target.value),
+                          ),
                         )
                       }
                     >

@@ -91,8 +91,11 @@ export default function VigaContinuaResults() {
     reactionsL,
   } = envelope;
 
-  // Mu− solo en apoyos interiores (índices 1..nSpans−1).
-  const interiorSupportMuNeg = supportMuNeg.slice(1, nSpans);
+  // Mu− en apoyos no-libres con momento negativo: interiores y extremos
+  // empotrados (p. ej. el apoyo de un voladizo).
+  const supportMuNegIdx = supportPositions
+    .map((_p, i) => i)
+    .filter((i) => supportTypes[i] !== "free" && (supportMuNeg[i] ?? 0) > 1e-6);
 
   // ----- Globales de diagramas -----
   let globalMaxM = 0,
@@ -119,9 +122,9 @@ export default function VigaContinuaResults() {
       supportPositions[i + 1],
     ),
   );
-  const supportMneg = supportPositions.slice(1, nSpans).map((p) => ({
-    x: p,
-    v: momentNeg(p),
+  const supportMneg = supportMuNegIdx.map((si) => ({
+    x: supportPositions[si],
+    v: supportMuNeg[si],
   }));
   const supportV = supportPositions.map((p, i) => ({
     x: p,
@@ -232,13 +235,13 @@ export default function VigaContinuaResults() {
               </span>
             </div>
           ))}
-          {interiorSupportMuNeg.map((mu, j) => (
+          {supportMuNegIdx.map((si) => (
             <div
-              key={`neg-${j}`}
+              key={`neg-${si}`}
               className="flex flex-wrap items-center gap-4 p-3 bg-surface-alt rounded-lg"
             >
               <span className="text-xs text-text-muted w-40">
-                {supportLabel(j + 1)}
+                {supportLabel(si)}
               </span>
               <span className="text-sm">
                 <span className="text-xs text-text-muted">
@@ -246,7 +249,7 @@ export default function VigaContinuaResults() {
                   <sup>−</sup> ={" "}
                 </span>
                 <span className="font-semibold text-text">
-                  {mu.toFixed(1)} kN·m
+                  {supportMuNeg[si].toFixed(1)} kN·m
                 </span>
               </span>
             </div>
@@ -393,9 +396,9 @@ export default function VigaContinuaResults() {
                   {nSpans > 1 ? `M⁺ tramo ${i + 1}` : "M⁺"} = {m.v.toFixed(1)}
                 </Text>
               ))}
-              {supportMneg.map((m, i) => (
+              {supportMneg.map((m, si) => (
                 <Text
-                  key={`mn-${i}`}
+                  key={`mn-${si}`}
                   x={clampX(m.x)}
                   y={m.v + globalMaxMomentAbs * 0.07}
                   attach={`n${labelH(m.x)}`}
