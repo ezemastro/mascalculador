@@ -487,10 +487,24 @@ app.post("/api/storage/sync", authRequired, (req, res) => {
 });
 
 // SPA fallback: sirve dist/ si existe (producción). En dev sirve vite.
+// Los assets con hash se cachean como immutables, pero index.html SIEMPRE
+// debe revalidarse (referencia bundles con hash nuevo en cada build) — sin
+// esto el navegador queda con la app vieja hasta 30 días.
 if (fs.existsSync(DIST_DIR)) {
-  app.use(express.static(DIST_DIR, { maxAge: "30d", immutable: true }));
+  app.use(
+    express.static(DIST_DIR, {
+      maxAge: "30d",
+      immutable: true,
+      setHeaders(res, filePath) {
+        if (filePath.endsWith("index.html")) {
+          res.setHeader("Cache-Control", "no-cache");
+        }
+      },
+    }),
+  );
   app.use((req, res, next) => {
     if (req.method !== "GET") return next();
+    res.setHeader("Cache-Control", "no-cache");
     res.sendFile(path.join(DIST_DIR, "index.html"));
   });
 }
