@@ -103,11 +103,14 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
     if (isFree(i + 1)) {
       // cantilever from left support i
       reactions[i] += force;
-      if (isFixed(i)) moments[i] -= momentA;
+      // The overhang root moment is determinate from the free end regardless
+      // of the root support type: with a pinned root the beam carries it
+      // through the section (classic simply-supported beam with overhang).
+      moments[i] -= momentA;
     } else {
       // cantilever from right support i+1
       reactions[i + 1] += force;
-      if (isFixed(i + 1)) moments[i + 1] -= momentA;
+      moments[i + 1] -= momentA;
     }
   }
 
@@ -119,14 +122,24 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
     if (isFree(i) || isFree(i + 1)) spanIsCantilever[i] = true;
   }
 
+  // A cantilever root whose support is a PIN carries a determinate moment
+  // (-momentA from step 1) — it is not an unknown. A FIXED root keeps the
+  // three-moment treatment (its moment is solved in the system).
+  const overhangRoot = new Array(n).fill(false);
+  for (let i = 0; i < n - 1; i++) {
+    if (isFree(i)) overhangRoot[i + 1] = true;
+    if (isFree(i + 1)) overhangRoot[i] = true;
+  }
+
   const unknown: number[] = [];
   for (let i = 0; i < n; i++) {
     if (isFree(i)) continue;
+    if (overhangRoot[i] && !isFixed(i)) continue;
     const hasLeft = i > 0 && !spanIsCantilever[i - 1];
     const hasRight = i < n - 1 && !spanIsCantilever[i];
     if (isFixed(i) && (hasLeft || hasRight)) {
       unknown.push(i);
-    } else if (i > 0 && i < n - 1 && !isFree(i) && (hasLeft || hasRight)) {
+    } else if (i > 0 && i < n - 1 && (hasLeft || hasRight)) {
       unknown.push(i);
     }
   }
@@ -145,26 +158,32 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
         // leftmost: rotation equation → 2*M_0 + M_1 = -loadTerm(0,"left") / L₀²
         const L0 = pos[1] - pos[0];
         A[eq][eq] = 2;
+        B[eq] = -loadTerm(0, "left") / (L0 * L0);
         const j = idxMap.get(1);
         if (j !== undefined) A[eq][j] = 1;
-        B[eq] = -loadTerm(0, "left") / (L0 * L0);
+        // Known neighbor moment (e.g. pinned overhang root) → RHS
+        else B[eq] -= moments[1];
       } else if (si === n - 1) {
         // rightmost: rotation equation → M_{n-2} + 2*M_{n-1} = -loadTerm(n-2,"right") / L_{last}²
         const Lp = pos[n - 1] - pos[n - 2];
         A[eq][eq] = 2;
+        B[eq] = -loadTerm(n - 2, "right") / (Lp * Lp);
         const j = idxMap.get(n - 2);
         if (j !== undefined) A[eq][j] = 1;
-        B[eq] = -loadTerm(n - 2, "right") / (Lp * Lp);
+        else B[eq] -= moments[n - 2];
       } else {
         // interior: three-moment equation
         const Li = pos[si] - pos[si - 1];
         const Lj = pos[si + 1] - pos[si];
+        B[eq] = -loadTerm(si - 1, "right") / Li - loadTerm(si, "left") / Lj;
         const pi = idxMap.get(si - 1);
         if (pi !== undefined) A[eq][pi] = Li;
+        // Known neighbor moment (e.g. pinned overhang root) → RHS
+        else B[eq] -= Li * moments[si - 1];
         A[eq][eq] = 2 * (Li + Lj);
         const ni = idxMap.get(si + 1);
         if (ni !== undefined) A[eq][ni] = Lj;
-        B[eq] = -loadTerm(si - 1, "right") / Li - loadTerm(si, "left") / Lj;
+        else B[eq] -= Lj * moments[si + 1];
       }
     }
 
