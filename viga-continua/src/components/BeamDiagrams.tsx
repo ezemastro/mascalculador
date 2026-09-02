@@ -1,6 +1,7 @@
 import { Coordinates, Mafs, Plot, Polygon, Text } from "mafs";
 import type { BeamEnvelopeResult } from "../lib/beam-envelope";
 import type { VigaContinuaState } from "../lib/viga-continua";
+import DiagramCurve from "./DiagramCurve";
 
 function peak(
   fn: (x: number) => number,
@@ -104,14 +105,18 @@ export default function BeamDiagrams({
             >
               <Coordinates.Cartesian xAxis={{ lines: 4 }} yAxis={false} />
               <Plot.OfX y={() => 0} domain={[xMin, xMax]} color={axisColor} />
-              <Plot.OfX
-                y={envelope.shearPos}
-                domain={[0, L]}
+              <DiagramCurve
+                fn={envelope.shearPos}
+                criticalPoints={envelope.criticalPoints}
+                x0={0}
+                x1={L}
                 color={shearColor}
               />
-              <Plot.OfX
-                y={envelope.shearNeg}
-                domain={[0, L]}
+              <DiagramCurve
+                fn={envelope.shearNeg}
+                criticalPoints={envelope.criticalPoints}
+                x0={0}
+                x1={L}
                 color={shearColor}
               />
               {supports
@@ -179,14 +184,18 @@ export default function BeamDiagrams({
             >
               <Coordinates.Cartesian xAxis={{ lines: 4 }} yAxis={false} />
               <Plot.OfX y={() => 0} domain={[xMin, xMax]} color={axisColor} />
-              <Plot.OfX
-                y={(x) => -envelope.momentPos(x)}
-                domain={[0, L]}
+              <DiagramCurve
+                fn={(x) => -envelope.momentPos(x)}
+                criticalPoints={envelope.criticalPoints}
+                x0={0}
+                x1={L}
                 color={momentColor}
               />
-              <Plot.OfX
-                y={envelope.momentNeg}
-                domain={[0, L]}
+              <DiagramCurve
+                fn={envelope.momentNeg}
+                criticalPoints={envelope.criticalPoints}
+                x0={0}
+                x1={L}
                 color={momentColor}
               />
               {supports

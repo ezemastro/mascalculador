@@ -7,6 +7,7 @@ import { formatForce } from "@mascalculador/shared";
 import { designConcreteDetailed } from "../lib/concrete-design";
 import { saveBeam, updateSave, getSavedBeams } from "../lib/storage";
 import { pickObraIfNeeded } from "../components/ObraPicker";
+import DiagramCurve from "../components/DiagramCurve";
 import { CONCRETE_DENSITY } from "../lib/constants";
 import { calculateBeamEnvelope } from "../lib/beam-envelope";
 import { buildVigaSheet } from "../lib/print-planilla";
@@ -1107,14 +1108,18 @@ export default function ConcreteResults() {
             >
               <Coordinates.Cartesian xAxis={{ lines: 4 }} yAxis={false} />
               <Plot.OfX y={() => 0} domain={[xMin, xMax]} color="#6b7280" />
-              <Plot.OfX
-                y={(t) => shearPos(t)}
-                domain={[0, L]}
+              <DiagramCurve
+                fn={(t) => shearPos(t)}
+                criticalPoints={criticalPoints}
+                x0={0}
+                x1={L}
                 color="#f87171"
               />
-              <Plot.OfX
-                y={(t) => shearNeg(t)}
-                domain={[0, L]}
+              <DiagramCurve
+                fn={(t) => shearNeg(t)}
+                criticalPoints={criticalPoints}
+                x0={0}
+                x1={L}
                 color="#f87171"
               />
               {supports
@@ -1182,14 +1187,18 @@ export default function ConcreteResults() {
             >
               <Coordinates.Cartesian xAxis={{ lines: 4 }} yAxis={false} />
               <Plot.OfX y={() => 0} domain={[xMin, xMax]} color="#6b7280" />
-              <Plot.OfX
-                y={(t) => -momentPos(t)}
-                domain={[0, L]}
+              <DiagramCurve
+                fn={(t) => -momentPos(t)}
+                criticalPoints={criticalPoints}
+                x0={0}
+                x1={L}
                 color="#fbbf24"
               />
-              <Plot.OfX
-                y={(t) => momentNeg(t)}
-                domain={[0, L]}
+              <DiagramCurve
+                fn={(t) => momentNeg(t)}
+                criticalPoints={criticalPoints}
+                x0={0}
+                x1={L}
                 color="#fbbf24"
               />
               {supports
