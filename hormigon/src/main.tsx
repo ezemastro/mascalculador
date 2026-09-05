@@ -222,6 +222,14 @@ function NavBar({
   );
 }
 
+function VersionBadge() {
+  return (
+    <span className="no-print fixed bottom-1 right-2 z-50 select-none pointer-events-none text-[9px] text-text-muted/50">
+      build {__APP_BUILD__}
+    </span>
+  );
+}
+
 function HomeRedirect() {
   return <Navigate to="/slab" replace />;
 }
@@ -340,6 +348,7 @@ async function fetchSession(): Promise<Session> {
 }
 
 async function main() {
+  console.log(`[hormigon] build ${__APP_BUILD__}`);
   const root = createRoot(document.getElementById("root")!);
   const session = await fetchSession();
   if (session) await bootstrapStorage();
@@ -348,6 +357,7 @@ async function main() {
     root.render(
       <StrictMode>
         <ErrorBoundary>
+          <VersionBadge />
           {s ? (
             <RouterProvider
               router={buildRouter(

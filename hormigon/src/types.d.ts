@@ -1,5 +1,7 @@
 type SupportType = "simple" | "fixed" | "free";
 
+declare const __APP_BUILD__: string;
+
 interface Support {
   position: number;
   type: SupportType;
