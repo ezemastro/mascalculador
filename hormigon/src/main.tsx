@@ -347,6 +347,43 @@ async function fetchSession(): Promise<Session> {
   return null;
 }
 
+// Auto-recarga ante deploy nuevo: al recuperar el foco, compara el sello del
+// documento en ejecución contra el que sirve el server (fetch con no-cache,
+// inmune al cache del navegador) y se recarga si difiere. Límite de 2
+// recargas por sesión para nunca entrar en un bucle.
+function watchForNewBuild() {
+  const mine = document
+    .querySelector('meta[name="app-build"]')
+    ?.getAttribute("content");
+  if (!mine) return;
+  const RELOADS_KEY = "buildAutoReloads";
+  let lastCheck = 0;
+  async function check() {
+    const now = Date.now();
+    if (now - lastCheck < 30_000) return;
+    lastCheck = now;
+    try {
+      const res = await fetch("/", { cache: "no-cache" });
+      if (!res.ok) return;
+      const m = (await res.text()).match(
+        /<meta name="app-build" content="([^"]*)"/,
+      );
+      const latest = m?.[1];
+      if (!latest || latest === mine) return;
+      const reloads = Number(sessionStorage.getItem(RELOADS_KEY) || 0);
+      if (reloads >= 2) return;
+      sessionStorage.setItem(RELOADS_KEY, String(reloads + 1));
+      window.location.reload();
+    } catch {
+      // server inalcanzable: nada que hacer
+    }
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") void check();
+  });
+  window.addEventListener("focus", () => void check());
+}
+
 async function main() {
   console.log(`[hormigon] build ${__APP_BUILD__}`);
   const root = createRoot(document.getElementById("root")!);
@@ -411,6 +448,7 @@ async function main() {
   }
 
   render(session);
+  watchForNewBuild();
 }
 
 main();

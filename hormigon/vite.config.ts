@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
@@ -18,11 +18,29 @@ function buildStamp(): string {
   return hash ? `${ts} (${hash})` : ts;
 }
 
+const APP_BUILD = buildStamp();
+
+// Inyecta el sello como <meta> en index.html: el cliente lo compara contra el
+// del server al recuperar el foco y se recarga solo si hay deploy nuevo.
+function buildIdMetaPlugin(): Plugin {
+  return {
+    name: "build-id-meta",
+    transformIndexHtml() {
+      return [
+        {
+          tag: `<meta name="app-build" content="${APP_BUILD}">`,
+          injectTo: "head",
+        },
+      ];
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), buildIdMetaPlugin()],
   define: {
-    __APP_BUILD__: JSON.stringify(buildStamp()),
+    __APP_BUILD__: JSON.stringify(APP_BUILD),
   },
   server: {
     host: true,
