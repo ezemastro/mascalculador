@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { flushCloudStorage } from "../lib/cloud-storage.ts";
 
 type AdminUser = {
   id: number;
@@ -34,6 +35,14 @@ export default function AdminScreen({
       `¿Entrar como "${u.username}"? Vas a ver la app como ese usuario. Para volver, usá el botón "Volver a admin" de la barra superior.`,
     );
     if (!confirmed) return;
+    try {
+      // Sincroniza lo pendiente del admin ANTES de cambiar de sesión: si no,
+      // el beacon de pagehide subiría las keys del admin a la cuenta del
+      // usuario suplantado (la navegación ya va con la cookie nueva).
+      await flushCloudStorage();
+    } catch {
+      // seguimos; el debounce reintenta igual
+    }
     const res = await fetch("/api/admin/impersonate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
