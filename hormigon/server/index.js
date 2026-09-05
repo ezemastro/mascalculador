@@ -20,6 +20,9 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "..", "data");
 const DIST_DIR = path.join(__dirname, "..", "dist");
 
 const SESSION_COOKIE = "hc_session";
+// Cookie de corta vida (sesión de navegador) que guarda el token de admin
+// mientras está suplantando a otro usuario; permite volver sin re-login.
+const RETURN_COOKIE = "hc_admin_return";
 const SESSION_DAYS = 30;
 const RESET_TOKEN_MINUTES = 60;
 const SCRYPT_KEYLEN = 64;
@@ -96,6 +99,7 @@ const DUMMY_HASH = Buffer.from(
 
 const statements = {
   userByLower: db.prepare("SELECT * FROM users WHERE username_lower = ?"),
+  userById: db.prepare("SELECT id, username, is_admin FROM users WHERE id = ?"),
   userByEmail: db.prepare("SELECT * FROM users WHERE email = ?"),
   insertUser: db.prepare(
     "INSERT INTO users (username, username_lower, email, password_hash) VALUES (?, ?, ?, ?)",
@@ -193,6 +197,16 @@ function setSessionCookie(res, token) {
 function clearSessionCookie(res) {
   res.setHeader("Set-Cookie", [
     `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`,
+  ]);
+}
+
+// Suplantación: la cookie de sesión pasa al usuario objetivo y la de retorno
+// guarda el token de admin (cookie de sesión: muere al cerrar el navegador).
+function setImpersonateCookies(res, sessionToken, returnToken) {
+  const secure = secureRequest(res.req);
+  res.setHeader("Set-Cookie", [
+    `${SESSION_COOKIE}=${sessionToken}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_DAYS * 24 * 3600}${secure ? "; Secure" : ""}`,
+    `${RETURN_COOKIE}=${returnToken}; HttpOnly; SameSite=Lax; Path=/${secure ? "; Secure" : ""}`,
   ]);
 }
 
@@ -446,7 +460,15 @@ app.get("/api/auth/me", (req, res) => {
   const token = getCookies(req)[SESSION_COOKIE];
   const user = token && statements.sessionUser.get(token);
   if (!user) return res.status(401).json({ error: "no autenticado" });
-  res.json({ username: user.username, admin: Boolean(user.is_admin) });
+  const returnToken = getCookies(req)[RETURN_COOKIE];
+  const impersonating = Boolean(
+    returnToken && statements.sessionUser.get(returnToken)?.is_admin,
+  );
+  res.json({
+    username: user.username,
+    admin: Boolean(user.is_admin),
+    impersonating,
+  });
 });
 
 function adminRequired(req, res, next) {
@@ -458,6 +480,54 @@ function adminRequired(req, res, next) {
 
 app.get("/api/admin/users", authRequired, adminRequired, (req, res) => {
   res.json({ users: statements.adminUsers.all() });
+});
+
+// El admin entra como otro usuario: sesión nueva para el objetivo y el token
+// de admin original queda guardado en RETURN_COOKIE para poder volver.
+app.post("/api/admin/impersonate", authRequired, adminRequired, (req, res) => {
+  const userId = Number(req.body?.userId);
+  const target =
+    Number.isInteger(userId) && userId > 0
+      ? statements.userById.get(userId)
+      : null;
+  if (!target) {
+    return res.status(404).json({ error: "usuario inexistente" });
+  }
+  if (target.id === req.user.id) {
+    return res.status(400).json({ error: "ya estás en tu propia sesión" });
+  }
+  const adminToken = getCookies(req)[SESSION_COOKIE] || "";
+  const token = createSession(target.id);
+  setImpersonateCookies(res, token, adminToken);
+  res.json({ username: target.username });
+});
+
+// Vuelve a la sesión de admin guardada en RETURN_COOKIE y borra la sesión de
+// suplantación actual. Si la sesión de admin ya no es válida, cierra todo.
+// Ojo: setHeader("Set-Cookie") reemplaza el header completo, así que las dos
+// cookies de cada rama van en una sola llamada.
+app.post("/api/admin/exit-impersonate", authRequired, (req, res) => {
+  const cookies = getCookies(req);
+  const returnToken = cookies[RETURN_COOKIE] || "";
+  if (cookies[SESSION_COOKIE]) {
+    statements.deleteSession.run(cookies[SESSION_COOKIE]);
+  }
+  const admin = returnToken ? statements.sessionUser.get(returnToken) : null;
+  const secure = secureRequest(req);
+  const secureFlag = secure ? "; Secure" : "";
+  const expired = `${RETURN_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`;
+  if (!admin?.is_admin) {
+    res.setHeader("Set-Cookie", [
+      `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secureFlag}`,
+      expired,
+    ]);
+    return res.json({ ok: false, logout: true });
+  }
+  res.setHeader("Set-Cookie", [
+    `${SESSION_COOKIE}=${returnToken}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${SESSION_DAYS * 24 * 3600}${secureFlag}`,
+    expired,
+  ]);
+  res.json({ ok: true });
 });
 
 app.get("/api/storage", authRequired, (req, res) => {

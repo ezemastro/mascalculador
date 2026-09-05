@@ -86,14 +86,18 @@ class ErrorBoundary extends Component<
 function NavBar({
   username,
   admin,
+  impersonating,
   onLogout,
+  onExitImpersonate,
   obraId,
   obras,
   onObraChange,
 }: {
   username: string;
   admin: boolean;
+  impersonating: boolean;
   onLogout: () => void;
+  onExitImpersonate: () => void;
   obraId: string;
   obras: SavedObra[];
   onObraChange: (id: string) => void;
@@ -195,6 +199,16 @@ function NavBar({
         </Link>
       )}
       <div className="ml-auto flex items-center gap-3">
+        {impersonating && (
+          <button
+            type="button"
+            onClick={onExitImpersonate}
+            title="Volver a tu sesión de administrador"
+            className="text-xs font-semibold text-warning bg-warning/10 border border-warning/30 px-2 py-0.5 rounded hover:bg-warning/20"
+          >
+            Viendo como {username} — Volver a admin
+          </button>
+        )}
         <span className="text-xs text-text-muted">{username}</span>
         <button
           type="button"
@@ -215,11 +229,15 @@ function HomeRedirect() {
 function Layout({
   username,
   admin,
+  impersonating,
   onLogout,
+  onExitImpersonate,
 }: {
   username: string;
   admin: boolean;
+  impersonating: boolean;
   onLogout: () => void;
+  onExitImpersonate: () => void;
 }) {
   const [obraId, setObraId] = useState(getCurrentObraId);
   const [obras, setObras] = useState<SavedObra[]>(() => getObras());
@@ -235,7 +253,9 @@ function Layout({
       <NavBar
         username={username}
         admin={admin}
+        impersonating={impersonating}
         onLogout={onLogout}
+        onExitImpersonate={onExitImpersonate}
         obraId={obraId}
         obras={obras}
         onObraChange={handleObraChange}
@@ -248,11 +268,23 @@ function Layout({
   );
 }
 
-function buildRouter(username: string, admin: boolean, onLogout: () => void) {
+function buildRouter(
+  username: string,
+  admin: boolean,
+  impersonating: boolean,
+  onLogout: () => void,
+  onExitImpersonate: () => void,
+) {
   return createBrowserRouter([
     {
       Component: () => (
-        <Layout username={username} admin={admin} onLogout={onLogout} />
+        <Layout
+          username={username}
+          admin={admin}
+          impersonating={impersonating}
+          onLogout={onLogout}
+          onExitImpersonate={onExitImpersonate}
+        />
       ),
       children: [
         { path: "/", Component: HomeRedirect },
@@ -267,20 +299,39 @@ function buildRouter(username: string, admin: boolean, onLogout: () => void) {
         { path: "/bases-results", Component: BasesResults },
         { path: "/rc-column", Component: RCColumnForm },
         { path: "/rc-column-results", Component: RCColumnResults },
-        ...(admin ? [{ path: "/admin", Component: AdminScreen }] : []),
+        ...(admin
+          ? [
+              {
+                path: "/admin",
+                Component: () => <AdminScreen selfUsername={username} />,
+              },
+            ]
+          : []),
       ],
     },
   ]);
 }
 
-type Session = { username: string; admin: boolean } | null;
+type Session = {
+  username: string;
+  admin: boolean;
+  impersonating: boolean;
+} | null;
 
 async function fetchSession(): Promise<Session> {
   try {
     const me = await fetch("/api/auth/me");
     if (me.ok) {
-      const data = (await me.json()) as { username: string; admin?: boolean };
-      return { username: data.username, admin: Boolean(data.admin) };
+      const data = (await me.json()) as {
+        username: string;
+        admin?: boolean;
+        impersonating?: boolean;
+      };
+      return {
+        username: data.username,
+        admin: Boolean(data.admin),
+        impersonating: Boolean(data.impersonating),
+      };
     }
   } catch {
     // Server inalcanzable: sin sesión confirmada, queda la pantalla de login.
@@ -299,9 +350,17 @@ async function main() {
         <ErrorBoundary>
           {s ? (
             <RouterProvider
-              router={buildRouter(s.username, s.admin, () => {
-                void handleLogout(render);
-              })}
+              router={buildRouter(
+                s.username,
+                s.admin,
+                s.impersonating,
+                () => {
+                  void handleLogout(render);
+                },
+                () => {
+                  void handleExitImpersonate();
+                },
+              )}
             />
           ) : (
             <AuthScreen
@@ -324,6 +383,21 @@ async function main() {
       // Igual volvemos a la pantalla de login.
     }
     doRender(null);
+  }
+
+  // Salir de la suplantación: sincroniza lo pendiente del usuario visto y
+  // recarga la app completa para que bootstrapStorage cargue los datos del
+  // admin. El server ya reponjo la cookie de sesión de admin.
+  async function handleExitImpersonate() {
+    try {
+      await flushCloudStorage();
+    } catch {
+      // seguimos igual; el server reponjo la sesión de admin de todos modos
+    }
+    await fetch("/api/admin/exit-impersonate", { method: "POST" }).catch(
+      () => {},
+    );
+    window.location.assign("/");
   }
 
   render(session);

@@ -9,7 +9,11 @@ type AdminUser = {
   key_count: number;
 };
 
-export default function AdminScreen() {
+export default function AdminScreen({
+  selfUsername,
+}: {
+  selfUsername: string;
+}) {
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,6 +28,26 @@ export default function AdminScreen() {
         setError(err instanceof Error ? err.message : String(err));
       });
   }, []);
+
+  async function handleEnterAs(u: AdminUser) {
+    const confirmed = confirm(
+      `¿Entrar como "${u.username}"? Vas a ver la app como ese usuario. Para volver, usá el botón "Volver a admin" de la barra superior.`,
+    );
+    if (!confirmed) return;
+    const res = await fetch("/api/admin/impersonate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: u.id }),
+    });
+    if (!res.ok) {
+      const data = (await res.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      alert(data?.error || "No se pudo entrar como ese usuario");
+      return;
+    }
+    window.location.assign("/");
+  }
 
   return (
     <div className="max-w-3xl">
@@ -40,6 +64,7 @@ export default function AdminScreen() {
               <th className="px-3 py-2">Email</th>
               <th className="px-3 py-2">Registrado</th>
               <th className="px-3 py-2">Datos guardados</th>
+              <th className="px-3 py-2"></th>
             </tr>
           </thead>
           <tbody>
@@ -58,6 +83,17 @@ export default function AdminScreen() {
                   {u.created_at.replace("T", " ").slice(0, 10)}
                 </td>
                 <td className="px-3 py-2">{u.key_count}</td>
+                <td className="px-3 py-2 text-right">
+                  {u.username !== selfUsername && (
+                    <button
+                      type="button"
+                      onClick={() => void handleEnterAs(u)}
+                      className="text-xs text-primary hover:text-primary-hover"
+                    >
+                      Entrar como...
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
