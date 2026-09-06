@@ -464,6 +464,7 @@ export default function ConcreteResults() {
     supBarQty,
     supBarDiam,
     designSupportIdx,
+    supportTypes,
     stirrupLegs,
     stirrupDiam,
     stirrupSpacingMm: stirrupSpacing,
@@ -748,13 +749,14 @@ export default function ConcreteResults() {
             <p className="text-xs text-text-muted mb-2">
               Necesaria: <strong>{(AsReqT / 100).toFixed(2)} cm²</strong> (mín:{" "}
               {(cr.AsMin / 100).toFixed(2)} cm²)
-              {AsReqC > 0 && (
-                <span>
-                  {" "}
-                  + A<sub>s</sub>' = {(AsReqC / 100).toFixed(2)} cm²
-                  (compresión)
-                </span>
-              )}
+              <span>
+                {" "}
+                + A<sub>s</sub>' superior = {(AsReqC / 100).toFixed(2)} cm² (
+                {AsReqC > 0
+                  ? "compresión"
+                  : "sin compresión — perchas a elección"}
+                )
+              </span>
             </p>
 
             {/* Tracción */}
@@ -800,54 +802,52 @@ export default function ConcreteResults() {
               </span>
             </div>
 
-            {/* Compresión (doble armadura) */}
-            {AsReqC > 0 && (
-              <div className="flex flex-wrap gap-3 items-end mb-2">
-                <span className="text-xs text-text-muted font-semibold w-16">
-                  Compresión
-                </span>
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs text-text-muted">Cantidad</span>
-                  <input
-                    type="text"
-                    value={ensure(compBarQty, nSpans, 0)[i] || ""}
-                    onChange={(e) => {
-                      const raw = sanitizeDecimal(e.target.value);
-                      const num = parseFloat(raw);
-                      setCompBarQty(
-                        patchArr(compBarQty, i, 0, isNaN(num) ? 0 : num),
-                      );
-                    }}
-                    className="w-20"
-                  />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs text-text-muted">Diámetro</span>
-                  <select
-                    value={ensure(compBarDiam, nSpans, 12)[i]}
-                    onChange={(e) =>
-                      setCompBarDiam(
-                        patchArr(compBarDiam, i, 12, Number(e.target.value)),
-                      )
-                    }
-                  >
-                    {BAR_DIAMETERS.map((d) => (
-                      <option key={d} value={d}>
-                        Ø{d} ({(BAR_AREA[d] / 100).toFixed(2)} cm²)
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <span className="text-sm pb-2">
-                  = <strong>{(AsC / 100).toFixed(2)} cm²</strong>
-                </span>
-                <span
-                  className={`text-xs font-bold ${flexCompressionOK ? "text-success" : "text-danger"}`}
+            {/* Superior (perchas; compresión solo si el motor la exige) */}
+            <div className="flex flex-wrap gap-3 items-end mb-2">
+              <span className="text-xs text-text-muted font-semibold w-16">
+                Superior
+              </span>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-text-muted">Cantidad</span>
+                <input
+                  type="text"
+                  value={ensure(compBarQty, nSpans, 0)[i] || ""}
+                  onChange={(e) => {
+                    const raw = sanitizeDecimal(e.target.value);
+                    const num = parseFloat(raw);
+                    setCompBarQty(
+                      patchArr(compBarQty, i, 0, isNaN(num) ? 0 : num),
+                    );
+                  }}
+                  className="w-20"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-text-muted">Diámetro</span>
+                <select
+                  value={ensure(compBarDiam, nSpans, 12)[i]}
+                  onChange={(e) =>
+                    setCompBarDiam(
+                      patchArr(compBarDiam, i, 12, Number(e.target.value)),
+                    )
+                  }
                 >
-                  {flexCompressionOK ? "✓" : "✗"}
-                </span>
-              </div>
-            )}
+                  {BAR_DIAMETERS.map((d) => (
+                    <option key={d} value={d}>
+                      Ø{d} ({(BAR_AREA[d] / 100).toFixed(2)} cm²)
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <span className="text-sm pb-2">
+                = <strong>{(AsC / 100).toFixed(2)} cm²</strong>
+              </span>
+              <span
+                className={`text-xs font-bold ${flexCompressionOK ? (AsReqC > 0 ? "text-success" : "text-text-muted") : "text-danger"}`}
+              >
+                {flexCompressionOK ? (AsReqC > 0 ? "✓" : "percha") : "✗"}
+              </span>
+            </div>
 
             <div
               className={`p-2 rounded-lg text-sm font-bold mb-3 ${flexOK ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}
@@ -1262,7 +1262,7 @@ export default function ConcreteResults() {
 
       <ComputoSection
         computo={computo}
-        note="Barras de apoyo superior: extienden la mitad de cada tramo adyacente."
+        note="Barras de apoyo superior: 1/3 de cada tramo adyacente (voladizos: 1.5 × luz del voladizo)."
       />
     </MainLayout>
   );

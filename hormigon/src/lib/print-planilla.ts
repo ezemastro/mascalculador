@@ -754,7 +754,7 @@ function buildApoyoRow(item: SavedSupportData | SavedCompatData): string[] {
       mneg > 0 ? fmt1(mneg) : "—",
       `${item.slabA.name} — ${edgeArmadura(slabAData?.result, slabAData?.input, item.edgeA)}`,
       `${item.slabB.name} — ${edgeArmadura(slabBData?.result, slabBData?.input, item.edgeB)}`,
-      reinf ? `Ø${reinf.diam} c/${reinf.sep} cm` : "—",
+      reinf ? `Ø${reinf.diam} c/${(reinf.sep / 10).toFixed(0)} cm` : "—",
     ];
   }
   // Apoyo individual (una losa + refuerzo propio)
@@ -766,7 +766,7 @@ function buildApoyoRow(item: SavedSupportData | SavedCompatData): string[] {
     mneg > 0 ? fmt1(mneg) : "—",
     `${item.slabName} — ${edgeArmadura(slabData?.result, slabData?.input, item.edge)}`,
     "—",
-    `Ø${item.diam} c/${item.sep} cm`,
+    `Ø${item.diam} c/${(item.sep / 10).toFixed(0)} cm`,
   ];
 }
 

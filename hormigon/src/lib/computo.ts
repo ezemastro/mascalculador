@@ -6,8 +6,9 @@
 // - Losa: malla por dirección a cara vista (largo de barra = dimensión de la
 //   losa), una barra más por borde (redondeo hacia abajo + 1).
 // - Viga: barras de tramo (inferior/compresión) = largo del tramo; barras de
-//   apoyo superior extienden la mitad de cada tramo adyacente; estribos con
-//   gancho 10·Ø y travesaños para ramas extra.
+//   apoyo superior extienden 1/3 de cada tramo adyacente (voladizos: 1.5 ×
+//   la luz del voladizo, porque el hierro sigue dentro de la viga continua);
+//   estribos con gancho 10·Ø y travesaños para ramas extra.
 // - Columna: barras longitudinales = lu (sin traslapos); estribos con
 //   recubrimiento supuesto 2.5 cm y gancho 10·Ø.
 // - Base: barras X/Y a cara vista (Lx/Ly); el hormigón incluye la viga de
@@ -35,6 +36,18 @@ export interface Computo {
 /** kg por mm²·m: 7850 kg/m³ → 0.00785 kg por mm² de sección y metro. */
 const STEEL_KG_PER_MM2_M = 0.00785;
 
+/** Áreas comerciales de barras (mm²) por diámetro nominal (mm). */
+export const BAR_AREA_MM2: Record<number, number> = {
+  6: 28,
+  8: 50,
+  10: 79,
+  12: 113,
+  16: 201,
+  20: 314,
+  25: 491,
+  32: 804,
+};
+
 /** Recubrimiento supuesto para estribos de columna (cm). */
 export const COLUMN_COVER_CM = 2.5;
 
@@ -45,7 +58,7 @@ function kgPerM(diam: number): number {
   return ((Math.PI * diam * diam) / 4) * STEEL_KG_PER_MM2_M;
 }
 
-class ComputoAcc {
+export class ComputoAcc {
   hormigonM3 = 0;
   private bars = new Map<number, number>();
 
@@ -73,6 +86,16 @@ class ComputoAcc {
   }
 }
 
+/** Suma varios cómputos (agrega hormigón y acero por diámetro). */
+export function sumComputos(list: Computo[]): Computo {
+  const acc = new ComputoAcc();
+  for (const c of list) {
+    acc.concrete(c.hormigonM3);
+    for (const row of c.acero) acc.bar(row.diam, 1, row.metros);
+  }
+  return acc.finish();
+}
+
 /** Cómputo de una losa: malla X/Y con diámetro y separación adoptados. */
 export function computoLosa(p: {
   lx: number; // m
@@ -92,8 +115,8 @@ export function computoLosa(p: {
   return acc.finish();
 }
 
-/** Cómputo de una viga continua (por tramo: inferior, compresión, estribos;
- *  por apoyo: barras superiores). */
+/** Cómputo de una viga continua (por tramo: inferior, superior/perchas,
+ *  estribos; por apoyo: barras superiores). */
 export function computoViga(p: {
   spansM: number[];
   bwMm: number;
@@ -107,6 +130,8 @@ export function computoViga(p: {
   supBarQty: number[];
   supBarDiam: number[];
   designSupportIdx: number[];
+  /** Tipos de apoyo (n+1), para detectar voladizos en los extremos. */
+  supportTypes: string[];
   stirrupLegs: number[];
   stirrupDiam: number[];
   stirrupSpacingMm: number[];
@@ -136,12 +161,17 @@ export function computoViga(p: {
     }
   }
 
-  // Barras superiores de apoyo: mitad de cada tramo adyacente
+  // Barras superiores de apoyo: 1/3 de cada tramo adyacente; voladizo
+  // (extremo lejano del tramo libre) = 1.5 × luz del voladizo (el hierro
+  // sigue dentro de la viga continua)
   for (const idx of p.designSupportIdx) {
-    const len =
-      ((idx > 0 ? (p.spansM[idx - 1] ?? 0) : 0) +
-        (idx < p.spansM.length ? (p.spansM[idx] ?? 0) : 0)) /
-      2;
+    const contrib = (spanIdx: number, farSupportIdx: number): number => {
+      if (spanIdx < 0 || spanIdx >= p.spansM.length) return 0;
+      const span = p.spansM[spanIdx] ?? 0;
+      if (span <= 0) return 0;
+      return p.supportTypes[farSupportIdx] === "free" ? span * 1.5 : span / 3;
+    };
+    const len = contrib(idx - 1, idx - 1) + contrib(idx, idx + 1);
     acc.bar(p.supBarDiam[idx] ?? 0, p.supBarQty[idx] ?? 0, len);
   }
   return acc.finish();

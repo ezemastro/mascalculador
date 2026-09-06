@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useLocation } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import {
   getSavedCompats,
@@ -20,6 +20,8 @@ import {
   type DirectionResult,
   type EdgeIndex,
 } from "../lib/slab-calc";
+import { computoApoyosObra } from "../lib/computo-obra";
+import ComputoSection from "../components/ComputoSection";
 
 const BAR_DIAMETERS = [6, 8, 10, 12, 16, 20];
 const BAR_AREA: Record<number, number> = {
@@ -87,10 +89,13 @@ function CompatCard({
   data,
   supportDesign,
   onDelete,
+  onSaved,
 }: {
   data: SavedCompatData;
   supportDesign: DirectionResult | null;
   onDelete: (name: string) => void;
+  /** Avisa al padre que se guardó armadura (refresca el cómputo de apoyos). */
+  onSaved?: () => void;
 }) {
   const initialReinf = useMemo(() => getCompatReinf(data.name), [data.name]);
   const [diam, setDiam] = useState(initialReinf?.diam ?? 10);
@@ -292,6 +297,7 @@ function CompatCard({
             onClick={() => {
               saveCompatReinf(data.name, diam, sep);
               setSavedReinf({ compatName: data.name, diam, sep });
+              onSaved?.();
             }}
             disabled={sep <= 0}
             className="text-xs bg-primary text-white font-semibold px-4 py-2 rounded-lg hover:bg-primary-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -307,6 +313,9 @@ function CompatCard({
 
 export default function CompatList() {
   const navigate = useNavigate();
+  // Estado de navegación: SlabCompat redirige acá con loadCompat para abrir
+  // directo el editor de armadura de la compatibilización guardada.
+  const navState = useLocation().state as { loadCompat?: string } | null;
   const [compats, setCompats] = useState<SavedCompatData[]>(() =>
     getSavedCompats(),
   );
@@ -314,7 +323,11 @@ export default function CompatList() {
 
   // Saved list state (misma lógica que Losas: sección colapsable arriba)
   const [listOpen, setListOpen] = useState(false);
-  const [loadedCompatName, setLoadedCompatName] = useState<string | null>(null);
+  const [loadedCompatName, setLoadedCompatName] = useState<string | null>(
+    navState?.loadCompat ?? null,
+  );
+  // Versión del armado de compats: fuerza recalcular el cómputo de apoyos
+  const [reinfVersion, setReinfVersion] = useState(0);
 
   // Individual support designer state — oculto hasta tocar "+ Nuevo apoyo individual"
   const [individualOpen, setIndividualOpen] = useState(false);
@@ -353,7 +366,9 @@ export default function CompatList() {
 
   // Get Mneg for the selected edge
   const mneg =
-    slabResult && supportEdge !== undefined && continuousEdges.includes(supportEdge)
+    slabResult &&
+    supportEdge !== undefined &&
+    continuousEdges.includes(supportEdge)
       ? supportEdge <= 1
         ? supportEdge === 0
           ? slabResult.MnegIzq
@@ -401,6 +416,13 @@ export default function CompatList() {
     ...compats.map((c) => ({ kind: "compat" as const, data: c })),
   ].sort((a, b) => b.data.savedAt.localeCompare(a.data.savedAt));
 
+  // Cómputo de acero de apoyos (individuales + compats), al pie de la pantalla
+  const apoyosComputo = useMemo(
+    () => computoApoyosObra(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- savedDesigns/compats y reinfVersion reflejan cambios de guardado
+    [savedDesigns, compats, reinfVersion],
+  );
+
   const loadedCompat = loadedCompatName
     ? (compats.find((c) => c.name === loadedCompatName) ?? null)
     : null;
@@ -441,14 +463,17 @@ export default function CompatList() {
     const name = `${slabName} — Borde ${EDGE_LABELS[supportEdge]}`;
     const target = await pickObraIfNeeded();
     if (target === null) return;
-    saveSupport({
-      name,
-      slabId: selectedSlabId,
-      slabName,
-      edge: supportEdge,
-      diam: supDiam,
-      sep: supSep,
-    }, target);
+    saveSupport(
+      {
+        name,
+        slabId: selectedSlabId,
+        slabName,
+        edge: supportEdge,
+        diam: supDiam,
+        sep: supSep,
+      },
+      target,
+    );
     setSavedDesigns(getSavedSupports());
   }
 
@@ -495,7 +520,9 @@ export default function CompatList() {
     <MainLayout>
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-text">Dimensionado de apoyo en losas</h1>
+          <h1 className="text-xl font-semibold text-text">
+            Dimensionado de apoyo en losas
+          </h1>
           <p className="text-sm text-text-muted">
             {savedItems.length} apoyo
             {savedItems.length !== 1 ? "s" : ""} guardado
@@ -534,36 +561,67 @@ export default function CompatList() {
                 No hay apoyos guardados.
               </p>
             )}
-            {savedItems.map((item) => (
-              <div
-                key={`${item.kind}:${item.data.name}`}
-                className="flex items-center gap-2 p-2 bg-surface-alt rounded-lg"
-              >
-                <span className="text-sm flex-1">{item.data.name}</span>
-                <span className="text-xs text-text-muted">
-                  {item.kind === "individual"
-                    ? "Individual"
-                    : "Compatibilización"}
-                </span>
-                <span className="text-xs text-text-muted">
-                  {new Date(item.data.savedAt).toLocaleString()}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handleLoadItem(item)}
-                  className="text-xs bg-primary/10 text-primary px-2 py-1 rounded"
+            {savedItems.map((item) => {
+              const reinfChip =
+                item.kind === "individual"
+                  ? `Ø${item.data.diam} c/${(item.data.sep / 10).toFixed(0)}`
+                  : (() => {
+                      const r = getCompatReinf(item.data.name);
+                      return r
+                        ? `Ø${r.diam} c/${(r.sep / 10).toFixed(0)}`
+                        : null;
+                    })();
+              return (
+                <div
+                  key={`${item.kind}:${item.data.name}`}
+                  className="flex items-center gap-2 p-2 bg-surface-alt rounded-lg"
                 >
-                  Cargar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDeleteItem(item)}
-                  className="text-xs bg-danger/10 text-danger px-2 py-1 rounded"
-                >
-                  Eliminar
-                </button>
-              </div>
-            ))}
+                  <span className="text-sm flex-1">{item.data.name}</span>
+                  {reinfChip ? (
+                    <span
+                      className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${
+                        item.kind === "individual"
+                          ? "text-primary bg-primary/10 border-primary/30"
+                          : "text-warning bg-warning/10 border-warning/30"
+                      }`}
+                      title={
+                        item.kind === "compat" && reinfChip
+                          ? "Armadura adicional de apoyo"
+                          : "Armadura de apoyo"
+                      }
+                    >
+                      {reinfChip}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-warning font-semibold px-2 py-0.5 rounded-full bg-warning/10 border border-warning/30">
+                      Sin armadura
+                    </span>
+                  )}
+                  <span className="text-xs text-text-muted">
+                    {item.kind === "individual"
+                      ? "Individual"
+                      : "Compatibilización"}
+                  </span>
+                  <span className="text-xs text-text-muted">
+                    {new Date(item.data.savedAt).toLocaleString()}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleLoadItem(item)}
+                    className="text-xs bg-primary/10 text-primary px-2 py-1 rounded"
+                  >
+                    {item.kind === "compat" ? "Armadura" : "Cargar"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteItem(item)}
+                    className="text-xs bg-danger/10 text-danger px-2 py-1 rounded"
+                  >
+                    Eliminar
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
       </section>
@@ -823,8 +881,27 @@ export default function CompatList() {
             data={loadedCompat}
             supportDesign={loadedCompatDesign}
             onDelete={handleDelete}
+            onSaved={() => setReinfVersion((v) => v + 1)}
           />
         </section>
+      )}
+
+      {/* Cómputo de acero de apoyos — debajo de todo */}
+      {(apoyosComputo.computo.acero.length > 0 ||
+        apoyosComputo.failed.length > 0) && (
+        <ComputoSection
+          title="Cómputo — Apoyos losas (solo acero)"
+          computo={apoyosComputo.computo}
+          showConcrete={false}
+          note={[
+            "Largo = 1/3 de la luz de cada losa que apoya (borde compartido: 1/3 de luz por losa); cantidad según la menor luz perpendicular entre las losas del apoyo, una barra más por borde.",
+            apoyosComputo.failed.length > 0
+              ? `No computables: ${apoyosComputo.failed.join(", ")}.`
+              : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        />
       )}
     </MainLayout>
   );

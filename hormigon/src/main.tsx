@@ -32,6 +32,7 @@ import BasesForm from "./screens/BasesForm.tsx";
 import BasesResults from "./screens/BasesResults.tsx";
 import RCColumnForm from "./screens/RCColumnForm.tsx";
 import RCColumnResults from "./screens/RCColumnResults.tsx";
+import ComputosObraScreen from "./screens/ComputosObraScreen.tsx";
 import { ObraPickerHost } from "./components/ObraPicker.tsx";
 import GlobalPrintMenu from "./components/GlobalPrintMenu.tsx";
 
@@ -194,6 +195,9 @@ function NavBar({
       <Link to="/bases" className="text-sm text-text-muted hover:text-text">
         Bases
       </Link>
+      <Link to="/computos" className="text-sm text-text-muted hover:text-text">
+        Cómputos
+      </Link>
       {admin && (
         <Link to="/admin" className="text-sm text-text-muted hover:text-text">
           Admin
@@ -307,6 +311,7 @@ function buildRouter(
         { path: "/slab-compats", Component: CompatList },
         { path: "/bases", Component: BasesForm },
         { path: "/bases-results", Component: BasesResults },
+        { path: "/computos", Component: ComputosObraScreen },
         { path: "/rc-column", Component: RCColumnForm },
         { path: "/rc-column-results", Component: RCColumnResults },
         ...(admin

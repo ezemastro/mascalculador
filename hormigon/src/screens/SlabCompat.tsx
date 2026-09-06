@@ -153,6 +153,8 @@ export default function SlabCompat() {
         target,
       );
       alert(`Compatibilización "${name}" guardada.`);
+      // Abrir directo el editor de armadura de apoyo en Apoyos losas
+      navigate("/slab-compats", { state: { loadCompat: name } });
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Error al guardar");
     }
