@@ -2,7 +2,6 @@ import { useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import { SlabPlan } from "@mascalculador/shared";
-import { PrintButton } from "@mascalculador/shared";
 import {
   designSlab,
   unidirectionalDirection,
@@ -11,11 +10,11 @@ import {
 } from "../lib/slab-calc";
 import { hasSlabDL, slabReactionToBeamLoad } from "../lib/slab-to-beam";
 import type { SlabEdge } from "../lib/slab-to-beam";
-import { saveSlab, updateSlab, getSavedSlabs } from "../lib/storage";
+import { saveSlab, updateSlab } from "../lib/storage";
 import { pickObraIfNeeded } from "../components/ObraPicker";
 import type { SlabInput } from "../lib/slab-calc";
-import { buildLosaSheet } from "../lib/print-planilla";
-import PrintDialog from "../components/PrintDialog";
+import { computoLosa } from "../lib/computo";
+import ComputoSection from "../components/ComputoSection";
 import type { SlabState } from "./SlabForm";
 
 /** Convierte los pasos del motor (mm) a cm para su visualización.
@@ -196,7 +195,6 @@ export default function SlabResults() {
   const location = useLocation();
   const navigate = useNavigate();
   const s = location.state as SlabState | null;
-  const [printOpen, setPrintOpen] = useState(false);
 
   // Payload de guardado/impresión (mismos campos que persiste "Guardar")
   const currentSlabInput = useMemo<SlabInput>(
@@ -377,7 +375,6 @@ export default function SlabResults() {
           </p>
         </div>
         <div className="flex gap-1.5">
-          <PrintButton onClick={() => setPrintOpen(true)} />
           <button
             type="button"
             onClick={async () => {
@@ -615,11 +612,17 @@ export default function SlabResults() {
         </pre>
       </details>
 
-      <PrintDialog
-        open={printOpen}
-        onClose={() => setPrintOpen(false)}
-        title="Imprimir planilla de losas"
-        buildSheet={() => buildLosaSheet(getSavedSlabs())}
+      <ComputoSection
+        computo={computoLosa({
+          lx,
+          ly,
+          hMm: result.h,
+          diamX,
+          sepXCm: sepX,
+          diamY,
+          sepYCm: sepY,
+        })}
+        note="Malla a cara vista, una barra más por borde."
       />
     </MainLayout>
   );

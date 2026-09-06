@@ -1,7 +1,6 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
-import { PrintButton } from "@mascalculador/shared";
 import {
   getSavedCompats,
   getSavedSlabs,
@@ -21,8 +20,6 @@ import {
   type DirectionResult,
   type EdgeIndex,
 } from "../lib/slab-calc";
-import { buildApoyosSheet } from "../lib/print-planilla";
-import PrintDialog from "../components/PrintDialog";
 
 const BAR_DIAMETERS = [6, 8, 10, 12, 16, 20];
 const BAR_AREA: Record<number, number> = {
@@ -344,7 +341,6 @@ export default function CompatList() {
 
   const designKey = `${selectedSlabId}:${supportEdge}`;
   const [appliedDesignKey, setAppliedDesignKey] = useState("");
-  const [printOpen, setPrintOpen] = useState(false);
 
   const currentDesign = savedDesigns.find(
     (d) => d.slabId === selectedSlabId && d.edge === supportEdge,
@@ -507,7 +503,6 @@ export default function CompatList() {
           </p>
         </div>
         <div className="flex gap-2">
-          <PrintButton onClick={() => setPrintOpen(true)} />
           <button
             onClick={handleNewIndividual}
             className="text-sm bg-primary/10 text-primary border border-primary/20 px-3 py-1.5 rounded-lg hover:bg-primary/20 transition-colors"
@@ -831,13 +826,6 @@ export default function CompatList() {
           />
         </section>
       )}
-
-      <PrintDialog
-        open={printOpen}
-        onClose={() => setPrintOpen(false)}
-        title="Imprimir planilla de apoyos"
-        buildSheet={() => buildApoyosSheet([...savedDesigns, ...compats])}
-      />
     </MainLayout>
   );
 }

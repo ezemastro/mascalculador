@@ -258,3 +258,9 @@ button:focus-visible {
 .planilla-sheet tbody tr {
   break-inside: avoid;
 }
+
+/* Cuando el diálogo imprime varias planillas (p. ej. Losas + Apoyos),
+   cada hoja arranca en una página nueva. */
+.planilla-sheet + .planilla-sheet {
+  break-before: page;
+}

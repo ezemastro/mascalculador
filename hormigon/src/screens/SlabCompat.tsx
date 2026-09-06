@@ -1,7 +1,6 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
-import { PrintButton } from "@mascalculador/shared";
 import {
   getSavedSlabs,
   loadSlab,
@@ -178,7 +177,6 @@ export default function SlabCompat() {
           </p>
         </div>
         <div className="flex gap-2">
-          <PrintButton />
           <button
             onClick={() => navigate("/slab-compats")}
             className="text-sm bg-surface-alt border-border hover:bg-surface text-text-muted"

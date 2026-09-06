@@ -1,13 +1,12 @@
 import { useMemo, useState } from "react";
 import { useLocation, useNavigate, Link } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
-import { PrintButton } from "@mascalculador/shared";
 import { designBase } from "../lib/bases-calc";
 import type { BaseInput } from "../lib/bases-calc";
-import { saveBeam, updateSave, getSavedBeams } from "../lib/storage";
+import { saveBeam, updateSave } from "../lib/storage";
 import { pickObraIfNeeded } from "../components/ObraPicker";
-import { buildBasesSheet } from "../lib/print-planilla";
-import PrintDialog from "../components/PrintDialog";
+import { computoBase } from "../lib/computo";
+import ComputoSection from "../components/ComputoSection";
 
 // ---------------------------------------------------------------------------
 // Location state contract (set by BasesForm on submit)
@@ -401,8 +400,6 @@ export default function BasesResults() {
   const asyNec = Math.max(result.Asy, result.AsMin);
   const cover = input.cover ?? 7;
 
-  const [printOpen, setPrintOpen] = useState(false);
-
   // ─── Save handler ───
   async function handleSave() {
     const data = { input: fullInput, result } as Record<string, unknown>;
@@ -468,7 +465,6 @@ export default function BasesResults() {
           </div>
         </div>
         <div className="flex gap-1.5">
-          <PrintButton onClick={() => setPrintOpen(true)} />
           <button
             type="button"
             onClick={handleSave}
@@ -964,11 +960,42 @@ export default function BasesResults() {
         </section>
       )}
 
-      <PrintDialog
-        open={printOpen}
-        onClose={() => setPrintOpen(false)}
-        title="Imprimir planilla de bases"
-        buildSheet={() => buildBasesSheet(getSavedBeams("bases"))}
+      {/* ─── Cómputo de materiales ─── */}
+      <ComputoSection
+        computo={computoBase({
+          lxCm: result.Lx,
+          lyCm: result.Ly,
+          hCm: result.h,
+          diamX,
+          qtyX,
+          diamY,
+          qtyY,
+          vigas: isEsquina
+            ? input.subType === "viga-de-equilibrio"
+              ? [
+                  {
+                    bCm: result.b_vigaX ?? 0,
+                    hCm: result.h_vigaX ?? 0,
+                    lengthCm: input.LcolX ?? 0,
+                  },
+                  {
+                    bCm: result.b_vigaY ?? 0,
+                    hCm: result.h_vigaY ?? 0,
+                    lengthCm: input.LcolY ?? 0,
+                  },
+                ]
+              : []
+            : isViga
+              ? [
+                  {
+                    bCm: result.b_viga,
+                    hCm: result.h_viga,
+                    lengthCm: input.Lcol ?? 0,
+                  },
+                ]
+              : [],
+        })}
+        note="El hormigón incluye la viga de fundación / vigas de equilibrio. El acero de vigas y tensores queda fuera (adopción de barras pendiente)."
       />
     </MainLayout>
   );

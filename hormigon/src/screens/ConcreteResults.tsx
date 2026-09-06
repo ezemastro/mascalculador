@@ -2,16 +2,15 @@ import { useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { Coordinates, Mafs, Plot, Polygon, Text } from "mafs";
 import { MainLayout } from "@mascalculador/shared";
-import { PrintButton } from "@mascalculador/shared";
 import { formatForce } from "@mascalculador/shared";
 import { designConcreteDetailed } from "../lib/concrete-design";
-import { saveBeam, updateSave, getSavedBeams } from "../lib/storage";
+import { saveBeam, updateSave } from "../lib/storage";
 import { pickObraIfNeeded } from "../components/ObraPicker";
 import DiagramCurve from "../components/DiagramCurve";
 import { CONCRETE_DENSITY } from "../lib/constants";
 import { calculateBeamEnvelope } from "../lib/beam-envelope";
-import { buildVigaSheet } from "../lib/print-planilla";
-import PrintDialog from "../components/PrintDialog";
+import { computoViga } from "../lib/computo";
+import ComputoSection from "../components/ComputoSection";
 import type { ConcreteState } from "./ConcreteForm";
 
 function sanitizeDecimal(val: string): string {
@@ -223,7 +222,6 @@ export default function ConcreteResults() {
   const [savedName, setSavedName] = useState<string | null>(
     s?.loadedSaveName ?? null,
   );
-  const [printOpen, setPrintOpen] = useState(false);
 
   // ---- Memoización (antes del early return: orden de hooks estable) ----
   // Payload estable para la envolvente
@@ -453,6 +451,24 @@ export default function ConcreteResults() {
     length: spans[i],
   }));
 
+  // Cómputo de materiales con el armado adoptado en pantalla
+  const computo = computoViga({
+    spansM: spans,
+    bwMm: bw,
+    hMm: h,
+    coverMm: cover,
+    barQty,
+    barDiam,
+    compBarQty,
+    compBarDiam,
+    supBarQty,
+    supBarDiam,
+    designSupportIdx,
+    stirrupLegs,
+    stirrupDiam,
+    stirrupSpacingMm: stirrupSpacing,
+  });
+
   // ---- Extremos globales para los diagramas ----
   let globalMaxM = 0,
     globalMaxV = 0;
@@ -505,7 +521,6 @@ export default function ConcreteResults() {
           </p>
         </div>
         <div className="flex gap-1.5">
-          <PrintButton onClick={() => setPrintOpen(true)} />
           <button
             type="button"
             onClick={async () => {
@@ -1245,11 +1260,9 @@ export default function ConcreteResults() {
         </section>
       </div>
 
-      <PrintDialog
-        open={printOpen}
-        onClose={() => setPrintOpen(false)}
-        title="Imprimir planilla de vigas"
-        buildSheet={() => buildVigaSheet(getSavedBeams("hormigon"))}
+      <ComputoSection
+        computo={computo}
+        note="Barras de apoyo superior: extienden la mitad de cada tramo adyacente."
       />
     </MainLayout>
   );

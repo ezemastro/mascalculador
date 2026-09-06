@@ -1,7 +1,6 @@
 import { useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
-import { PrintButton } from "@mascalculador/shared";
 import {
   designRCColumn,
   computeManualAst,
@@ -9,10 +8,10 @@ import {
 } from "../lib/rc-column-calc";
 import type { RCColumnState } from "./RCColumnForm";
 import { ArmadoLayoutSVG } from "./RCColumnForm";
-import { saveBeam, updateSave, getSavedBeams } from "../lib/storage";
+import { saveBeam, updateSave } from "../lib/storage";
 import { pickObraIfNeeded } from "../components/ObraPicker";
-import { buildColumnaSheet } from "../lib/print-planilla";
-import PrintDialog from "../components/PrintDialog";
+import { computoColumna } from "../lib/computo";
+import ComputoSection from "../components/ComputoSection";
 
 /** Stepper control: +/- buttons with a label. */
 function StepperInput({
@@ -234,8 +233,6 @@ export default function RCColumnResults() {
   const faltanX = Math.max(0, astReqX - astProvX);
   const faltanY = Math.max(0, astReqY - astProvY);
 
-  const [printOpen, setPrintOpen] = useState(false);
-
   // Payload de guardado/impresión: los mismos campos que persiste el botón
   // "Guardar" (referencia única para no divergir).
   const saveData = useMemo<Record<string, unknown>>(
@@ -358,7 +355,6 @@ export default function RCColumnResults() {
           </div>
         </div>
         <div className="flex gap-1.5">
-          <PrintButton onClick={() => setPrintOpen(true)} />
           <button
             type="button"
             onClick={handleSaveFromResults}
@@ -973,11 +969,21 @@ export default function RCColumnResults() {
         </pre>
       </section>
 
-      <PrintDialog
-        open={printOpen}
-        onClose={() => setPrintOpen(false)}
-        title="Imprimir planilla de columnas"
-        buildSheet={() => buildColumnaSheet(getSavedBeams("rc-columna"))}
+      <ComputoSection
+        computo={computoColumna({
+          cxCm: result.Cx,
+          cyCm: result.Cy,
+          luM: lu,
+          nEsquinas,
+          nCarasX,
+          nCarasY,
+          dbEsquinas,
+          dbCarasX,
+          dbCarasY,
+          phiStirrup: result.phiStirrup,
+          sStirrupCm: result.sStirrup,
+        })}
+        note="Estribos con recubrimiento supuesto 2.5 cm."
       />
     </MainLayout>
   );

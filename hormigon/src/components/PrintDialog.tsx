@@ -14,24 +14,24 @@ function ensurePrintRoot(): HTMLDivElement {
   return el;
 }
 
-/** Modal de impresión: imprime SIEMPRE todo lo guardado del tipo actual y
- *  orquesta la impresión — oculta #root, inyecta @page A4 horizontal y
- *  limpia todo al terminar. */
+/** Modal de impresión: imprime SIEMPRE todo lo guardado del tipo elegido (o
+ *  las planillas combinadas, p. ej. losas + apoyos) y orquesta la impresión —
+ *  oculta #root, inyecta @page A4 horizontal y limpia todo al terminar. */
 export default function PrintDialog({
   open,
   onClose,
   title,
-  buildSheet,
+  buildSheets,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
-  buildSheet: () => PlanillaSheet | null;
+  buildSheets: () => PlanillaSheet[] | null;
 }) {
-  const [sheet, setSheet] = useState<PlanillaSheet | null>(null);
+  const [sheets, setSheets] = useState<PlanillaSheet[] | null>(null);
 
   useEffect(() => {
-    if (!sheet) return;
+    if (!sheets) return;
     const body = document.body;
     body.classList.add("printing-planilla");
     const pageStyle = document.createElement("style");
@@ -48,7 +48,7 @@ export default function PrintDialog({
       pageStyle.remove();
       window.removeEventListener("afterprint", cleanup);
       window.clearTimeout(timer);
-      setSheet(null);
+      setSheets(null);
     }
     window.addEventListener("afterprint", cleanup);
     if (typeof window.print === "function") {
@@ -60,20 +60,20 @@ export default function PrintDialog({
       window.removeEventListener("afterprint", cleanup);
       window.clearTimeout(timer);
     };
-  }, [sheet]);
+  }, [sheets]);
 
   if (!open) return null;
 
   const printRoot = document.getElementById("print-root");
 
   const handlePrint = () => {
-    const s = buildSheet();
-    if (!s) {
+    const s = buildSheets();
+    if (!s || s.length === 0) {
       onClose();
       return;
     }
     ensurePrintRoot();
-    setSheet(s);
+    setSheets(s);
   };
 
   return (
@@ -108,8 +108,11 @@ export default function PrintDialog({
           </div>
         </div>
       </div>
-      {sheet && printRoot
-        ? createPortal(<PrintSheet sheet={sheet} />, printRoot)
+      {sheets && printRoot
+        ? createPortal(
+            sheets.map((sheet, i) => <PrintSheet key={i} sheet={sheet} />),
+            printRoot,
+          )
         : null}
     </>
   );

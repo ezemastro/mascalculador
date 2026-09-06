@@ -33,6 +33,7 @@ import BasesResults from "./screens/BasesResults.tsx";
 import RCColumnForm from "./screens/RCColumnForm.tsx";
 import RCColumnResults from "./screens/RCColumnResults.tsx";
 import { ObraPickerHost } from "./components/ObraPicker.tsx";
+import GlobalPrintMenu from "./components/GlobalPrintMenu.tsx";
 
 class ErrorBoundary extends Component<
   { children: ReactNode },
@@ -199,6 +200,7 @@ function NavBar({
         </Link>
       )}
       <div className="ml-auto flex items-center gap-3">
+        <GlobalPrintMenu />
         {impersonating && (
           <button
             type="button"
