@@ -65,6 +65,10 @@ export interface ConcreteState {
   supBarQty?: number[] | number;
   supBarDiam?: number[] | number;
   supportWidths?: number[];
+  // Flechas (estado de servicio)
+  sustainedPct?: number;
+  timeFactor?: number;
+  ieMethod?: "branson" | "bischoff";
 }
 
 export default function ConcreteForm() {
@@ -318,6 +322,9 @@ export default function ConcreteForm() {
               stirrupSpacing: state.stirrupSpacing,
               supBarQty: state.supBarQty,
               supBarDiam: state.supBarDiam,
+              sustainedPct: state.sustainedPct,
+              timeFactor: state.timeFactor,
+              ieMethod: state.ieMethod,
             }
           : {}),
       } as ConcreteState,
@@ -410,6 +417,9 @@ export default function ConcreteForm() {
             supBarQty: d.supBarQty,
             supBarDiam: d.supBarDiam,
             directSupport: d.directSupport,
+            sustainedPct: d.sustainedPct,
+            timeFactor: d.timeFactor,
+            ieMethod: d.ieMethod,
           };
         }}
       />

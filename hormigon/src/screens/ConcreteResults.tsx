@@ -2,8 +2,9 @@ import { useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { Coordinates, Mafs, Plot, Polygon, Text } from "mafs";
 import { MainLayout } from "@mascalculador/shared";
-import { formatForce } from "@mascalculador/shared";
+import { formatForce, DecimalInput } from "@mascalculador/shared";
 import { designConcreteDetailed } from "../lib/concrete-design";
+import { computeDeflections } from "../lib/deflection";
 import { saveBeam, updateSave } from "../lib/storage";
 import { pickObraIfNeeded } from "../components/ObraPicker";
 import DiagramCurve from "../components/DiagramCurve";
@@ -223,6 +224,13 @@ export default function ConcreteResults() {
     s?.loadedSaveName ?? null,
   );
 
+  // ---- Flechas (estado de servicio, sección fisurada) ----
+  const [sustainedPct, setSustainedPct] = useState(s?.sustainedPct ?? 100); // % de L sostenida
+  const [timeFactor, setTimeFactor] = useState(s?.timeFactor ?? 2); // ξ: ≥5 años
+  const [ieMethod, setIeMethod] = useState<"branson" | "bischoff">(
+    s?.ieMethod ?? "branson",
+  );
+
   // ---- Memoización (antes del early return: orden de hooks estable) ----
   // Payload estable para la envolvente
   const envelopeLoads = useMemo(
@@ -346,6 +354,54 @@ export default function ConcreteResults() {
     stirrupSpacing,
   ]);
 
+  // Flechas de servicio con sección fisurada (CIRSOC 201-25 Cap. 24)
+  const defl = useMemo(() => {
+    if (!s || !envelope) return null;
+    const asBottomSpan = ensure(barQty, nSpans, 3).map(
+      (q, i) => q * (BAR_AREA[ensure(barDiam, nSpans, 16)[i]] || 0),
+    );
+    const asTopSpan = ensure(compBarQty, nSpans, 0).map(
+      (q, i) => q * (BAR_AREA[ensure(compBarDiam, nSpans, 12)[i]] || 0),
+    );
+    const asTopSup = supBarQty.map(
+      (q, i) => q * (BAR_AREA[supBarDiam[i]] || 0),
+    );
+    return computeDeflections({
+      spans: s.spans,
+      supportTypes: s.supportTypes,
+      loads: envelopeLoads,
+      selfWeight,
+      bw: s.bw,
+      h: s.h,
+      cover: s.cover,
+      fc: s.fc,
+      fy: s.fy,
+      asBottomSpan,
+      asTopSpan,
+      asTopSup,
+      supportWidthsMm: supportWidths,
+      sustainedPct,
+      timeFactor,
+      useBischoff: ieMethod === "bischoff",
+    });
+  }, [
+    s,
+    envelope,
+    envelopeLoads,
+    selfWeight,
+    nSpans,
+    barQty,
+    barDiam,
+    compBarQty,
+    compBarDiam,
+    supBarQty,
+    supBarDiam,
+    supportWidths,
+    sustainedPct,
+    timeFactor,
+    ieMethod,
+  ]);
+
   // Payload de guardado/impresión: los mismos campos que persiste el botón
   // "Guardar resultados" (referencia única para no divergir).
   const saveData = useMemo<Record<string, unknown>>(
@@ -370,6 +426,9 @@ export default function ConcreteResults() {
       supportWidths,
       supBarQty,
       supBarDiam,
+      sustainedPct,
+      timeFactor,
+      ieMethod,
     }),
     [
       s,
@@ -384,6 +443,9 @@ export default function ConcreteResults() {
       supportWidths,
       supBarQty,
       supBarDiam,
+      sustainedPct,
+      timeFactor,
+      ieMethod,
     ],
   );
 
@@ -403,7 +465,7 @@ export default function ConcreteResults() {
     );
   }
 
-  if (!envelope || !spanResults || !shearChecks) return null;
+  if (!envelope || !spanResults || !shearChecks || !defl) return null;
 
   const {
     spans,
@@ -564,6 +626,9 @@ export default function ConcreteResults() {
                   supBarQty,
                   supBarDiam,
                   directSupport,
+                  sustainedPct,
+                  timeFactor,
+                  ieMethod,
                 },
               })
             }
@@ -1259,6 +1324,114 @@ export default function ConcreteResults() {
           </div>
         </section>
       </div>
+
+      {/* Flechas — estado de servicio, sección fisurada */}
+      <section className="bg-surface rounded-xl border border-border p-5">
+        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-1">
+          Flechas — estado de servicio (sección fisurada)
+        </h2>
+        <p className="text-xs text-text-muted mb-3">
+          CIRSOC 201-25 Cap. 24: ΔLL ≤ L/360 · Δtotal ≤ L/240 · voladizos con
+          2·L. Hormigón fisurado: Ie por Branson/Bischoff.
+        </p>
+        <div className="flex flex-wrap items-end gap-3 mb-4">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-text-muted font-medium">
+              % de L sostenida
+            </span>
+            <DecimalInput
+              value={sustainedPct}
+              onChange={(n) => setSustainedPct(Math.min(100, Math.max(0, n)))}
+              className="w-24"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-text-muted font-medium">
+              Tiempo desde colocación (ξ)
+            </span>
+            <select
+              value={timeFactor}
+              onChange={(e) => setTimeFactor(Number(e.target.value))}
+              className="w-52"
+            >
+              <option value={2}>≥ 5 años (ξ = 2.0)</option>
+              <option value={1.2}>12 meses (ξ = 1.2)</option>
+              <option value={0.8}>6 meses (ξ = 0.8)</option>
+              <option value={0.4}>3 meses (ξ = 0.4)</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-text-muted font-medium">
+              Fórmula de Ie
+            </span>
+            <select
+              value={ieMethod}
+              onChange={(e) =>
+                setIeMethod(e.target.value as "branson" | "bischoff")
+              }
+              className="w-48"
+            >
+              <option value="branson">Branson (CIRSOC)</option>
+              <option value="bischoff">Bischoff (CSA)</option>
+            </select>
+          </label>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {defl.spans.map((sp) => (
+            <div
+              key={sp.index}
+              className="bg-surface-alt rounded-lg p-3 flex flex-col gap-1.5"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-text">
+                  Tramo {sp.index + 1} — {sp.lengthM.toFixed(2)} m
+                </span>
+                {sp.isCantilever && (
+                  <span className="text-xs text-warning font-semibold">
+                    voladizo
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-text-muted">
+                luz libre {sp.clearM.toFixed(2)} m
+              </p>
+              <p className="text-xs text-text-muted">
+                δi(D+L) ={" "}
+                <span className="font-semibold text-text">
+                  {sp.comboDL.delta.toFixed(2)} mm
+                </span>{" "}
+                · δi(D) ={" "}
+                <span className="font-semibold text-text">
+                  {sp.comboD.delta.toFixed(2)} mm
+                </span>
+              </p>
+              <p
+                className={`text-xs font-semibold ${sp.okLL ? "text-success" : "text-danger"}`}
+              >
+                ΔLL = {sp.deltaLL.toFixed(2)} mm ≤ L/360 = {sp.limLL.toFixed(2)}{" "}
+                mm {sp.okLL ? "✓" : "✗"}
+              </p>
+              <p className="text-xs text-text-muted">
+                Δcp+sh = ξ={sp.xiUsed.toFixed(2)} · δi(
+                {sp.comboSus.name})={sp.comboSus.delta.toFixed(2)} ={" "}
+                {sp.deltaCpSh.toFixed(2)} mm
+              </p>
+              <p
+                className={`text-xs font-semibold ${sp.okTotal ? "text-success" : "text-danger"}`}
+              >
+                Δtotal = {sp.deltaTotal.toFixed(2)} mm ≤ L/240 ={" "}
+                {sp.limTotal.toFixed(2)} mm {sp.okTotal ? "✓" : "✗"}
+              </p>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mt-4 mb-1">
+          Cuentas
+        </p>
+        <pre className="p-3 bg-surface-alt rounded-lg text-xs text-text-muted font-mono whitespace-pre-wrap overflow-x-auto max-h-96 overflow-y-auto">
+          {defl.steps.join("\n")}
+        </pre>
+      </section>
 
       <ComputoSection
         computo={computo}

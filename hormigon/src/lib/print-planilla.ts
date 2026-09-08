@@ -8,6 +8,7 @@ import type {
 } from "@mascalculador/shared";
 import { calculateBeamEnvelope } from "./beam-envelope";
 import { designConcreteDetailed } from "./concrete-design";
+import { computeDeflections } from "./deflection";
 import { CONCRETE_DENSITY } from "./constants";
 import type { BaseInput, BaseResult } from "./bases-calc";
 import { designRCColumn } from "./rc-column-calc";
@@ -132,6 +133,9 @@ interface VigaSaveData {
   supBarQty?: number[] | number;
   supBarDiam?: number[] | number;
   supportWidths?: number[];
+  sustainedPct?: number;
+  timeFactor?: number;
+  ieMethod?: "branson" | "bischoff";
 }
 
 const VIGA_COLUMNS: PlanillaColumn[] = [
@@ -146,6 +150,8 @@ const VIGA_COLUMNS: PlanillaColumn[] = [
   { key: "reinfL", label: "Aª sup izq" },
   { key: "reinfR", label: "Aª sup der" },
   { key: "stirrup", label: "Estribos", width: "10%" },
+  { key: "flechaLL", label: "ΔLL / L·360 (mm)", align: "right" },
+  { key: "flechaT", label: "Δtotal / L·240 (mm)", align: "right" },
   { key: "ok", label: "Verifica", align: "center" },
 ];
 
@@ -295,6 +301,38 @@ function buildVigaRows(save: SavedBeam): string[][] {
   const section = `${bw / 10}×${h / 10}`;
   const mat = `${fc}/${fy}`;
 
+  // Flechas de servicio (sección fisurada) con los parámetros guardados
+  let defl: ReturnType<typeof computeDeflections> | null = null;
+  try {
+    defl = computeDeflections({
+      spans,
+      supportTypes,
+      loads: loads.map((l) => ({
+        type: l.type,
+        D: l.D ?? 0,
+        L: l.L ?? 0,
+        position: l.position,
+        start: l.start,
+        end: l.end,
+      })),
+      selfWeight,
+      bw,
+      h,
+      cover,
+      fc,
+      fy,
+      asBottomSpan: qtyArr.map((q, i) => q * barArea(diamArr[i])),
+      asTopSpan: compQtyArr.map((q, i) => q * barArea(compDiamArr[i])),
+      asTopSup: supQtyArr.map((q, i) => q * barArea(supDiamArr[i])),
+      supportWidthsMm: supportWidths,
+      sustainedPct: d.sustainedPct ?? 100,
+      timeFactor: d.timeFactor ?? 2,
+      useBischoff: d.ieMethod === "bischoff",
+    });
+  } catch {
+    defl = null;
+  }
+
   return spans.map((_sp, i) => {
     // Apoyos de extremo empotrados (voladizos) también llevan armadura superior
     const supL = i > 0 || supportTypes[0] === "fixed" ? sups.get(i) : undefined;
@@ -309,7 +347,15 @@ function buildVigaRows(save: SavedBeam): string[][] {
       i < n - 1 || supportTypes[n] === "fixed"
         ? (envelope.supportMuNeg[i + 1] ?? 0)
         : 0;
-    const ok = spanOK[i] && (supL?.ok ?? true) && (supR?.ok ?? true);
+    const ok0 = spanOK[i] && (supL?.ok ?? true) && (supR?.ok ?? true);
+    const fSp = defl?.spans[i];
+    const flechaLL = fSp
+      ? `${fmt2(fSp.deltaLL)} / ${fmt2(fSp.limLL)}${fSp.okLL ? " ✓" : " ✗"}`
+      : "—";
+    const flechaT = fSp
+      ? `${fmt2(fSp.deltaTotal)} / ${fmt2(fSp.limTotal)}${fSp.okTotal ? " ✓" : " ✗"}`
+      : "—";
+    const ok = ok0 && (!fSp || (fSp.okLL && fSp.okTotal));
 
     return [
       n === 1 ? save.name : `${save.name} · T${i + 1}`,
@@ -325,6 +371,8 @@ function buildVigaRows(save: SavedBeam): string[][] {
       supL ? supL.text : "—",
       supR ? supR.text : "—",
       spanStirrup[i],
+      flechaLL,
+      flechaT,
       ok ? "✓" : "✗",
     ];
   });
