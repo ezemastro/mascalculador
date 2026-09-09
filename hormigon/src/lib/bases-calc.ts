@@ -114,7 +114,6 @@ export interface BaseResult {
   mny: number;
   kax: number;
   kay: number;
-  kamin: number;
   Asx: number;
   Asy: number;
   AsMin: number;
@@ -471,7 +470,6 @@ function step10_Steel(
   hProm: number,
   fc: number,
   fy: number,
-  kamin: number,
 ): {
   mnx: number;
   mny: number;
@@ -486,9 +484,11 @@ function step10_Steel(
   const mnx = Mnx / (0.85 * by * d * d * fc_kNcm2);
   const mny = Mny / (0.85 * bx * d * d * fc_kNcm2);
 
-  // ka por flexión de vigas: mn = ka·(1 − 0.59·ka) → getKaFromMn
-  const kax = Math.max(getKaFromMn(mnx), kamin);
-  const kay = Math.max(getKaFromMn(mny), kamin);
+  // ka por flexión de vigas: mn = ka·(1 − 0.59·ka) → getKaFromMn.
+  // Sin piso de cuantía mecánica: el mínimo de acero se aplica en el paso 12
+  // vía AsMin = 0.0018·b·h_prom.
+  const kax = getKaFromMn(mnx);
+  const kay = getKaFromMn(mny);
 
   // As = ka · 0.85 · d · b · fc / fy  con b = ancho de apoyo
   const Asx = (kax * 0.85 * d * by * fc) / fy;
@@ -579,10 +579,6 @@ function designCentrada(input: BaseInput): BaseResult {
   st.push(
     `2. Pu = max(1.4·${f1(input.PD)} ; 1.2·${f1(input.PD)}+1.6·${f1(input.PL)}) = ${f1(Pu)} kN`,
   );
-
-  // Paso 3 — kamin
-  const kamin = step3_Kamin(input.fc);
-  st.push(`3. kamin = 2.8 / (0.85·${input.fc}) = ${f4(kamin)}`);
 
   // Paso 4 — qu
   const qu = step4_Qu(Pu, Lx, Ly);
@@ -714,7 +710,6 @@ function designCentrada(input: BaseInput): BaseResult {
     hProm,
     input.fc,
     input.fy,
-    kamin,
   );
   const fc_kNcm2 = input.fc * 0.1;
   st.push(`10. Flexión:`);
@@ -724,8 +719,8 @@ function designCentrada(input: BaseInput): BaseResult {
   st.push(
     `    mny = ${f1(Mny)}/(0.85·${bx}·${f1(d)}²·${fmt(fc_kNcm2, 3)}) = ${f4(steel.mny)}`,
   );
-  st.push(`    kax = max(ka(mnx), ${f4(kamin)}) = ${f4(steel.kax)}`);
-  st.push(`    kay = max(ka(mny), ${f4(kamin)}) = ${f4(steel.kay)}`);
+  st.push(`    kax = ka(mnx) = ${f4(steel.kax)}`);
+  st.push(`    kay = ka(mny) = ${f4(steel.kay)}`);
   st.push(
     `    Asx = ${f4(steel.kax)}·0.85·${f1(d)}·${by}·${input.fc}/${input.fy} = ${f2(steel.Asx)} cm²`,
   );
@@ -795,7 +790,6 @@ function designCentrada(input: BaseInput): BaseResult {
     mny: steel.mny,
     kax: steel.kax,
     kay: steel.kay,
-    kamin,
     Asx: steel.Asx,
     Asy: steel.Asy,
     AsMin: steel.AsMin,
