@@ -1118,13 +1118,13 @@ export default function BasesForm() {
               <span className="text-xs text-text-muted">
                 b<sub>x</sub> (cm) — apoyo tronco
               </span>
-              <input value={geo.bx} readOnly className="bg-surface-alt" />
+              <input value={geo.bx} readOnly />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
                 b<sub>y</sub> (cm) — apoyo tronco
               </span>
-              <input value={geo.by} readOnly className="bg-surface-alt" />
+              <input value={geo.by} readOnly />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
@@ -1137,7 +1137,6 @@ export default function BasesForm() {
                     : geo.dSug.toFixed(1)
                 }
                 readOnly
-                className="bg-surface-alt"
               />
             </label>
             <label className="flex flex-col gap-1">

@@ -36,6 +36,7 @@ body {
 
 input[type="number"],
 input[type="text"],
+input[readonly],
 select {
   background: var(--color-surface-alt);
   border: 1px solid var(--color-border);
@@ -47,6 +48,22 @@ select {
   outline: none;
   transition: border-color 0.2s;
   min-width: 0;
+}
+
+/* Celdas no editables (solo lectura / deshabilitadas): más planas y
+   apagadas para distinguirlas de los campos que el usuario completa. */
+input[readonly],
+input:disabled {
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+  border-color: var(--color-border);
+}
+
+input[readonly]:focus,
+input:disabled:focus {
+  border-color: var(--color-border);
+  box-shadow: none;
 }
 
 input[type="number"]:focus,
