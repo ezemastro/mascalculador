@@ -11,9 +11,10 @@
 //   estribos con gancho 10·Ø y travesaños para ramas extra.
 // - Columna: barras longitudinales = lu (sin traslapos); estribos con
 //   recubrimiento supuesto 2.5 cm y gancho 10·Ø.
-// - Base: barras X/Y a cara vista (Lx/Ly); el hormigón incluye la viga de
-//   fundación / vigas de equilibrio; el acero de vigas y tensores queda fuera
-//   (la adopción de barras se hace en pantalla, no está en el diseño).
+// - Base: barras X/Y a cara vista (Lx/Ly); el hormigón se computa como prisma
+//   del talón (Lx·Ly·h_talón) más el troncopiramidal de la paleta (fórmula
+//   exacta, ver computoBase); el acero de vigas y tensores queda fuera (la
+//   adopción de barras se hace en pantalla, no está en el diseño).
 
 export interface ComputoAceroRow {
   /** Diámetro nominal en mm. */
@@ -209,10 +210,28 @@ export function computoColumna(p: {
 
 /** Cómputo de una base: losa + viga(s) de fundación/equilibrio (hormigón);
  *  acero de la losa por dirección. */
+/** Cantidad de lados con paleta por eje según el tipo de base:
+ *  centrada (2,2), medianera-x (2,1 — columna al borde en Y), medianera-y
+ *  (1,2 — columna al borde en X), esquina (1,1 — columna en el vértice). */
+function paletaLados(type: string | undefined): [number, number] {
+  if (type === "medianera-y") return [1, 2];
+  if (type === "esquina") return [1, 1];
+  if (type === "medianera-x") return [2, 1];
+  return [2, 2];
+}
+
 export function computoBase(p: {
   lxCm: number;
   lyCm: number;
   hCm: number;
+  /** Espesor del talón (cm). Con kxCm/kyCm activa el cómputo prisma + tronco. */
+  heelCm?: number;
+  /** Voladizo en X (cm). */
+  kxCm?: number;
+  /** Voladizo en Y (cm). */
+  kyCm?: number;
+  /** Tipo de base: define cuántos lados tienen paleta por eje. */
+  paletaType?: string;
   diamX: number; // mm
   qtyX: number;
   diamY: number; // mm
@@ -220,7 +239,36 @@ export function computoBase(p: {
   vigas: Array<{ bCm: number; hCm: number; lengthCm: number }>;
 }): Computo {
   const acc = new ComputoAcc();
-  acc.concrete((p.lxCm / 100) * (p.lyCm / 100) * (p.hCm / 100));
+  const { heelCm, kxCm, kyCm } = p;
+  const hasPaleta =
+    heelCm !== undefined && kxCm !== undefined && kyCm !== undefined;
+  if (!hasPaleta) {
+    // Sin datos de talón/voladizos (guardados viejos): prisma lleno.
+    acc.concrete((p.lxCm / 100) * (p.lyCm / 100) * (p.hCm / 100));
+  } else {
+    // Prisma: todo el plan hasta la altura del talón.
+    const heel = Math.max(0, Math.min(heelCm, p.hCm));
+    acc.concrete((p.lxCm / 100) * (p.lyCm / 100) * (heel / 100));
+    const dh = p.hCm - heel;
+    if (dh > 0) {
+      // Troncopiramidal (paleta): caída uniforme Δh desde el borde de columna
+      // (altura h) hasta el borde de la base (altura talón). La superficie
+      // ingresa linealmente kx/Δh por cada lado X con paleta (nx lados) y
+      // ky/Δh por cada lado Y con paleta (ny lados):
+      //   V = Δh·[Lx·Ly − (nx·kx·Ly + ny·ky·Lx)/2 + (nx·ny/3)·kx·ky]
+      // Con paleta a 45° en ambos ejes coincide con el tronco de pirámide
+      // clásico (Δh/3)·(A1 + A2 + √(A1·A2)).
+      const kx = Math.max(0, Math.min(kxCm, p.lxCm));
+      const ky = Math.max(0, Math.min(kyCm, p.lyCm));
+      const [nx, ny] = paletaLados(p.paletaType);
+      const cm3 =
+        dh *
+        (p.lxCm * p.lyCm -
+          (nx * kx * p.lyCm + ny * ky * p.lxCm) / 2 +
+          ((nx * ny) / 3) * kx * ky);
+      acc.concrete(Math.max(0, cm3) / 1e6);
+    }
+  }
   for (const v of p.vigas) {
     acc.concrete((v.bCm / 100) * (v.hCm / 100) * (v.lengthCm / 100));
   }

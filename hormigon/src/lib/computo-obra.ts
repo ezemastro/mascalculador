@@ -268,6 +268,10 @@ export function computoBaseFromSave(save: SavedBeam): Computo | null {
     lxCm: result.Lx ?? 0,
     lyCm: result.Ly ?? 0,
     hCm: result.h ?? 0,
+    heelCm: result.heel,
+    kxCm: result.kx,
+    kyCm: result.ky,
+    paletaType: input.type,
     // Armadura según la propuesta del diseño (la adopción manual de la
     // pantalla de resultados no se guarda).
     diamX: result.db ?? 0,
