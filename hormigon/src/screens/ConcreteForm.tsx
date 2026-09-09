@@ -706,7 +706,7 @@ export default function ConcreteForm() {
                         <label className="flex flex-col gap-0.5">
                           <span className="text-xs text-text-muted">Fin</span>
                           <DecimalInput
-                            value={load.end ?? 0}
+                            value={load.end ?? totalLength}
                             onChange={(n) => updateLoad(load.id, { end: n })}
                             className="w-20"
                           />
@@ -806,7 +806,7 @@ export default function ConcreteForm() {
                                 Fin
                               </span>
                               <DecimalInput
-                                value={load.end ?? 0}
+                                value={load.end ?? totalLength}
                                 onChange={(n) =>
                                   updateLoad(load.id, { end: n })
                                 }

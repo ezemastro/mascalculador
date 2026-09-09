@@ -98,11 +98,11 @@ function fmtLoad(l: {
   position?: number;
   start?: number;
   end?: number;
-}): string {
+}, beamLength: number): string {
   if (l.type === "point") {
     return `P ${fmt2(l.D ?? 0)}/${fmt2(l.L ?? 0)} kN @${fmt1(l.position ?? 0)} m`;
   }
-  return `q ${fmt2(l.D ?? 0)}/${fmt2(l.L ?? 0)} kN/m (${fmt1(l.start ?? 0)}→${fmt1(l.end ?? 0)} m)`;
+  return `q ${fmt2(l.D ?? 0)}/${fmt2(l.L ?? 0)} kN/m (${fmt1(l.start ?? 0)}→${fmt1(l.end ?? beamLength)} m)`;
 }
 
 interface VigaSaveData {
@@ -297,7 +297,12 @@ function buildVigaRows(save: SavedBeam): string[][] {
     sups.set(idx, { ok, text: rebar(supQtyArr[idx], supDiamArr[idx]) });
   }
 
-  const loadText = loads.length > 0 ? loads.map(fmtLoad).join(" · ") : "—";
+  const loadText =
+    loads.length > 0
+      ? loads
+          .map((l) => fmtLoad(l, spans.reduce((a, b) => a + b, 0)))
+          .join(" · ")
+      : "—";
   const section = `${bw / 10}×${h / 10}`;
   const mat = `${fc}/${fy}`;
 
