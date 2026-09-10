@@ -3,7 +3,7 @@
 // Implementa los procedimientos normativos para:
 //   - Base centrada aislada (13 pasos)
 //   - Base medianera con viga de fundación (7 pasos)
-//   - Base medianera con tensor (6 pasos)
+//   - Base medianera con tensor (7 pasos)
 //
 // Unidades del contrato público:
 //   kN/m² → qa (tensión admisible del suelo)
@@ -932,9 +932,7 @@ function designVigaFundacion(input: BaseInput): BaseResult {
   st.push(
     `V2. Ru = Pu·e / (Lcol − e) = ${f1(Pu)}·${f1(e)} / (${Lcol} − ${f1(e)}) = ${f1(Ru)} kN`,
   );
-  st.push(
-    `    (el par Pu·e = Ru·(Lcol − e) re-centra la resultante)`,
-  );
+  st.push(`    (el par Pu·e = Ru·(Lcol − e) re-centra la resultante)`);
   st.push(
     `    qu = (Pu + Ru) / (Lx·Ly) = (${f1(Pu)} + ${f1(Ru)}) / (${Lx}·${Ly}) = ${fmt(centrada.qu, 6)} kN/cm²`,
   );
@@ -967,9 +965,7 @@ function designVigaFundacion(input: BaseInput): BaseResult {
     `    Mu volcador = Pu·e = ${f1(Pu)}·${f1(e)} = ${f1(Pu * e)} kN·cm — el diagrama descuenta el alivio de la presión del suelo.`,
   );
   if (inRange) {
-    st.push(
-      `    Corte nulo: x* = Pu/w = ${f1(Pu)}/${f2(w)} = ${f1(xStar)} cm`,
-    );
+    st.push(`    Corte nulo: x* = Pu/w = ${f1(Pu)}/${f2(w)} = ${f1(xStar)} cm`);
     st.push(
       `    M(x*) = w·x*²/2 − Pu·(x*−c/2) = ${f2(w)}·${f1(xStar)}²/2 − ${f1(Pu)}·(${f1(xStar)}−${f1(alongCol / 2)}) = ${f1(-MxStar)} kN·cm`,
     );
@@ -1182,21 +1178,36 @@ function designTensor(input: BaseInput): BaseResult {
     er.push("Falta ingresar la altura del tensor (H) para dimensionarlo.");
   } else {
     st.push(`T2. Altura del tensor H = ${H} cm (dato)`);
-    st.push(`T3. Tu = Mu / H = ${f1(Mu)} / ${H} = ${f1(Tu)} kN`);
-    st.push(`T4. Rozamiento: PD·μ = ${f1(input.PD)}·${mu} = ${f1(Rf)} kN`);
     st.push(
-      `    Tu = ${f1(Tu)} kN → ${FrictionOK ? "✓ Rozamiento ≥ Tu" : "✗ Rozamiento < Tu — ADVERTENCIA"}`,
+      `T3. Tracción de diseño: Tu = Mu / H = ${f1(Mu)} / ${H} = ${f1(Tu)} kN`,
+    );
+    st.push(`T4. Rozamiento (impide el deslizamiento de la zapata):`);
+    st.push(
+      `    μ = ${fmt(mu, 2)} — coeficiente de rozamiento base-suelo (dato)`,
+    );
+    st.push(
+      `    PD = ${f1(input.PD)} kN — carga vertical permanente que comprime la base`,
+    );
+    st.push(
+      `    Rf = PD·μ = ${f1(input.PD)}·${fmt(mu, 2)} = ${f1(Rf)} kN (roce disponible)`,
+    );
+    st.push(
+      `    Verificación: Rf ≥ Tu → ${f1(Rf)} ≥ ${f1(Tu)} kN ${FrictionOK ? "✓" : "✗ — ADVERTENCIA"}`,
     );
     if (!FrictionOK)
       wr.push(
         "La fuerza de rozamiento es menor que la tracción en el tensor. Aumentar PD o μ.",
       );
+    const Tn = Tu / 0.9;
     st.push(
-      `T5. As_tensor = Tu / (0.90·fy) = ${f1(Tu)} / (0.90·${fmt(fy_kNcm2, 1)}) = ${f2(As_tensor)} cm²`,
+      `T5. Tracción nominal requerida: Tn = Tu / φ = ${f1(Tu)} / 0.90 = ${f1(Tn)} kN (φ = 0.90)`,
+    );
+    st.push(
+      `T6. As_tensor = Tn / fy = ${f1(Tn)} / ${fmt(fy_kNcm2, 1)} = ${f2(As_tensor)} cm² (fy = ${input.fy} MPa = ${fmt(fy_kNcm2, 1)} kN/cm²)`,
     );
   }
   st.push(
-    `T6. Tensor: sección sugerida ${Math.round(h_tensor)}×${Math.round(h_tensor)} cm`,
+    `T7. Tensor: sección sugerida ${Math.round(h_tensor)}×${Math.round(h_tensor)} cm`,
   );
 
   st.push("");
@@ -1495,7 +1506,7 @@ function designEsquina(input: BaseInput): BaseResult {
     Tux = tensorPending ? 0 : MuX_volc / Hx;
     Tuy = tensorPending ? 0 : MuY_volc / Hy;
     st.push(
-      `E3. Tracciones: Tux = MuX / Hx = ${f1(MuX_volc)} / ${Hx} = ${f1(Tux)} kN`,
+      `E3. Tracciones de diseño: Tux = MuX / Hx = ${f1(MuX_volc)} / ${Hx} = ${f1(Tux)} kN`,
     );
     st.push(`    Tuy = MuY / Hy = ${f1(MuY_volc)} / ${Hy} = ${f1(Tuy)} kN`);
     st.push("");
@@ -1513,27 +1524,41 @@ function designEsquina(input: BaseInput): BaseResult {
         "Faltan las alturas de los tensores (Hx, Hy) para dimensionarlos.",
       );
     } else {
-      st.push(`E4. Rozamiento: PD·μ = ${f1(input.PD)}·${mu} = ${f1(Rf)} kN`);
+      st.push(`E4. Rozamiento (impide el deslizamiento de la zapata):`);
       st.push(
-        `    Tux = ${f1(Tux)} kN, Tuy = ${f1(Tuy)} kN → ${FrictionOK ? "✓ Rozamiento ≥ Tu" : "✗ Rozamiento < Tu — ADVERTENCIA"}`,
+        `    μ = ${fmt(mu, 2)} — coeficiente de rozamiento base-suelo (dato)`,
+      );
+      st.push(
+        `    PD = ${f1(input.PD)} kN — carga vertical permanente que comprime la base`,
+      );
+      st.push(
+        `    Rf = PD·μ = ${f1(input.PD)}·${fmt(mu, 2)} = ${f1(Rf)} kN (roce disponible)`,
+      );
+      st.push(
+        `    Verificación: Rf ≥ Tux y Rf ≥ Tuy → ${f1(Rf)} ≥ ${f1(Tux)} / ${f1(Tuy)} kN ${FrictionOK ? "✓" : "✗ — ADVERTENCIA"}`,
       );
       if (!FrictionOK) {
         wr.push(
           "La fuerza de rozamiento es menor que la tracción en el tensor (en una o ambas direcciones). Aumentar PD o μ.",
         );
       }
+      const Tnx = Tux / 0.9;
+      const Tny = Tuy / 0.9;
       st.push(
-        `E5. As_tensorX = ${f1(Tux)} / (0.90·${fmt(fy_kNcm2, 1)}) = ${f2(As_tensorX)} cm²`,
+        `E5. Tracciones nominales: Tn,x = Tux / φ = ${f1(Tux)} / 0.90 = ${f1(Tnx)} kN | Tn,y = Tuy / φ = ${f1(Tuy)} / 0.90 = ${f1(Tny)} kN (φ = 0.90)`,
       );
       st.push(
-        `    As_tensorY = ${f1(Tuy)} / (0.90·${fmt(fy_kNcm2, 1)}) = ${f2(As_tensorY)} cm²`,
+        `E6. As_tensorX = Tn,x / fy = ${f1(Tnx)} / ${fmt(fy_kNcm2, 1)} = ${f2(As_tensorX)} cm²`,
+      );
+      st.push(
+        `    As_tensorY = Tn,y / fy = ${f1(Tny)} / ${fmt(fy_kNcm2, 1)} = ${f2(As_tensorY)} cm² (fy = ${fy} MPa = ${fmt(fy_kNcm2, 1)} kN/cm²)`,
       );
     }
 
     h_tensorX = Math.max(Lx / 5, 20);
     h_tensorY = Math.max(Ly / 5, 20);
     st.push(
-      `E6. Bloques tensor: hX = máx(Lx/5,20) = ${Math.round(h_tensorX)} cm | hY = máx(Ly/5,20) = ${Math.round(h_tensorY)} cm`,
+      `E7. Bloques tensor: hX = máx(Lx/5,20) = ${Math.round(h_tensorX)} cm | hY = máx(Ly/5,20) = ${Math.round(h_tensorY)} cm`,
     );
 
     // Fuerzas de diseño del tronco de columna (columna corta)
@@ -1544,7 +1569,7 @@ function designEsquina(input: BaseInput): BaseResult {
     tronco_Vy = Tuy;
     st.push("");
     st.push(
-      "E7. TRONCO DE COLUMNA (columna corta) — fuerzas de diseño para verificación posterior:",
+      "E8. TRONCO DE COLUMNA (columna corta) — fuerzas de diseño para verificación posterior:",
     );
     st.push(
       `    N = ${f1(tronco_N)} kN | Mx = ${f1(tronco_Mx)} kN·cm | My = ${f1(tronco_My)} kN·cm`,

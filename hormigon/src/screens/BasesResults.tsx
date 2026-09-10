@@ -160,10 +160,14 @@ function TensorEditor({
   label,
   asNec,
   sugSide,
+  tu,
+  fy,
 }: {
   label: string;
   asNec: number;
   sugSide: number;
+  tu: number; // kN — tracción de diseño
+  fy: number; // MPa
 }) {
   const [b, setB] = useState<number>(sugSide);
   const [h, setH] = useState<number>(sugSide);
@@ -173,7 +177,11 @@ function TensorEditor({
   const rho = (asProv / (b * h)) * 100; // %
   const okAs = asProv >= asNec;
   const okRho = rho >= 1 && rho <= 8;
-  const ok = okAs && okRho;
+  const fy_kNcm2 = fy * 0.1;
+  const pn = asProv * fy_kNcm2; // kN — resistencia nominal a tracción
+  const phiPn = 0.9 * pn; // kN — resistencia de diseño
+  const okPn = phiPn >= tu;
+  const ok = okAs && okRho && okPn;
 
   return (
     <div className="bg-surface-alt rounded-lg p-4 flex flex-col gap-3">
@@ -261,6 +269,12 @@ function TensorEditor({
         {fmt(asNec, 2)} · ρ = {fmt(rho, 2)}%
         {okRho ? " (1–8% ✓)" : " (fuera de 1–8% ✗)"}
       </div>
+      <span className={`text-xs ${okPn ? "text-text-muted" : "text-danger"}`}>
+        P<sub>n</sub> = As prov·f<sub>y</sub> = {fmt(asProv, 2)}·
+        {fmt(fy_kNcm2, 1)} = {fmt(pn, 1)} kN · φP<sub>n</sub> = 0.90·P
+        <sub>n</sub> = {fmt(phiPn, 1)} kN
+        {okPn ? " ≥ " : " < "}T<sub>u</sub> = {fmt(tu, 1)} kN {okPn ? "✓" : "✗"}
+      </span>
       <span
         className={`text-xs font-semibold ${ok ? "text-success" : "text-danger"}`}
       >
@@ -587,6 +601,13 @@ export default function BasesResults() {
   const asyNec = Math.max(result.Asy, result.AsMin);
   const cover = input.cover ?? 7;
 
+  // Rozamiento base-suelo (mismo default que bases-calc: μ = 0.40)
+  const muFric = input.mu ?? 0.4;
+  const rfFric = input.PD * muFric;
+  const tuFric = isEsquina
+    ? Math.max(result.Tux ?? 0, result.Tuy ?? 0)
+    : result.Tu;
+
   // ─── Save handler ───
   async function handleSave() {
     const data = { input: fullInput, result } as Record<string, unknown>;
@@ -785,17 +806,19 @@ export default function BasesResults() {
           />
           {isTensor && !tensorPending && (
             <DataCard
-              label="Rozamiento"
-              value={`T<sub>u</sub> = ${fmt(
+              label="Rozamiento (deslizamiento)"
+              value={
                 isEsquina
-                  ? Math.max(result.Tux ?? 0, result.Tuy ?? 0)
-                  : result.Tu,
-                1,
-              )} kN`}
+                  ? `Tracción Tu,x = ${fmt(result.Tux ?? 0, 1)} · Tu,y = ${fmt(
+                      result.Tuy ?? 0,
+                      1,
+                    )} kN`
+                  : `Tracción Tu = ${fmt(tuFric, 1)} kN`
+              }
               sub={
                 <span>
-                  PD·μ = {fmt(input.PD * (input.mu ?? 0.4), 2)} kN{" "}
-                  <Badge ok={result.FrictionOK} />
+                  Roce disponible PD·μ = {fmt(input.PD, 1)}·{fmt(muFric, 2)} ={" "}
+                  {fmt(rfFric, 1)} kN <Badge ok={result.FrictionOK} />
                 </span>
               }
             />
@@ -880,14 +903,15 @@ export default function BasesResults() {
                   </label>
                   <label className="flex flex-col gap-1">
                     <span className="text-xs text-text-muted">
-                      μ — coeficiente de fricción (default 0.5)
+                      μ — coeficiente de rozamiento base-suelo (0.40 por
+                      defecto)
                     </span>
                     <input
                       type="number"
                       step="0.1"
                       min="0.1"
                       max="1"
-                      value={tensorMu ?? 0.5}
+                      value={tensorMu ?? 0.4}
                       onChange={(e) =>
                         setTensorMu(
                           e.target.value ? Number(e.target.value) : undefined,
@@ -931,14 +955,15 @@ export default function BasesResults() {
                   </label>
                   <label className="flex flex-col gap-1">
                     <span className="text-xs text-text-muted">
-                      μ — coeficiente de fricción (default 0.5)
+                      μ — coeficiente de rozamiento base-suelo (0.40 por
+                      defecto)
                     </span>
                     <input
                       type="number"
                       step="0.1"
                       min="0.1"
                       max="1"
-                      value={tensorMu ?? 0.5}
+                      value={tensorMu ?? 0.4}
                       onChange={(e) =>
                         setTensorMu(
                           e.target.value ? Number(e.target.value) : undefined,
@@ -1006,11 +1031,15 @@ export default function BasesResults() {
                     label="Tensor X"
                     asNec={result.As_tensorX ?? 0}
                     sugSide={Math.round(result.h_tensorX ?? 20)}
+                    tu={result.Tux ?? 0}
+                    fy={input.fy}
                   />
                   <TensorEditor
                     label="Tensor Y"
                     asNec={result.As_tensorY ?? 0}
                     sugSide={Math.round(result.h_tensorY ?? 20)}
+                    tu={result.Tuy ?? 0}
+                    fy={input.fy}
                   />
                 </>
               ) : (
@@ -1018,6 +1047,8 @@ export default function BasesResults() {
                   label="Tensor"
                   asNec={result.As_tensor ?? 0}
                   sugSide={Math.round(result.h_tensor ?? 20)}
+                  tu={result.Tu}
+                  fy={input.fy}
                 />
               )}
             </div>
