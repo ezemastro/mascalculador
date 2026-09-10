@@ -11,6 +11,7 @@ import { designConcreteDetailed } from "./concrete-design";
 import { computeDeflections } from "./deflection";
 import { CONCRETE_DENSITY } from "./constants";
 import type { BaseInput, BaseResult } from "./bases-calc";
+import { designBase } from "./bases-calc";
 import { designRCColumn } from "./rc-column-calc";
 
 export interface PlanillaColumn {
@@ -751,14 +752,39 @@ function baseRebar(
   return `${qty}Ø${db} c/${Math.round(sep)}`;
 }
 
+/** Campos mínimos para recalcular una base guardada desde el formulario. */
+function isCompleteBaseInput(x: Partial<BaseInput>): x is BaseInput {
+  return (
+    typeof x.qa === "number" &&
+    typeof x.Df === "number" &&
+    typeof x.PD === "number" &&
+    typeof x.PL === "number" &&
+    typeof x.cx === "number" &&
+    typeof x.cy === "number" &&
+    typeof x.fc === "number" &&
+    typeof x.fy === "number" &&
+    typeof x.type === "string"
+  );
+}
+
 function buildBaseRow(save: SavedBeam): string[] {
   const data = save.data as unknown as {
     input?: Partial<BaseInput>;
     result?: Partial<BaseResult>;
-  };
-  const input = data.input;
-  const result = data.result;
-  if (!input || !result) throw new Error("Sin datos");
+  } & Partial<BaseInput>;
+  if (!data || typeof data !== "object") throw new Error("Sin datos");
+  if (data.result && !data.input) throw new Error("Datos incompletos");
+  // Los guardados desde resultados traen { input, result }; los hechos desde
+  // el formulario guardan los campos en el nivel raíz (sin resultado): se
+  // recalcula la base para que también entren en la planilla.
+  const input = data.input ?? data;
+  let result: Partial<BaseResult>;
+  if (data.result) {
+    result = data.result;
+  } else {
+    if (!isCompleteBaseInput(input)) throw new Error("Datos incompletos");
+    result = designBase(input);
+  }
   const tipo = `${BASE_TYPE_LABELS[input.type ?? ""] ?? input.type ?? "—"}${
     input.subType
       ? ` · ${BASE_SUBTYPE_LABELS[input.subType] ?? input.subType}`
@@ -813,7 +839,7 @@ export function buildBasesSheet(sources: SavedBeam[]): PlanillaSheet {
     countLabel: `Cantidad de bases: ${rows.length}`,
     notes:
       failed.length > 0
-        ? [`No se pudieron procesar: ${failed.join(", ")}`]
+        ? [`No se pudieron procesar (datos incompletos): ${failed.join(", ")}`]
         : undefined,
   };
 }
