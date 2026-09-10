@@ -611,9 +611,9 @@ export default function BasesResults() {
   return (
     <MainLayout>
       {/* ─── Header ─── */}
-      <header className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="w-10 h-10 shrink-0 rounded-xl bg-primary/20 flex items-center justify-center">
             <svg
               className="w-5 h-5 text-primary"
               fill="none"
@@ -628,16 +628,16 @@ export default function BasesResults() {
               />
             </svg>
           </div>
-          <div>
-            <h1 className="text-xl font-semibold text-text flex items-center gap-3">
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold text-text">
               Base {typeLabel} — L<sub>x</sub> {result.Lx} × L<sub>y</sub>{" "}
               {result.Ly} × {result.h} cm
               {savedName ? (
-                <span className="text-sm font-normal text-text-muted bg-surface-alt border border-border px-2.5 py-0.5 rounded-full">
+                <span className="ml-3 align-middle text-sm font-normal text-text-muted bg-surface-alt border border-border px-2.5 py-0.5 rounded-full">
                   {savedName}
                 </span>
               ) : (
-                <span className="text-sm font-normal text-warning bg-warning/10 border border-warning/30 px-2.5 py-0.5 rounded-full">
+                <span className="ml-3 align-middle text-sm font-normal text-warning bg-warning/10 border border-warning/30 px-2.5 py-0.5 rounded-full">
                   Sin guardar
                 </span>
               )}
@@ -651,7 +651,7 @@ export default function BasesResults() {
             </p>
           </div>
         </div>
-        <div className="flex gap-1.5">
+        <div className="flex shrink-0 flex-wrap gap-1.5">
           <button
             type="button"
             onClick={handleSave}
@@ -1057,9 +1057,6 @@ export default function BasesResults() {
       {/* ─── Medianera — viga de fundación ─── */}
       {isViga && (
         <section className="bg-surface rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-            Viga de fundación
-          </h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <DataCard
               label="Excentricidad (e)"
