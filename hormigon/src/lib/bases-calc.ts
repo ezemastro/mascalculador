@@ -139,6 +139,14 @@ export interface BaseResult {
   ka_med: number; // ka viga
   h_viga: number; // cm — altura total viga de fundación
   d_viga: number; // cm — altura útil viga de fundación
+  // Viga de fundación — corte y estribos (dos zonas)
+  vigVuVol: number; // kN — corte en la zona del voladizo
+  vigVuTramo: number; // kN — corte en el tramo entre zapatas
+  vigPhiVc: number; // kN — resistencia al corte del hormigón
+  vigAvsReqVol: number; // cm²/m — Av/s requerido en el voladizo
+  vigAvsReqTramo: number; // cm²/m — Av/s requerido en el tramo
+  vigAvsMin: number; // cm²/m — Av/s mínimo normativo
+  vigSmax: number; // cm — separación máxima de estribos
   // Medianera — tensor
   Tu: number; // kN — tracción en tensor
   FrictionOK: boolean; // verificación rozamiento
@@ -818,6 +826,13 @@ function designCentrada(input: BaseInput, quOverride?: number): BaseResult {
     b_viga: 0,
     h_viga: 0,
     d_viga: 0,
+    vigVuVol: 0,
+    vigVuTramo: 0,
+    vigPhiVc: 0,
+    vigAvsReqVol: 0,
+    vigAvsReqTramo: 0,
+    vigAvsMin: 0,
+    vigSmax: 0,
     Tu: 0,
     FrictionOK: true,
     As_tensor: 0,
@@ -967,30 +982,25 @@ function designVigaFundacion(input: BaseInput): BaseResult {
   );
   st.push(`    Mn = Mviga / 0.90 = ${f1(Mnv)} kN·cm`);
 
-  // Paso V4 — dimensionado de viga
+  // Paso V4 — dimensiones de la viga: b y h son los adoptados en el
+  // formulario; d = h − recubrimiento. Solo si no se adoptó h se usa la
+  // sugerencia por flexión como fallback.
   const cover = input.cover ?? 7;
   const fc_kNcm2 = input.fc * 0.1;
+  const bAutoLabel = input.type === "medianera-x" ? "cx" : "cy";
   const dAuto = Math.sqrt((6.5 * Mnv) / (b_viga * fc_kNcm2));
-  const d_viga =
-    input.hViga && input.hViga > cover ? input.hViga - cover : dAuto;
-  const h_viga = input.hViga && input.hViga > 0 ? input.hViga : d_viga + cover;
-  if (input.type === "medianera-x") {
-    st.push(
-      `V4. Viga: b = ${b_viga} cm${input.bViga ? " (adoptado por usuario)" : ` = máx(cx,20) (automático)`}`,
-    );
-  } else {
-    st.push(
-      `V4. Viga: b = ${b_viga} cm${input.bViga ? " (adoptado por usuario)" : ` = máx(cy,20) (automático)`}`,
-    );
-  }
+  const hAuto = dAuto + cover;
+  const h_viga =
+    input.hViga !== undefined && input.hViga > 0 ? input.hViga : hAuto;
+  const d_viga = h_viga - cover;
   st.push(
-    `    d = √(6.5·${f1(Mnv)}/(${b_viga}·${fmt(fc_kNcm2, 3)})) = ${f1(dAuto)} cm${input.hViga ? ` → d = h − rec = ${f1(d_viga)} cm (h adoptada)` : ""}`,
+    `V4. Viga: b = ${b_viga} cm${input.bViga && input.bViga > 0 ? " (adoptado por usuario)" : ` = máx(${bAutoLabel},20) (auto)`} | h = ${f1(h_viga)} cm${input.hViga !== undefined && input.hViga > 0 ? " (adoptada por usuario)" : " (auto, sugerida por flexión)"}`,
   );
   st.push(
-    `    h_viga = ${input.hViga ? `adoptada por usuario = ${f1(h_viga)} cm` : `d + recubrimiento = ${f1(d_viga)} + ${cover} = ${f1(h_viga)} cm`}`,
+    `    d = h − recubrimiento = ${f1(h_viga)} − ${cover} = ${f1(d_viga)} cm`,
   );
 
-  // Paso V5 — armadura superior
+  // Paso V5 — armadura superior (la que surge del cálculo)
   const mn_med = Mnv / (0.85 * b_viga * d_viga * d_viga * fc_kNcm2);
   const kamin = step3_Kamin(input.fc);
   const ka_med = Math.max(getKaFromMn(mn_med), kamin);
@@ -1005,11 +1015,63 @@ function designVigaFundacion(input: BaseInput): BaseResult {
     `    As_sup = ${f4(ka_med)}·0.85·${f1(d_viga)}·${b_viga}·${input.fc}/${input.fy} = ${f2(As_sup)} cm²`,
   );
 
-  // Paso V6 — armadura inferior
-  const As_inf = Math.max(As_sup / 3, 2 * aBar(12));
+  // Paso V6 — armadura inferior: cuantía mínima (retención y temperatura)
+  const As_inf = 0.0018 * b_viga * h_viga;
   st.push(
-    `V6. As_inf = máx(As_sup/3, 2Ø12) = máx(${f2(As_sup / 3)}, ${f2(2 * aBar(12))}) = ${f2(As_inf)} cm²`,
+    `V6. As_inf = cuantía mínima 0.0018·b·h = 0.0018·${b_viga}·${f1(h_viga)} = ${f2(As_inf)} cm²`,
   );
+
+  // Paso V7 — corte y estribos (dos zonas): la más desfavorable junto a la
+  // columna (zona del voladizo, dentro de la zapata) y la del tramo entre
+  // zapatas, donde el corte es mucho menor (V = Ru).
+  const phiVc_vig = (0.75 * b_viga * d_viga * Math.sqrt(input.fc)) / 60;
+  // La columna es una carga concentrada (no un apoyo): sin alivio de d. La
+  // sección crítica es la cara de la columna hacia el tramo.
+  const Vu_vig_vol = Math.max(0, Pu - w * alongCol);
+  const Vu_vig_tramo = Math.max(0, w * alongFtg - Pu);
+  const Vs_vol = Math.max(0, (Vu_vig_vol - phiVc_vig) / 0.75);
+  const Vs_tramo = Math.max(0, (Vu_vig_tramo - phiVc_vig) / 0.75);
+  const fy_kNcm2 = input.fy * 0.1;
+  const Avs_req_vol = (Vs_vol / (fy_kNcm2 * d_viga)) * 100; // cm²/m
+  const Avs_req_tramo = (Vs_tramo / (fy_kNcm2 * d_viga)) * 100;
+  const AvsMin = Math.max(
+    (0.0625 * Math.sqrt(input.fc) * b_viga * 100) / input.fy,
+    (0.33 * b_viga * 100) / input.fy,
+  );
+  const VsLimit = (Math.sqrt(input.fc) * b_viga * d_viga) / 30;
+  const sMaxVig =
+    Vs_vol > VsLimit ? Math.min(d_viga / 4, 20) : Math.min(d_viga / 2, 40);
+  st.push(`V7. Corte y estribos (φ = 0.75):`);
+  st.push(
+    `    φVc = 0.75·b·d·√f'c/60 = 0.75·${b_viga}·${f1(d_viga)}·√${input.fc}/60 = ${f1(phiVc_vig)} kN`,
+  );
+  st.push(`    Zona voladizo (cara de la columna, dentro de la zapata):`);
+  st.push(
+    `    Vu = Pu − w·c = ${f1(Pu)} − ${f2(w)}·${f1(alongCol)} = ${f1(Vu_vig_vol)} kN ${Vu_vig_vol <= phiVc_vig ? "✓ ≤ φVc" : "✗ > φVc → estribos"}`,
+  );
+  st.push(
+    `    Vs = (Vu − φVc)/0.75 = ${f1(Vs_vol)} kN → Av/s = Vs/(fy·d) = ${f2(Avs_req_vol)} cm²/m`,
+  );
+  st.push(`    Zona tramo (después del borde de la zapata):`);
+  st.push(
+    `    Vu = w·lado − Pu = Ru = ${f1(Vu_vig_tramo)} kN ${Vu_vig_tramo <= phiVc_vig ? "✓ ≤ φVc" : "✗ > φVc → estribos"}`,
+  );
+  st.push(
+    `    Vs = (Vu − φVc)/0.75 = ${f1(Vs_tramo)} kN → Av/s = ${f2(Avs_req_tramo)} cm²/m`,
+  );
+  st.push(
+    `    Av/s mín = max(0.0625·√f'c, 0.35)·b/fy = ${f2(AvsMin)} cm²/m | s_máx = ${f1(sMaxVig)} cm`,
+  );
+  const Vn_vig = Vu_vig_vol / 0.75;
+  const VnMax_vig = (Math.sqrt(input.fc) * b_viga * d_viga) / 12;
+  st.push(
+    `    Vn = Vu/φ = ${f1(Vn_vig)} kN vs Vn máx = √f'c·b·d/12 = ${f1(VnMax_vig)} kN ${Vn_vig <= VnMax_vig ? "✓" : "✗ — aumentar sección de la viga"}`,
+  );
+  if (Vn_vig > VnMax_vig) {
+    wr.push(
+      "Viga de fundación: el corte en la zona del voladizo excede la capacidad máxima de estribado — aumentar b o h de la viga.",
+    );
+  }
 
   st.push("");
   st.push(`=== RESUMEN VIGA DE FUNDACIÓN ===`);
@@ -1023,6 +1085,13 @@ function designVigaFundacion(input: BaseInput): BaseResult {
     b_viga,
     h_viga,
     d_viga,
+    vigVuVol: Vu_vig_vol,
+    vigVuTramo: Vu_vig_tramo,
+    vigPhiVc: phiVc_vig,
+    vigAvsReqVol: Avs_req_vol,
+    vigAvsReqTramo: Avs_req_tramo,
+    vigAvsMin: AvsMin,
+    vigSmax: sMaxVig,
     e,
     Mu,
     Ru,

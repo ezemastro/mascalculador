@@ -270,6 +270,181 @@ function TensorEditor({
   );
 }
 
+/** Armadura longitudinal de la viga de fundación: cantidad + Ø → As prov vs nec. */
+function VigaBarEditor({
+  label,
+  asNec,
+  qty,
+  diam,
+  onQty,
+  onDiam,
+}: {
+  label: string;
+  asNec: number;
+  qty: number;
+  diam: number;
+  onQty: (q: number) => void;
+  onDiam: (d: number) => void;
+}) {
+  const asProv = qty * aBar(diam);
+  const ok = asProv >= asNec;
+  return (
+    <div className="bg-surface-alt rounded-lg p-4 flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-semibold text-text">{label}</span>
+        <span className="text-sm font-bold text-primary">
+          As nec {fmt(asNec, 2)}{" "}
+          <span className="text-xs font-normal text-text-muted">cm²</span>
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-3 items-end">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-text-muted">Cantidad</span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => onQty(Math.max(1, qty - 1))}
+              className="w-8 h-8 rounded-lg bg-surface border border-border hover:bg-surface-alt text-text font-bold"
+            >
+              −
+            </button>
+            <input
+              type="number"
+              min={1}
+              value={qty}
+              onChange={(e) => onQty(Math.max(1, Number(e.target.value) || 1))}
+              className="w-14 text-center"
+            />
+            <button
+              type="button"
+              onClick={() => onQty(qty + 1)}
+              className="w-8 h-8 rounded-lg bg-surface border border-border hover:bg-surface-alt text-text font-bold"
+            >
+              +
+            </button>
+          </div>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-text-muted">Ø (mm)</span>
+          <select value={diam} onChange={(e) => onDiam(Number(e.target.value))}>
+            {[8, 10, 12, 16, 20, 25].map((d) => (
+              <option key={d} value={d}>
+                Ø{d}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span className="text-sm pb-2">
+          As prov = <strong>{fmt(asProv, 2)} cm²</strong> <Badge ok={ok} />
+        </span>
+      </div>
+      <span
+        className={`text-xs font-semibold ${ok ? "text-success" : "text-danger"}`}
+      >
+        {ok ? "✓ VERIFICA" : "✗ NO VERIFICA"}
+      </span>
+    </div>
+  );
+}
+
+/** Estribos de la viga de fundación: ramas + Ø + separación → Av/s vs requerido. */
+function EstriboEditor({
+  label,
+  vu,
+  phiVc,
+  avsReq,
+  avsMin,
+  sMax,
+  fy,
+  d,
+  legs,
+  diam,
+  sep,
+  onLegs,
+  onDiam,
+  onSep,
+}: {
+  label: string;
+  vu: number;
+  phiVc: number;
+  avsReq: number;
+  avsMin: number;
+  sMax: number;
+  fy: number; // MPa
+  d: number; // cm
+  legs: number;
+  diam: number;
+  sep: number; // cm
+  onLegs: (n: number) => void;
+  onDiam: (d: number) => void;
+  onSep: (s: number) => void;
+}) {
+  const avsProv = ((legs * aBar(diam)) / Math.max(1, sep)) * 100; // cm²/m
+  const req = Math.max(avsReq, avsMin);
+  const okAv = avsProv >= req;
+  const okSep = sep <= sMax;
+  const vsProv = ((legs * aBar(diam)) / Math.max(1, sep)) * fy * 0.1 * d; // kN
+  return (
+    <div className="bg-surface-alt rounded-lg p-4 flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-semibold text-text">{label}</span>
+        <span className="text-sm font-bold text-primary">
+          V<sub>u</sub> {fmt(vu, 1)}{" "}
+          <span className="text-xs font-normal text-text-muted">kN</span>
+        </span>
+      </div>
+      <p className="text-xs text-text-muted">
+        φV<sub>c</sub> = {fmt(phiVc, 1)} kN · A<sub>v</sub>/s req ={" "}
+        {fmt(req, 2)} cm²/m · s<sub>máx</sub> = {fmt(sMax, 1)} cm
+      </p>
+      <div className="flex flex-wrap gap-3 items-end">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-text-muted">Ramas</span>
+          <input
+            type="number"
+            min={2}
+            value={legs}
+            onChange={(e) => onLegs(Math.max(2, Number(e.target.value) || 2))}
+            className="w-14 text-center"
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-text-muted">Ø (mm)</span>
+          <select value={diam} onChange={(e) => onDiam(Number(e.target.value))}>
+            {[6, 8, 10, 12].map((d2) => (
+              <option key={d2} value={d2}>
+                Ø{d2}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-text-muted">Separación (cm)</span>
+          <input
+            type="number"
+            min={1}
+            max={60}
+            value={sep}
+            onChange={(e) => onSep(Math.max(1, Number(e.target.value) || 1))}
+            className="w-16 text-center"
+          />
+        </label>
+        <span className="text-sm pb-2">
+          A<sub>v</sub>/s = <strong>{fmt(avsProv, 2)} cm²/m</strong>
+        </span>
+      </div>
+      <div
+        className={`p-2 rounded-lg text-sm font-bold ${okAv && okSep ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}
+      >
+        {okAv && okSep ? "✓ Verifica corte" : "✗ No verifica corte"}
+        {!okAv && ` — Av/s < ${fmt(req, 2)} cm²/m`}
+        {!okSep && ` — s > s_máx (${fmt(sMax, 1)} cm)`}
+        {" · "}V<sub>s</sub> colocado = {fmt(vsProv, 1)} kN
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
@@ -295,6 +470,18 @@ export default function BasesResults() {
   const [qtyX, setQtyX] = useState(8);
   const [diamY, setDiamY] = useState(12);
   const [qtyY, setQtyY] = useState(8);
+
+  // Armadura y estribos adoptados para la viga de fundación
+  const [vigaSupQty, setVigaSupQty] = useState(4);
+  const [vigaSupDiam, setVigaSupDiam] = useState(12);
+  const [vigaInfQty, setVigaInfQty] = useState(3);
+  const [vigaInfDiam, setVigaInfDiam] = useState(12);
+  const [estVolLegs, setEstVolLegs] = useState(2);
+  const [estVolDiam, setEstVolDiam] = useState(8);
+  const [estVolSep, setEstVolSep] = useState(10);
+  const [estTramoLegs, setEstTramoLegs] = useState(2);
+  const [estTramoDiam, setEstTramoDiam] = useState(8);
+  const [estTramoSep, setEstTramoSep] = useState(15);
 
   // Datos del tensor (se completan acá si se eligió tensor)
   const [tensorH, setTensorH] = useState<number | undefined>(
@@ -899,10 +1086,57 @@ export default function BasesResults() {
               value={`${fmt(result.d_viga, 1)}`}
               sub="cm"
             />
-            <DataCard
-              label="As sup / inf"
-              value={`${fmt(result.As_sup, 2)} / ${fmt(result.As_inf, 2)}`}
-              sub="cm²"
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+            <VigaBarEditor
+              label="Armadura superior"
+              asNec={result.As_sup}
+              qty={vigaSupQty}
+              diam={vigaSupDiam}
+              onQty={setVigaSupQty}
+              onDiam={setVigaSupDiam}
+            />
+            <VigaBarEditor
+              label="Armadura inferior"
+              asNec={result.As_inf}
+              qty={vigaInfQty}
+              diam={vigaInfDiam}
+              onQty={setVigaInfQty}
+              onDiam={setVigaInfDiam}
+            />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+            <EstriboEditor
+              label="Estribos — zona voladizo"
+              vu={result.vigVuVol}
+              phiVc={result.vigPhiVc}
+              avsReq={result.vigAvsReqVol}
+              avsMin={result.vigAvsMin}
+              sMax={result.vigSmax}
+              fy={input.fy}
+              d={result.d_viga}
+              legs={estVolLegs}
+              diam={estVolDiam}
+              sep={estVolSep}
+              onLegs={setEstVolLegs}
+              onDiam={setEstVolDiam}
+              onSep={setEstVolSep}
+            />
+            <EstriboEditor
+              label="Estribos — zona tramo"
+              vu={result.vigVuTramo}
+              phiVc={result.vigPhiVc}
+              avsReq={result.vigAvsReqTramo}
+              avsMin={result.vigAvsMin}
+              sMax={result.vigSmax}
+              fy={input.fy}
+              d={result.d_viga}
+              legs={estTramoLegs}
+              diam={estTramoDiam}
+              sep={estTramoSep}
+              onLegs={setEstTramoLegs}
+              onDiam={setEstTramoDiam}
+              onSep={setEstTramoSep}
             />
           </div>
         </section>
