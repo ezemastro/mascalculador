@@ -5,11 +5,8 @@ import "./index.css";
 import { flushCloudStorage } from "./lib/cloud-storage.ts";
 import {
   bootstrapStorage,
-  createObra,
-  deleteObra,
   getCurrentObraId,
   getObras,
-  renameObra,
   setCurrentObraId,
   type SavedObra,
 } from "./lib/storage";
@@ -34,6 +31,7 @@ import RCColumnForm from "./screens/RCColumnForm.tsx";
 import RCColumnResults from "./screens/RCColumnResults.tsx";
 import ComputosObraScreen from "./screens/ComputosObraScreen.tsx";
 import { ObraPickerHost } from "./components/ObraPicker.tsx";
+import ObraMenu from "./components/ObraMenu.tsx";
 import GlobalPrintMenu from "./components/GlobalPrintMenu.tsx";
 
 class ErrorBoundary extends Component<
@@ -104,79 +102,9 @@ function NavBar({
   obras: SavedObra[];
   onObraChange: (id: string) => void;
 }) {
-  const activeName = obras.find((o) => o.id === obraId)?.name ?? "";
-
-  const handleNewObra = () => {
-    const name = prompt("Nombre de la nueva obra:");
-    if (name === null) return;
-    try {
-      onObraChange(createObra(name).id);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  const handleRenameObra = () => {
-    const name = prompt("Nuevo nombre de la obra:", activeName);
-    if (name === null) return;
-    try {
-      renameObra(obraId, name);
-      onObraChange(obraId);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  const handleDeleteObra = () => {
-    const confirmed = confirm(
-      `¿Eliminar la obra "${activeName}"? Se borrarán todos sus elementos guardados.`,
-    );
-    if (!confirmed) return;
-    try {
-      const nextId = deleteObra(obraId);
-      onObraChange(nextId ?? getCurrentObraId());
-    } catch (err) {
-      alert(err instanceof Error ? err.message : String(err));
-    }
-  };
-
   return (
     <div className="no-print fixed top-0 left-0 right-0 z-50 bg-surface border-b border-border px-4 py-2 flex gap-4 items-center">
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-text-muted">Obra</span>
-        <select
-          value={obraId}
-          onChange={(e) => onObraChange(e.target.value)}
-          className="text-xs bg-surface border border-border rounded px-1 py-0.5 max-w-32"
-        >
-          {obras.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.name}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          onClick={handleNewObra}
-          className="text-xs text-text-muted hover:text-text"
-        >
-          Nueva obra
-        </button>
-        <button
-          type="button"
-          onClick={handleRenameObra}
-          className="text-xs text-text-muted hover:text-text"
-        >
-          Renombrar obra
-        </button>
-        <button
-          type="button"
-          onClick={handleDeleteObra}
-          className="text-xs text-text-muted hover:text-danger"
-        >
-          Eliminar obra
-        </button>
-      </div>
+      <ObraMenu obraId={obraId} obras={obras} onObraChange={onObraChange} />
       <Link to="/slab" className="text-sm text-text-muted hover:text-text">
         Losas
       </Link>
