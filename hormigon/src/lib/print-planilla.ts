@@ -18,6 +18,8 @@ export interface PlanillaColumn {
   label: string;
   align?: "left" | "right" | "center";
   width?: string;
+  /** Celda con varios renglones separados por "\n" (se imprimen tal cual). */
+  multiline?: boolean;
 }
 
 export interface PlanillaSheet {
@@ -663,8 +665,8 @@ const BASE_SUBTYPE_LABELS: Record<string, string> = {
 };
 
 const BASES_COLUMNS: PlanillaColumn[] = [
-  { key: "elem", label: "Elemento", width: "12%" },
-  { key: "tipo", label: "Tipo" },
+  { key: "elem", label: "Elemento", width: "11%" },
+  { key: "tipo", label: "Tipo", width: "9%" },
   { key: "dims", label: "Lx×Ly×h (cm)" },
   { key: "qa", label: "σadm (kN/m²)", align: "right" },
   { key: "loads", label: "D/L (kN)" },
@@ -672,9 +674,82 @@ const BASES_COLUMNS: PlanillaColumn[] = [
   { key: "pu", label: "Pu (kN)", align: "right" },
   { key: "qu", label: "qu (kN/m²)", align: "right" },
   { key: "mu", label: "Mu máx (kN·m)", align: "right" },
-  { key: "arm", label: "Armadura" },
+  { key: "armX", label: "Aª X" },
+  { key: "armY", label: "Aª Y" },
+  {
+    key: "vigaTensor",
+    label: "Viga fund. / tensor",
+    width: "17%",
+    multiline: true,
+  },
   { key: "ok", label: "Verifica", align: "center" },
 ];
+
+/** Verificación de rozamiento en texto (— si el guardado es viejo). */
+function rozCheckText(ok: boolean | undefined): string {
+  if (ok == null) return "—";
+  return ok ? "≥ Tu ✓" : "< Tu ✗";
+}
+
+/** Resultados del sistema de equilibrio (viga de fundación, vigas de
+ *  equilibrio o tensor) apilados en una celda multilínea. */
+function buildVigaTensorCell(
+  input: Partial<BaseInput>,
+  result: Partial<BaseResult>,
+): string {
+  const mu = input.mu ?? 0.4;
+  const roz = fmt1((input.PD ?? 0) * mu);
+  const rozCheck = rozCheckText(result.FrictionOK);
+
+  if (input.subType === "viga-de-fundacion") {
+    return [
+      `Viga ${fmt1(result.b_viga ?? 0)}×${fmt1(result.h_viga ?? 0)} · d ${fmt1(result.d_viga ?? 0)} cm`,
+      `e ${fmt1(result.e ?? 0)} · Mu ${fmt1((result.Mu ?? 0) / 100)} kN·m · Ru ${fmt1(result.Ru ?? 0)} kN`,
+      `As sup ${fmt2(result.As_sup ?? 0)} · As inf ${fmt2(result.As_inf ?? 0)} cm²`,
+      `Vu vol/tramo ${fmt1(result.vigVuVol ?? 0)}/${fmt1(result.vigVuTramo ?? 0)} kN · φVc ${fmt1(result.vigPhiVc ?? 0)} kN`,
+      `Av/s vol ${fmt2(result.vigAvsReqVol ?? 0)} · tramo ${fmt2(result.vigAvsReqTramo ?? 0)} cm²/m · s máx ${fmt1(result.vigSmax ?? 0)} cm`,
+    ].join("\n");
+  }
+
+  if (input.subType === "viga-de-equilibrio") {
+    return [
+      `Vigas X ${fmt1(result.b_vigaX ?? 0)}×${fmt1(result.h_vigaX ?? 0)} · Y ${fmt1(result.b_vigaY ?? 0)}×${fmt1(result.h_vigaY ?? 0)} cm`,
+      `Rux ${fmt1(result.Rux ?? 0)} · Ruy ${fmt1(result.Ruy ?? 0)} kN`,
+      `As sup X ${fmt2(result.As_supX ?? 0)} · Y ${fmt2(result.As_supY ?? 0)} cm²`,
+      `As inf X ${fmt2(result.As_infX ?? 0)} · Y ${fmt2(result.As_infY ?? 0)} cm²`,
+    ].join("\n");
+  }
+
+  if (input.subType === "tensor") {
+    if (result.tensorPending) return "Pendiente de datos del tensor";
+    if (input.type === "esquina") {
+      return [
+        `Tensor X: H ${input.Hx ?? "—"} · Tux ${fmt1(result.Tux ?? 0)} → As ${fmt2(result.As_tensorX ?? 0)} cm²`,
+        `Tensor Y: H ${input.Hy ?? "—"} · Tuy ${fmt1(result.Tuy ?? 0)} → As ${fmt2(result.As_tensorY ?? 0)} cm²`,
+        `Rozamiento PD·μ ${roz} kN ${rozCheck}`,
+      ].join("\n");
+    }
+    return [
+      `Tensor: H ${input.H ?? "—"} · Tu ${fmt1(result.Tu ?? 0)} kN → As ${fmt2(result.As_tensor ?? 0)} cm²`,
+      `Sección sugerida ${Math.round(result.h_tensor ?? 0)}×${Math.round(result.h_tensor ?? 0)} cm`,
+      `Rozamiento PD·μ ${roz} kN ${rozCheck}`,
+    ].join("\n");
+  }
+
+  return "—";
+}
+
+/** Armadura de una dirección de la base: cantidad, Ø y separación redondeada
+ *  (si hay una sola barra no hay separación). */
+function baseRebar(
+  qty: number | undefined,
+  db: number | undefined,
+  sep: number | undefined,
+): string {
+  if (!qty || !db) return "—";
+  if (sep == null || !Number.isFinite(sep)) return `${qty}Ø${db}`;
+  return `${qty}Ø${db} c/${Math.round(sep)}`;
+}
 
 function buildBaseRow(save: SavedBeam): string[] {
   const data = save.data as unknown as {
@@ -694,14 +769,8 @@ function buildBaseRow(save: SavedBeam): string[] {
     (result.Muy ?? 0) / 100,
     (result.Mu ?? 0) / 100,
   );
-  const armX =
-    result.db && result.nb_x
-      ? `${result.nb_x}Ø${result.db} c/${result.sep_x}`
-      : "—";
-  const armY =
-    result.db && result.nb_y
-      ? `${result.nb_y}Ø${result.db} c/${result.sep_y}`
-      : "—";
+  const armX = baseRebar(result.nb_x, result.db, result.sep_x);
+  const armY = baseRebar(result.nb_y, result.db, result.sep_y);
   const ok =
     result.punchOK !== false &&
     result.beamShearOK !== false &&
@@ -718,7 +787,9 @@ function buildBaseRow(save: SavedBeam): string[] {
     fmt1(result.Pu ?? 0),
     fmt1(result.qu ?? 0),
     muMax.toFixed(1),
-    `X: ${armX} · Y: ${armY}`,
+    armX,
+    armY,
+    buildVigaTensorCell(input, result),
     ok ? "✓" : "✗",
   ];
 }

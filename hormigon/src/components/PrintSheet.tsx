@@ -1,10 +1,12 @@
 import type { PlanillaSheet } from "../lib/print-planilla";
 import { getActiveObraName } from "../lib/storage";
 
-function cellClass(align: string | undefined): string {
-  if (align === "right") return "num";
-  if (align === "center") return "ctr";
-  return "";
+function cellClass(align: string | undefined, multiline: boolean): string {
+  const parts: string[] = [];
+  if (align === "right") parts.push("num");
+  if (align === "center") parts.push("ctr");
+  if (multiline) parts.push("multi");
+  return parts.join(" ");
 }
 
 /** Hoja A4 horizontal con la planilla municipal. Se renderiza solo en
@@ -44,7 +46,7 @@ export default function PrintSheet({ sheet }: { sheet: PlanillaSheet }) {
             {sheet.columns.map((col) => (
               <th
                 key={col.key}
-                className={cellClass(col.align)}
+                className={cellClass(col.align, false)}
                 style={col.width ? { width: col.width } : undefined}
               >
                 {col.label}
@@ -56,7 +58,13 @@ export default function PrintSheet({ sheet }: { sheet: PlanillaSheet }) {
           {sheet.rows.map((row, i) => (
             <tr key={i}>
               {row.map((cell, j) => (
-                <td key={j} className={cellClass(sheet.columns[j]?.align)}>
+                <td
+                  key={j}
+                  className={cellClass(
+                    sheet.columns[j]?.align,
+                    sheet.columns[j]?.multiline ?? false,
+                  )}
+                >
                   {cell}
                 </td>
               ))}

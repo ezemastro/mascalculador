@@ -276,6 +276,12 @@ button:focus-visible {
   break-inside: avoid;
 }
 
+/* Celdas con varios renglones (p. ej. resultados de viga de fundación o
+   tensor): respeta los saltos de línea del contenido. */
+.planilla-sheet td.multi {
+  white-space: pre-line;
+}
+
 /* Cuando el diálogo imprime varias planillas (p. ej. Losas + Apoyos),
    cada hoja arranca en una página nueva. */
 .planilla-sheet + .planilla-sheet {
