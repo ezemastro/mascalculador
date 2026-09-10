@@ -1185,8 +1185,43 @@ function designEsquina(input: BaseInput): BaseResult {
 
   const subType = input.subType;
 
+  // Esquema cerrado por planos (mismo criterio que la viga de fundación de
+  // medianera): cada viga de equilibrio transfiere a la zapata vecina la
+  // reacción que re-centra su eje (brazo al centroide) y el suelo de la
+  // zapata de esquina lleva la columna más las reacciones de ambas vigas.
+  // Simplificación clásica: los planos se resuelven sin acoplarse.
+  let quOverride: number | undefined;
+  let Rux = 0;
+  let Ruy = 0;
+  if (subType === "viga-de-equilibrio") {
+    if (
+      input.LcolX === undefined ||
+      input.LcolX <= 0 ||
+      input.LcolY === undefined ||
+      input.LcolY <= 0
+    ) {
+      throw new Error(
+        "Para viga de equilibrio, se requieren las luces entre ejes LcolX y LcolY.",
+      );
+    }
+    const Pu0 = step2_Pu(input.PD, input.PL);
+    const dims0 = step1_Dimensions(input);
+    const Lx0 = input.Lx ?? dims0.Lx;
+    const Ly0 = input.Ly ?? dims0.Ly;
+    const eX0 = (Lx0 - input.cx) / 2;
+    const eY0 = (Ly0 - input.cy) / 2;
+    if (input.LcolX <= eX0 || input.LcolY <= eY0) {
+      throw new Error(
+        "Las luces LcolX/LcolY deben ser mayores que las excentricidades eX/eY.",
+      );
+    }
+    Rux = (Pu0 * eX0) / (input.LcolX - eX0);
+    Ruy = (Pu0 * eY0) / (input.LcolY - eY0);
+    quOverride = (Pu0 + Rux + Ruy) / (Lx0 * Ly0);
+  }
+
   // Paso E0 — zapata como base centrada (presión uniforme)
-  const centrada = designCentrada(input);
+  const centrada = designCentrada(input, quOverride);
   const { Lx, Ly, Pu } = centrada;
   const cx = input.cx;
   const cy = input.cy;
@@ -1198,12 +1233,21 @@ function designEsquina(input: BaseInput): BaseResult {
     subType === "viga-de-equilibrio" ? "VIGA DE EQUILIBRIO" : "TENSOR";
   st.push(`=== BASE DE ESQUINA — ${label} — CIRSOC 201 ===`);
   st.push("");
-  st.push(
-    "La zapata se dimensiona a flexión/corte/punzonado como base centrada (presión uniforme).",
-  );
-  st.push(
-    "El sistema de equilibrio re-centra la resultante para que la presión sea uniforme qu = Pu/(Lx·Ly).",
-  );
+  if (subType === "viga-de-equilibrio") {
+    st.push(
+      "La zapata se dimensiona con presión uniforme qu = (Pu + Rux + Ruy)/(Lx·Ly):",
+    );
+    st.push(
+      "el suelo lleva la columna y las reacciones que las vigas transfieren a las zapatas vecinas.",
+    );
+  } else {
+    st.push(
+      "La zapata se dimensiona a flexión/corte/punzonado como base centrada (presión uniforme).",
+    );
+    st.push(
+      "El sistema de equilibrio re-centra la resultante para que la presión sea uniforme qu = Pu/(Lx·Ly).",
+    );
+  }
   st.push("");
 
   // Paso E1 — excentricidades
@@ -1223,9 +1267,8 @@ function designEsquina(input: BaseInput): BaseResult {
   st.push(`    MuY = Pu·eY = ${f1(Pu)}·${f1(eY)} = ${f1(MuY_volc)} kN·cm`);
   st.push("");
 
-  // Valores por defecto (se rellenan según el subtipo)
-  let Rux = 0;
-  let Ruy = 0;
+  // Valores por defecto (se rellenan según el subtipo). Rux/Ruy ya vienen
+  // calculados por el esquema cerrado cuando aplica.
   let h_vigaX = 0;
   let h_vigaY = 0;
   let b_vigaX = 0;
@@ -1249,33 +1292,34 @@ function designEsquina(input: BaseInput): BaseResult {
   let tensorPending = false;
 
   if (subType === "viga-de-equilibrio") {
-    if (
-      input.LcolX === undefined ||
-      input.LcolX <= 0 ||
-      input.LcolY === undefined ||
-      input.LcolY <= 0
-    ) {
-      throw new Error(
-        "Para viga de equilibrio, se requieren las luces entre ejes LcolX y LcolY.",
-      );
-    }
-
-    Rux = MuX_volc / input.LcolX;
-    Ruy = MuY_volc / input.LcolY;
+    st.push(`E3. Reacciones (esquema cerrado por planos, brazo al centroide):`);
     st.push(
-      `E3. Reacciones: Rux = MuX / LcolX = ${f1(MuX_volc)} / ${input.LcolX} = ${f1(Rux)} kN`,
+      `    Rux = Pu·eX / (LcolX − eX) = ${f1(Pu)}·${f1(eX)} / (${input.LcolX} − ${f1(eX)}) = ${f1(Rux)} kN`,
     );
     st.push(
-      `    Ruy = MuY / LcolY = ${f1(MuY_volc)} / ${input.LcolY} = ${f1(Ruy)} kN`,
+      `    Ruy = Pu·eY / (LcolY − eY) = ${f1(Pu)}·${f1(eY)} / (${input.LcolY} − ${f1(eY)}) = ${f1(Ruy)} kN`,
     );
     st.push("");
 
     const fc_kNcm2 = fc * 0.1;
 
-    // Viga X: corre en dirección X, ancho perpendicular = cy
+    // Viga X: corre en dirección X, ancho perpendicular = cy.
+    // Diagrama cerrado en su plano: presión del suelo hacia arriba
+    // wX = (Pu+Rux)/Lx sobre el tramo apoyado (largo Lx, desde el borde
+    // exterior), Pu abajo en la columna (x = cx/2) y cierre con Rux abajo en
+    // la columna vecina. Momento de diseño = máximo del diagrama.
     const bX =
       input.bVigaX && input.bVigaX > 0 ? input.bVigaX : Math.max(cy, 20);
-    const MnvX = MuX_volc / 0.9;
+    const wX = (Pu + Rux) / Lx;
+    const xStarX = Pu / wX;
+    const MbordeX = (wX * Lx * Lx) / 2 - Pu * (Lx - cx / 2);
+    const MxStarX = (wX * xStarX * xStarX) / 2 - Pu * (xStarX - cx / 2);
+    const inRangeX = xStarX > cx / 2 && xStarX < Lx;
+    const MvigaX = Math.max(
+      0,
+      -(inRangeX ? Math.min(MxStarX, MbordeX) : MbordeX),
+    );
+    const MnvX = MvigaX / 0.9;
     const dXauto = Math.sqrt((6.5 * MnvX) / (bX * fc_kNcm2));
     const dX =
       input.hVigaX && input.hVigaX > cover ? input.hVigaX - cover : dXauto;
@@ -1288,17 +1332,40 @@ function designEsquina(input: BaseInput): BaseResult {
     h_vigaX = hX;
 
     st.push(
-      `E4. Viga X: b = ${bX} cm${input.bVigaX ? " (adoptado por usuario)" : " = máx(cy,20) (automático)"} | MnvX = MuX / 0.90 = ${f1(MnvX)} kN·cm`,
+      `E4. Viga X: b = ${bX} cm${input.bVigaX ? " (adoptado por usuario)" : " = máx(cy,20) (automático)"} | w = (Pu+Rux)/Lx = ${f2(wX)} kN/cm hacia arriba`,
+    );
+    st.push(
+      `    MuX volcador = ${f1(MuX_volc)} kN·cm — el diagrama descuenta el alivio de la presión del suelo.`,
+    );
+    if (inRangeX) {
+      st.push(
+        `    Corte nulo x* = Pu/w = ${f1(xStarX)} cm → M = ${f1(-MxStarX)} kN·cm`,
+      );
+    }
+    st.push(
+      `    Borde de la zapata (x = ${f1(Lx)}): M = ${f1(-MbordeX)} kN·cm`,
+    );
+    st.push(
+      `    MvigaX = ${f1(MvigaX)} kN·cm → MnvX = MvigaX / 0.90 = ${f1(MnvX)} kN·cm`,
     );
     st.push(
       `    d = √(6.5·${f1(MnvX)}/(${bX}·${fmt(fc_kNcm2, 3)})) = ${f1(dXauto)} cm${input.hVigaX ? ` → d = h − rec = ${f1(dX)} cm (h adoptada)` : ""} → h = ${f1(hX)} cm`,
     );
     st.push(`    As_supX = ${f2(As_supX)} cm² | As_infX = ${f2(As_infX)} cm²`);
 
-    // Viga Y: corre en dirección Y, ancho perpendicular = cx
+    // Viga Y: corre en dirección Y, ancho perpendicular = cx.
     const bY =
       input.bVigaY && input.bVigaY > 0 ? input.bVigaY : Math.max(cx, 20);
-    const MnvY = MuY_volc / 0.9;
+    const wY = (Pu + Ruy) / Ly;
+    const xStarY = Pu / wY;
+    const MbordeY = (wY * Ly * Ly) / 2 - Pu * (Ly - cy / 2);
+    const MxStarY = (wY * xStarY * xStarY) / 2 - Pu * (xStarY - cy / 2);
+    const inRangeY = xStarY > cy / 2 && xStarY < Ly;
+    const MvigaY = Math.max(
+      0,
+      -(inRangeY ? Math.min(MxStarY, MbordeY) : MbordeY),
+    );
+    const MnvY = MvigaY / 0.9;
     const dYauto = Math.sqrt((6.5 * MnvY) / (bY * fc_kNcm2));
     const dY =
       input.hVigaY && input.hVigaY > cover ? input.hVigaY - cover : dYauto;
@@ -1311,7 +1378,21 @@ function designEsquina(input: BaseInput): BaseResult {
     h_vigaY = hY;
 
     st.push(
-      `E5. Viga Y: b = ${bY} cm${input.bVigaY ? " (adoptado por usuario)" : " = máx(cx,20) (automático)"} | MnvY = MuY / 0.90 = ${f1(MnvY)} kN·cm`,
+      `E5. Viga Y: b = ${bY} cm${input.bVigaY ? " (adoptado por usuario)" : " = máx(cx,20) (automático)"} | w = (Pu+Ruy)/Ly = ${f2(wY)} kN/cm hacia arriba`,
+    );
+    st.push(
+      `    MuY volcador = ${f1(MuY_volc)} kN·cm — el diagrama descuenta el alivio de la presión del suelo.`,
+    );
+    if (inRangeY) {
+      st.push(
+        `    Corte nulo x* = Pu/w = ${f1(xStarY)} cm → M = ${f1(-MxStarY)} kN·cm`,
+      );
+    }
+    st.push(
+      `    Borde de la zapata (x = ${f1(Ly)}): M = ${f1(-MbordeY)} kN·cm`,
+    );
+    st.push(
+      `    MvigaY = ${f1(MvigaY)} kN·cm → MnvY = MvigaY / 0.90 = ${f1(MnvY)} kN·cm`,
     );
     st.push(
       `    d = √(6.5·${f1(MnvY)}/(${bY}·${fmt(fc_kNcm2, 3)})) = ${f1(dYauto)} cm${input.hVigaY ? ` → d = h − rec = ${f1(dY)} cm (h adoptada)` : ""} → h = ${f1(hY)} cm`,
