@@ -554,7 +554,7 @@ function medGeom(
 // Función de diseño — centrada (13 pasos)
 // ---------------------------------------------------------------------------
 
-function designCentrada(input: BaseInput): BaseResult {
+function designCentrada(input: BaseInput, quOverride?: number): BaseResult {
   const cover = input.cover ?? 7;
   const rebD = input.rebD ?? 12;
   const st: string[] = [];
@@ -580,9 +580,14 @@ function designCentrada(input: BaseInput): BaseResult {
     `2. Pu = max(1.4·${f1(input.PD)} ; 1.2·${f1(input.PD)}+1.6·${f1(input.PL)}) = ${f1(Pu)} kN`,
   );
 
-  // Paso 4 — qu
-  const qu = step4_Qu(Pu, Lx, Ly);
-  st.push(`4. qu = ${f1(Pu)} / (${Lx}·${Ly}) = ${fmt(qu, 6)} kN/cm²`);
+  // Paso 4 — qu (presión de contacto). Con el esquema cerrado de la viga de
+  // fundación el suelo equilibra columna + reacción vecina: qu = (Pu+Ru)/(Lx·Ly).
+  const qu = quOverride ?? step4_Qu(Pu, Lx, Ly);
+  st.push(
+    quOverride !== undefined
+      ? `4. qu = (Pu + Ru) / (${Lx}·${Ly}) = ${fmt(qu, 6)} kN/cm² (esquema cerrado — ver V2)`
+      : `4. qu = ${f1(Pu)} / (${Lx}·${Ly}) = ${fmt(qu, 6)} kN/cm²`,
+  );
 
   // Paso 5 — bending (vuelos según tipo de base)
   const { kx, ky, Mux, Muy } = step5_Bending(qu, Lx, Ly, input);
@@ -861,9 +866,27 @@ function designVigaFundacion(input: BaseInput): BaseResult {
     );
   }
 
-  // Zapata como base centrada (presión uniforme por la viga de fundación)
-  const centrada = designCentrada(input);
-  const { Lx, Ly, Pu } = centrada;
+  // Esquema cerrado: el momento volcador de la columna excéntrica (Pu·e) se
+  // equilibra con la reacción vertical Ru que la viga transfiere a la zapata
+  // vecina, de modo que la presión bajo la zapata medianera queda uniforme:
+  //   Pu·e = Ru·(Lcol − e)  →  Ru = Pu·e/(Lcol − e)
+  //   qu = (Pu + Ru)/(Lx·Ly) — el suelo lleva la columna más la reacción.
+  const Pu = step2_Pu(input.PD, input.PL);
+  const dims0 = step1_Dimensions(input);
+  const Lcol = input.Lcol!;
+  const dimsE = medGeom(input, dims0.Lx, dims0.Ly);
+  const e = dimsE.e;
+  if (Lcol <= e) {
+    throw new Error(
+      "La luz entre columnas (Lcol) debe ser mayor que la excentricidad e.",
+    );
+  }
+  const Ru = (Pu * e) / (Lcol - e);
+  const quClosed = (Pu + Ru) / (dims0.Lx * dims0.Ly);
+
+  // Zapata centrada con la presión del esquema cerrado
+  const centrada = designCentrada(input, quClosed);
+  const { Lx, Ly } = centrada;
   const st: string[] = [];
   const wr: string[] = [];
   const er: string[] = [];
@@ -871,14 +894,15 @@ function designVigaFundacion(input: BaseInput): BaseResult {
   st.push("=== BASE MEDIANERA — VIGA DE FUNDACIÓN — CIRSOC 201 ===");
   st.push("");
   st.push(
-    "La zapata se dimensiona a flexión/corte/punzonado como base centrada (presión uniforme).",
+    "La zapata se dimensiona a flexión/corte/punzonado con presión uniforme qu = (Pu + Ru)/(Lx·Ly).",
   );
-  st.push("La viga de fundación re-centra la resultante: qu = Pu/(Lx·Ly).");
+  st.push(
+    "La viga de fundación transfiere a la zapata vecina la reacción Ru que re-centra la resultante.",
+  );
   st.push("");
 
   // Paso V1 — excentricidad y momento volcador
-  const { e, bViga: bVigaAuto } = medGeom(input, Lx, Ly);
-  const b_viga = input.bViga && input.bViga > 0 ? input.bViga : bVigaAuto;
+  const b_viga = input.bViga && input.bViga > 0 ? input.bViga : dimsE.bViga;
   const Mu = Pu * e;
   if (input.type === "medianera-x") {
     st.push(`V1. e = (Ly − cy)/2 = (${Ly} − ${input.cy})/2 = ${f1(e)} cm`);
@@ -887,14 +911,42 @@ function designVigaFundacion(input: BaseInput): BaseResult {
   }
   st.push(`    Mu = ${f1(Pu)} · ${f1(e)} = ${f1(Mu)} kN·cm`);
 
-  // Paso V2 — reacción Ru = Mu / Lcol
-  const Lcol = input.Lcol!;
-  const Ru = Mu / Lcol;
-  st.push(`V2. Ru = Mu / Lcol = ${f1(Mu)} / ${Lcol} = ${f1(Ru)} kN`);
+  // Paso V2 — reacción en la zapata vecina (cierre del esquema)
+  st.push(
+    `V2. Ru = Pu·e / (Lcol − e) = ${f1(Pu)}·${f1(e)} / (${Lcol} − ${f1(e)}) = ${f1(Ru)} kN`,
+  );
 
-  // Paso V3 — momento nominal
-  const Mnv = Mu / 0.9;
-  st.push(`V3. Mn = Mu / 0.90 = ${f1(Mu)} / 0.90 = ${f1(Mnv)} kN·cm`);
+  // Paso V3 — momento de la viga por su diagrama de cargas. La viga apoya
+  // sobre su zapata: presión del suelo hacia arriba (w = qu·ancho) sobre el
+  // tramo apoyado y cierre con Ru abajo en la otra columna. El momento de
+  // diseño (tracción arriba) es el máximo del diagrama: en el corte nulo
+  // x* = Pu/w (si cae dentro del tramo apoyado) y en el borde de la zapata.
+  const stripW = input.type === "medianera-x" ? Lx : Ly;
+  const alongFtg = input.type === "medianera-x" ? Ly : Lx;
+  const alongCol = input.type === "medianera-x" ? input.cy : input.cx;
+  const w = centrada.qu * stripW;
+  const xStar = Pu / w;
+  const Mborde = (w * alongFtg * alongFtg) / 2 - Pu * (alongFtg - alongCol / 2);
+  const MxStar =
+    (w * xStar * xStar) / 2 - Pu * (xStar - alongCol / 2);
+  const inRange = xStar > alongCol / 2 && xStar < alongFtg;
+  const Mviga = Math.max(0, -(inRange ? Math.min(MxStar, Mborde) : Mborde));
+  const Mnv = Mviga / 0.9;
+  st.push(
+    `V3. Diagrama de la viga: w = qu·ancho = ${fmt(centrada.qu, 6)}·${stripW} = ${f2(w)} kN/cm hacia arriba`,
+  );
+  st.push(
+    `    Mu volcador = ${f1(Mu)} kN·cm — el diagrama descuenta el alivio de la presión del suelo.`,
+  );
+  if (inRange) {
+    st.push(
+      `    Corte nulo x* = Pu/w = ${f1(xStar)} cm → M = ${f1(-MxStar)} kN·cm`,
+    );
+  }
+  st.push(
+    `    Borde de la zapata (x = ${f1(alongFtg)}): M = ${f1(-Mborde)} kN·cm`,
+  );
+  st.push(`    Mviga = ${f1(Mviga)} kN·cm → Mn = Mviga / 0.90 = ${f1(Mnv)} kN·cm`);
 
   // Paso V4 — dimensionado de viga
   const cover = input.cover ?? 7;
