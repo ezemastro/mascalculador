@@ -27,6 +27,7 @@ import SlabCompat from "./screens/SlabCompat.tsx";
 import CompatList from "./screens/CompatList.tsx";
 import BasesForm from "./screens/BasesForm.tsx";
 import BasesResults from "./screens/BasesResults.tsx";
+import CabezalForm from "./screens/CabezalForm.tsx";
 import RCColumnForm from "./screens/RCColumnForm.tsx";
 import RCColumnResults from "./screens/RCColumnResults.tsx";
 import ComputosObraScreen from "./screens/ComputosObraScreen.tsx";
@@ -127,6 +128,14 @@ function NavBar({
         Cómputos
       </Link>
       {admin && (
+        <Link
+          to="/cabezales"
+          className="text-sm text-text-muted hover:text-text"
+        >
+          Cabezales
+        </Link>
+      )}
+      {admin && (
         <Link to="/admin" className="text-sm text-text-muted hover:text-text">
           Admin
         </Link>
@@ -166,6 +175,11 @@ function VersionBadge() {
 
 function HomeRedirect() {
   return <Navigate to="/slab" replace />;
+}
+
+/** Resultados del módulo admin de cabezales (reusa la pantalla de Bases). */
+function CabezalResults() {
+  return <BasesResults variant="cabezal" />;
 }
 
 function Layout({
@@ -239,6 +253,13 @@ function buildRouter(
         { path: "/slab-compats", Component: CompatList },
         { path: "/bases", Component: BasesForm },
         { path: "/bases-results", Component: BasesResults },
+        // Módulo admin: solo visible/operable para administradores. Para el
+        // resto redirige al inicio aunque escriba la URL a mano.
+        { path: "/cabezales", Component: admin ? CabezalForm : HomeRedirect },
+        {
+          path: "/cabezales-results",
+          Component: admin ? CabezalResults : HomeRedirect,
+        },
         { path: "/computos", Component: ComputosObraScreen },
         { path: "/rc-column", Component: RCColumnForm },
         { path: "/rc-column-results", Component: RCColumnResults },

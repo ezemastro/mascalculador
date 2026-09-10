@@ -32,6 +32,7 @@ const LAST_FORM_KEY = "last_form";
 const LAST_COLUMN_FORM_KEY = "last_column_form";
 const LAST_CARTEL_FORM_KEY = "last_cartel_form";
 const LAST_BASES_FORM_KEY = "last_bases_form";
+const LAST_CABEZAL_FORM_KEY = "last_cabezal_form";
 const LAST_RC_COLUMN_FORM_KEY = "last_rc_column_form";
 const LAST_SLAB_FORM_KEY = "last_slab_form";
 const COMPAT_KEY = "saved-compats";
@@ -47,7 +48,8 @@ export type SaveType =
   | "columna"
   | "cartel"
   | "losa"
-  | "rc-columna";
+  | "rc-columna"
+  | "cabezal";
 
 export interface SavedBeam {
   id: string;
@@ -321,6 +323,52 @@ export function loadLastBasesFormState(): BasesFormState | null {
     const raw = localStorage.getItem(key("concrete", LAST_BASES_FORM_KEY));
     if (!raw) return null;
     return JSON.parse(raw) as BasesFormState;
+  } catch {
+    return null;
+  }
+}
+
+// ---- Especificas de hormigon (cabezales) ----
+
+/** Módulo "Vigas de fundación para cabezales": datos del cabezal, de la
+ *  columna que apoya en medianera y de la columna que equilibra. */
+export interface CabezalFormState {
+  qa: number;
+  Df: number;
+  PD: number;
+  PL: number;
+  cx: number;
+  cy: number;
+  fc: number;
+  fy: number;
+  Lx?: number;
+  Ly?: number;
+  h?: number;
+  hTalon?: number;
+  Lcol?: number;
+  bViga?: number;
+  hViga?: number;
+  cover?: number;
+  columnId?: string;
+  columnName?: string;
+}
+
+export function saveLastCabezalFormState(state: CabezalFormState): void {
+  try {
+    localStorage.setItem(
+      key("concrete", LAST_CABEZAL_FORM_KEY),
+      JSON.stringify(state),
+    );
+  } catch {
+    /* quota exceeded, ignore */
+  }
+}
+
+export function loadLastCabezalFormState(): CabezalFormState | null {
+  try {
+    const raw = localStorage.getItem(key("concrete", LAST_CABEZAL_FORM_KEY));
+    if (!raw) return null;
+    return JSON.parse(raw) as CabezalFormState;
   } catch {
     return null;
   }

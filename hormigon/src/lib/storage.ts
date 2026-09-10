@@ -18,6 +18,7 @@ export type {
   ColumnFormState,
   CartelFormState,
   BasesFormState,
+  CabezalFormState,
   RCColumnFormState,
   SlabLastFormState,
   SavedSlabData,
@@ -43,6 +44,8 @@ export const saveLastCartelFormState = shared.saveLastCartelFormState;
 export const loadLastCartelFormState = shared.loadLastCartelFormState;
 export const saveLastBasesFormState = shared.saveLastBasesFormState;
 export const loadLastBasesFormState = shared.loadLastBasesFormState;
+export const saveLastCabezalFormState = shared.saveLastCabezalFormState;
+export const loadLastCabezalFormState = shared.loadLastCabezalFormState;
 export const saveLastRCColumnFormState = shared.saveLastRCColumnFormState;
 export const loadLastRCColumnFormState = shared.loadLastRCColumnFormState;
 export const saveLastSlabFormState = shared.saveLastSlabFormState;

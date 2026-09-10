@@ -8,7 +8,15 @@ import {
 
 interface Props {
   app: App;
-  type: "acero" | "hormigon" | "bases" | "columna" | "cartel" | "losa" | "rc-columna";
+  type:
+    | "acero"
+    | "hormigon"
+    | "bases"
+    | "columna"
+    | "cartel"
+    | "losa"
+    | "rc-columna"
+    | "cabezal";
   onLoad: (data: Record<string, unknown>, save: SavedBeam) => void;
   onDelete?: (id: string) => void;
   label?: string;

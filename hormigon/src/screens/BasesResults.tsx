@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useLocation, useNavigate, Link } from "react-router";
-import { MainLayout } from "@mascalculador/shared";
+import { MainLayout, PrintButton } from "@mascalculador/shared";
 import { designBase } from "../lib/bases-calc";
 import type { BaseInput } from "../lib/bases-calc";
 import { saveBeam, updateSave } from "../lib/storage";
@@ -463,10 +463,16 @@ function EstriboEditor({
 // Main Component
 // ---------------------------------------------------------------------------
 
-export default function BasesResults() {
+export default function BasesResults({
+  variant = "base",
+}: {
+  variant?: "base" | "cabezal";
+} = {}) {
   const location = useLocation();
   const navigate = useNavigate();
   const [showTensorForm, setShowTensorForm] = useState(false);
+  const isCabezal = variant === "cabezal";
+  const formPath = isCabezal ? "/cabezales" : "/bases";
 
   const locState = location.state as LocationState | null;
   const input = locState?.input;
@@ -545,7 +551,7 @@ export default function BasesResults() {
             dimensionado primero.
           </p>
           <Link
-            to="/bases"
+            to={formPath}
             className="bg-primary text-white hover:bg-primary-hover px-4 py-1.5 rounded-lg"
           >
             Ir al formulario
@@ -565,7 +571,7 @@ export default function BasesResults() {
           </h2>
           <p className="text-text-muted text-sm">{calcError}</p>
           <Link
-            to="/bases"
+            to={formPath}
             className="inline-block bg-primary text-white hover:bg-primary-hover px-4 py-1.5 rounded-lg"
           >
             Volver al formulario
@@ -621,7 +627,12 @@ export default function BasesResults() {
     const target = await pickObraIfNeeded();
     if (target === null) return;
     try {
-      const saved = saveBeam(name, "bases", data, target);
+      const saved = saveBeam(
+        name,
+        isCabezal ? "cabezal" : "bases",
+        data,
+        target,
+      );
       setSavedId(saved.id);
       setSavedName(name);
     } catch (err: unknown) {
@@ -651,8 +662,8 @@ export default function BasesResults() {
           </div>
           <div className="min-w-0">
             <h1 className="text-xl font-semibold text-text">
-              Base {typeLabel} — L<sub>x</sub> {result.Lx} × L<sub>y</sub>{" "}
-              {result.Ly} × {result.h} cm
+              {isCabezal ? "Cabezal" : "Base"} {typeLabel} — L<sub>x</sub>{" "}
+              {result.Lx} × L<sub>y</sub> {result.Ly} × {result.h} cm
               {savedName ? (
                 <span className="ml-3 align-middle text-sm font-normal text-text-muted bg-surface-alt border border-border px-2.5 py-0.5 rounded-full">
                   {savedName}
@@ -673,6 +684,7 @@ export default function BasesResults() {
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap gap-1.5">
+          {isCabezal && <PrintButton />}
           <button
             type="button"
             onClick={handleSave}
@@ -683,7 +695,7 @@ export default function BasesResults() {
           <button
             type="button"
             onClick={() =>
-              navigate("/bases", {
+              navigate(formPath, {
                 state: {
                   ...(fullInput as unknown as Record<string, unknown>),
                   loadedSaveId: savedId,
