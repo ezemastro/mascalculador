@@ -27,6 +27,7 @@
  */
 
 import { useMemo, useState } from "react";
+import ScreenHeader from "../components/ScreenHeader";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import { solvePortico } from "../lib/portico-analysis";
@@ -385,48 +386,55 @@ export default function PorticoResults() {
 
   return (
     <MainLayout>
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-text">Pórtico</h1>
-          <p className="text-sm text-text-muted">
+      <ScreenHeader
+        title="Pórtico"
+        subtitle={
+          <>
             {porticoState.nodes.length} nudos · {porticoState.bars.length}{" "}
             barras · {porticoState.supports.length} apoyos ·{" "}
             {porticoState.loads.length} cargas
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() =>
-              navigate("/viga-continua?mode=portico", {
-                state: {
-                  mode: "portico",
-                  state: porticoState,
-                  loadedSaveId: loadedSaveId ?? undefined,
-                  loadedSaveName: loadedSaveName ?? undefined,
-                },
-              })
-            }
-            className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-3 py-1.5 rounded-lg"
-          >
-            ← Volver
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            className="bg-primary text-white font-semibold px-4 py-1.5 rounded-lg hover:bg-primary-hover transition-colors"
-          >
-            {loadedSaveId ? "Guardar corrección" : "Guardar"}
-          </button>
-          <button
-            type="button"
-            className="bg-primary text-white font-semibold px-4 py-1.5 rounded-lg"
-            onClick={() => setShowPrintSelection(true)}
-          >
-            Imprimir
-          </button>
-        </div>
-      </header>
+          </>
+        }
+        badge={
+          loadedSaveId && loadedSaveName
+            ? { label: loadedSaveName, tone: "saved" }
+            : { label: "Pórtico sin guardar", tone: "unsaved" }
+        }
+        actions={
+          <>
+            <button
+              type="button"
+              onClick={() =>
+                navigate("/viga-continua?mode=portico", {
+                  state: {
+                    mode: "portico",
+                    state: porticoState,
+                    loadedSaveId: loadedSaveId ?? undefined,
+                    loadedSaveName: loadedSaveName ?? undefined,
+                  },
+                })
+              }
+              className="rounded-lg border border-border bg-surface px-3.5 py-2 text-sm font-semibold text-text-muted transition-colors hover:bg-surface-alt hover:text-text active:translate-y-px"
+            >
+              ← Volver
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              className="rounded-lg border border-border bg-surface px-3.5 py-2 text-sm font-semibold text-text-muted transition-colors hover:bg-surface-alt hover:text-text active:translate-y-px"
+            >
+              {loadedSaveId ? "Guardar corrección" : "Guardar"}
+            </button>
+            <button
+              type="button"
+              className="rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-hover active:translate-y-px dark:text-[#241a10]"
+              onClick={() => setShowPrintSelection(true)}
+            >
+              Imprimir
+            </button>
+          </>
+        }
+      />
 
       {/* Env toggle in its own row, separated from the header actions. */}
       <div className="flex flex-col items-center gap-1">
@@ -438,9 +446,7 @@ export default function PorticoResults() {
 
       {/* Reacciones */}
       <section className="bg-surface rounded-xl border border-border p-5">
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
-          Reacciones
-        </h2>
+        <h2 className="section-title mb-3">Reacciones</h2>
         {envMode === "servicio" ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <ReactionsTable
@@ -467,9 +473,7 @@ export default function PorticoResults() {
       </section>
 
       <section className="bg-surface rounded-xl border border-border p-5">
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
-          Equilibrio global
-        </h2>
+        <h2 className="section-title mb-3">Equilibrio global</h2>
         <p className="text-xs text-text-muted mb-3">
           {envMode === "envolvente" ? "U = 1.2D + 1.6L" : "D (slsD)"} ·
           referencia: Nudo {loadAccounts.reference?.id ?? "A"}. Las fuerzas
@@ -621,9 +625,7 @@ export default function PorticoResults() {
       </section>
 
       <section className="bg-surface rounded-xl border border-border p-5">
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
-          Fuerzas por barra
-        </h2>
+        <h2 className="section-title mb-3">Fuerzas por barra</h2>
         <p className="text-xs text-text-muted mb-3">
           Componentes N, V y M en el sistema local de cada barra ·{" "}
           {envMode === "envolvente" ? "U = 1.2D + 1.6L" : "D (slsD)"}

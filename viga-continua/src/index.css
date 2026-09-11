@@ -1,6 +1,14 @@
 @import "tailwindcss";
 @import "mafs/core.css";
 
+@font-face {
+  font-family: "Raleway";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url("/fonts/raleway-latin.woff2") format("woff2");
+}
+
 @theme {
   --color-surface: #1e1e2e;
   --color-surface-alt: #2a2a3c;
@@ -13,10 +21,17 @@
   --color-text-muted: #9090b0;
   --color-success: #4ade80;
   --color-warning: #fbbf24;
+  --color-brand: #e07611;
+  --color-page: #141420;
+  --font-display: "Raleway", system-ui, -apple-system, sans-serif;
 }
 
 :root {
-  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  font-family:
+    "Inter",
+    system-ui,
+    -apple-system,
+    sans-serif;
   line-height: 1.5;
   font-weight: 400;
   color-scheme: dark;
@@ -35,6 +50,8 @@ body {
 }
 
 input[type="number"],
+input[type="text"],
+input[readonly],
 select {
   background: var(--color-surface-alt);
   border: 1px solid var(--color-border);
@@ -48,14 +65,70 @@ select {
   min-width: 0;
 }
 
-input[type="number"]:focus,
-select:focus {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px rgba(124, 138, 255, 0.2);
+/* Celdas no editables (solo lectura / deshabilitadas): más planas y apagadas
+   para distinguirlas de los campos que el usuario completa. */
+input[readonly],
+input:disabled {
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+  border-color: var(--color-border);
 }
 
-input[type="number"]::placeholder {
+input[readonly]:focus,
+input:disabled:focus {
+  border-color: var(--color-border);
+  box-shadow: none;
+}
+
+input[type="number"]:focus,
+input[type="text"]:focus,
+select:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand) 22%, transparent);
+}
+
+input[type="number"]::placeholder,
+input[type="text"]::placeholder {
   color: var(--color-text-muted);
+}
+
+/* Anchos máximos: los formularios de cálculo no necesitan cajas enormes.
+ * Se achica el espacio vacío, no la tipografía. */
+input[type="number"],
+input[type="text"],
+input:not([type]),
+input[readonly] {
+  max-width: 11rem;
+}
+
+select {
+  max-width: 18rem;
+}
+
+/* Login / registro: campos a ancho completo del formulario. */
+.theme-mastro .auth-field {
+  max-width: 100%;
+}
+
+/* Título de sección unificado: barra naranja de marca + sentence case. */
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25rem;
+  color: var(--color-text);
+}
+
+.section-title::before {
+  content: "";
+  width: 0.25rem;
+  height: 1rem;
+  border-radius: 9999px;
+  background: var(--color-brand);
+  flex: none;
 }
 
 button {
@@ -90,6 +163,53 @@ button:focus-visible {
   body {
     background-color: #f9fafb;
   }
+}
+
+/* ---- Identidad Mastropietro (toda la app) ----
+ * Se aplica en <body class="theme-mastro">: redefine los tokens de Tailwind v4
+ * (bg-surface, text-primary, border-border, …) para toda la aplicación. */
+.theme-mastro {
+  --color-page: #f6f3ee;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f5f1eb;
+  --color-border: #e4ddd2;
+  --color-primary: #b05a09;
+  --color-primary-hover: #8f4a07;
+  --color-text: #262220;
+  --color-text-muted: #6e675e;
+  --color-danger: #b3261e;
+  --color-danger-hover: #8c1d18;
+  --color-success: #2f7d3b;
+  --color-warning: #9a6700;
+  color-scheme: light;
+  font-family: var(--font-display);
+  color: var(--color-text);
+  background-color: var(--color-page);
+}
+
+@media (prefers-color-scheme: dark) {
+  .theme-mastro {
+    --color-page: #171512;
+    --color-surface: #211e1b;
+    --color-surface-alt: #2b2724;
+    --color-border: #3b3631;
+    --color-primary: #e07611;
+    --color-primary-hover: #f28c2b;
+    --color-text: #ece8e3;
+    --color-text-muted: #a79f95;
+    --color-danger: #f87171;
+    --color-danger-hover: #fca5a5;
+    --color-success: #4ade80;
+    --color-warning: #fbbf24;
+    color-scheme: dark;
+  }
+}
+
+/* Gráficos Mafs: fondo y trazos siguen el tema (su default es negro). */
+.theme-mastro .MafsView {
+  --mafs-bg: var(--color-surface-alt);
+  --mafs-fg: var(--color-text);
+  --mafs-line-color: var(--color-border);
 }
 
 @page {
@@ -139,6 +259,17 @@ button:focus-visible {
   body {
     background: #fff !important;
     color: #000 !important;
+  }
+
+  .theme-mastro {
+    --color-page: #ffffff;
+    --color-surface: #ffffff;
+    --color-surface-alt: #ffffff;
+    --color-border: #c8ccd4;
+    --color-primary: #b05a09;
+    --color-primary-hover: #8f4a07;
+    --color-text: #111827;
+    --color-text-muted: #4b5563;
   }
 
   .no-print {

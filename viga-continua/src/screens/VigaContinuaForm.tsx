@@ -12,6 +12,7 @@ import {
 } from "../lib/storage";
 import type { AnalysisLoad, VigaContinuaState } from "../lib/viga-continua";
 import ModeSelector, { type Mode } from "../components/ModeSelector";
+import ScreenHeader from "../components/ScreenHeader";
 import PorticoForm from "./PorticoForm";
 
 function readMode(raw: string | null): Mode {
@@ -222,31 +223,18 @@ export default function VigaContinuaForm() {
         <PorticoForm />
       ) : (
         <>
-          <header className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
-              <svg
-                className="w-5 h-5 text-primary"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 7h6m-6 4h6m-6 4h6M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"
-                />
-              </svg>
-            </div>
-            <div className="flex-1">
-              <h1 className="text-xl font-semibold text-text">Viga Continua</h1>
-              <p className="text-sm text-text-muted">
-                {vigaNumber != null && loadedSaveName
-                  ? `Viga #${vigaNumber} — ${loadedSaveName}`
-                  : "Viga sin guardar"}
-              </p>
-            </div>
-          </header>
+          <ScreenHeader
+            title="Viga Continua"
+            subtitle="CIRSOC 201 · Análisis elástico de vigas continuas"
+            badge={
+              vigaNumber != null && loadedSaveName
+                ? {
+                    label: `Viga #${vigaNumber} — ${loadedSaveName}`,
+                    tone: "saved",
+                  }
+                : { label: "Viga sin guardar", tone: "unsaved" }
+            }
+          />
 
           <SavedBeams
             app="concrete"
@@ -329,9 +317,7 @@ export default function VigaContinuaForm() {
             className="flex flex-col gap-6"
           >
             <section className="bg-surface rounded-xl border border-border p-5">
-              <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-                Viga
-              </h2>
+              <h2 className="section-title mb-4">Viga</h2>
               <div className="flex flex-col gap-4">
                 <label className="flex flex-col gap-1.5">
                   <span className="text-xs text-text-muted font-medium">
@@ -376,9 +362,7 @@ export default function VigaContinuaForm() {
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <section className="bg-surface rounded-xl border border-border p-5">
-                <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-                  Apoyos
-                </h2>
+                <h2 className="section-title mb-4">Apoyos</h2>
                 <div className="flex flex-col gap-2">
                   {supportTypes.map((type, i) => {
                     const isEnd = i === 0 || i === supportTypes.length - 1;
@@ -423,9 +407,7 @@ export default function VigaContinuaForm() {
 
               <section className="bg-surface rounded-xl border border-border p-5">
                 <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
-                    Cargas D + L → U
-                  </h2>
+                  <h2 className="section-title">Cargas D + L → U</h2>
                   <button
                     type="button"
                     onClick={addLoad}

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import ScreenHeader from "../components/ScreenHeader";
 import { useLocation, useNavigate } from "react-router";
 import { Coordinates, Mafs, Plot, Polygon, Text } from "mafs";
 import { MainLayout } from "@mascalculador/shared";
@@ -273,39 +274,46 @@ export default function VigaContinuaResults() {
 
   return (
     <MainLayout>
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-text">Viga Continua</h1>
-          <p className="text-sm text-text-muted">
+      <ScreenHeader
+        title="Viga Continua"
+        subtitle={
+          <>
             L={L.toFixed(2)} m &middot; {nSpans} tramo{nSpans > 1 ? "s" : ""}
-            {vigaNumber != null && loadedSaveName
-              ? ` · Viga #${vigaNumber} — ${loadedSaveName}`
-              : " · Viga sin guardar"}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate("/viga-continua")}
-            className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-3 py-1.5 rounded-lg"
-          >
-            ← Volver
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            className="bg-surface-alt border border-border text-text-muted font-semibold px-3 py-1.5 rounded-lg hover:bg-surface transition-colors"
-          >
-            {loadedSaveId ? "Guardar corrección" : "Guardar"}
-          </button>
-          <button
-            type="button"
-            className="bg-primary text-white"
-            onClick={() => setShowPrintSelection(true)}
-          >
-            Imprimir
-          </button>
-        </div>
-      </header>
+          </>
+        }
+        badge={
+          vigaNumber != null && loadedSaveName
+            ? {
+                label: `Viga #${vigaNumber} — ${loadedSaveName}`,
+                tone: "saved",
+              }
+            : { label: "Viga sin guardar", tone: "unsaved" }
+        }
+        actions={
+          <>
+            <button
+              onClick={() => navigate("/viga-continua")}
+              className="rounded-lg border border-border bg-surface px-3.5 py-2 text-sm font-semibold text-text-muted transition-colors hover:bg-surface-alt hover:text-text active:translate-y-px"
+            >
+              ← Volver
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              className="rounded-lg border border-border bg-surface px-3.5 py-2 text-sm font-semibold text-text-muted transition-colors hover:bg-surface-alt hover:text-text active:translate-y-px"
+            >
+              {loadedSaveId ? "Guardar corrección" : "Guardar"}
+            </button>
+            <button
+              type="button"
+              className="rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-hover active:translate-y-px dark:text-[#241a10]"
+              onClick={() => setShowPrintSelection(true)}
+            >
+              Imprimir
+            </button>
+          </>
+        }
+      />
 
       {/* Env toggle in its own row, separated from the header actions. */}
       <div className="flex flex-col items-center gap-1">
@@ -318,9 +326,7 @@ export default function VigaContinuaResults() {
 
       {/* Reacciones (sin factorar) */}
       <section className="bg-surface rounded-xl border border-border p-5">
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-1">
-          Reacciones
-        </h2>
+        <h2 className="section-title mb-1">Reacciones</h2>
         <p className="text-xs text-text-muted mb-3">
           Valores sin factorar: D y L por separado.
         </p>
@@ -356,7 +362,7 @@ export default function VigaContinuaResults() {
 
       {/* Efforts switch between the ultimate envelope and one service case. */}
       <section className="bg-surface rounded-xl border border-border p-5">
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-1">
+        <h2 className="section-title mb-1">
           {envMode === "envolvente"
             ? "Esfuerzos factorados"
             : "Esfuerzos sin factorar"}
@@ -418,9 +424,7 @@ export default function VigaContinuaResults() {
 
       {/* Diagrams use the selected calculation result. */}
       <div className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
-          Diagramas
-        </h2>
+        <h2 className="section-title">Diagramas</h2>
         <p className="text-xs text-text-muted">
           {envMode === "envolvente"
             ? "Envolventes factoradas (U = 1.2·D + 1.6·L)."

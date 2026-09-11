@@ -19,6 +19,7 @@
  */
 
 import { useEffect, useState } from "react";
+import ScreenHeader from "../components/ScreenHeader";
 import { useLocation, useNavigate } from "react-router";
 import { DecimalInput, MainLayout, SavedBeams } from "@mascalculador/shared";
 import PorticoDiagram from "../components/PorticoDiagram";
@@ -413,31 +414,18 @@ export default function PorticoForm() {
           }
         }}
       >
-        <header className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
-            <svg
-              className="w-5 h-5 text-primary"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M3 21V8l9-6 9 6v13M9 21V12h6v9"
-              />
-            </svg>
-          </div>
-          <div className="flex-1">
-            <h1 className="text-2xl font-semibold text-text">Pórtico</h1>
-            <p className="text-sm text-text-muted">
-              {porticoNumber != null && loadedSaveName
-                ? `Pórtico #${porticoNumber} — ${loadedSaveName}`
-                : "Pórtico sin guardar"}
-            </p>
-          </div>
-        </header>
+        <ScreenHeader
+          title="Pórtico"
+          subtitle="CIRSOC 201 · Análisis de pórticos"
+          badge={
+            porticoNumber != null && loadedSaveName
+              ? {
+                  label: `Pórtico #${porticoNumber} — ${loadedSaveName}`,
+                  tone: "saved",
+                }
+              : { label: "Pórtico sin guardar", tone: "unsaved" }
+          }
+        />
 
         {/* SavedBeams (pórticos guardados) */}
         <SavedBeams
@@ -464,7 +452,7 @@ export default function PorticoForm() {
         <section className="bg-surface rounded-xl border border-border p-5">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
+              <h2 className="section-title">
                 Nodos ({state.nodes.length}/{CAP})
               </h2>
               <p className="mt-1 text-xs text-text-muted">
@@ -527,7 +515,7 @@ export default function PorticoForm() {
         {/* Barras */}
         <section className="bg-surface rounded-xl border border-border p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
+            <h2 className="section-title">
               Barras ({state.bars.length}/{CAP})
             </h2>
             <button
@@ -634,7 +622,7 @@ export default function PorticoForm() {
         {/* Apoyos */}
         <section className="bg-surface rounded-xl border border-border p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
+            <h2 className="section-title">
               Apoyos ({state.supports.length}/{CAP})
             </h2>
             <button
@@ -699,7 +687,7 @@ export default function PorticoForm() {
         {/* Cargas */}
         <section className="bg-surface rounded-xl border border-border p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
+            <h2 className="section-title">
               Cargas ({state.loads.length}/{CAP})
             </h2>
             <button
