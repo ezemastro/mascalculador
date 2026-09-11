@@ -58,6 +58,7 @@ export interface BaseInput {
   hTalon?: number; // cm — espesor del borde / talón (override)
   // Medianera extras
   Lcol?: number; // cm — luz entre columnas (viga de fundación)
+  dMed?: number; // cm — distancia medianera → centro del cabezal (módulo cabezales)
   H?: number; // cm — altura del tensor
   mu?: number; // — coeficiente de fricción (default 0.4)
   // Viga de fundación — overrides manuales
@@ -912,20 +913,18 @@ function computeFoundationBeam(
     qu: number;
     Lcol: number;
     elemento: string;
+    /** Lado izquierdo de la línea V1, sin el resultado (ej. "e = (Lx − cx)/2 = (220 − 30)/2"). */
+    v1Label: string;
   },
 ): VigaBeamResult {
-  const { Pu, e, Ru, Lx, Ly, qu, Lcol, elemento } = p;
+  const { Pu, e, Ru, Lx, Ly, qu, Lcol, elemento, v1Label } = p;
   const st: string[] = [];
   const wr: string[] = [];
   const dimsE = medGeom(input, Lx, Ly);
   const b_viga = input.bViga && input.bViga > 0 ? input.bViga : dimsE.bViga;
 
   // Paso V1 — excentricidad de la columna respecto del centroide
-  if (input.type === "medianera-x") {
-    st.push(`V1. e = (Ly − cy)/2 = (${Ly} − ${input.cy})/2 = ${f1(e)} cm`);
-  } else {
-    st.push(`V1. e = (Lx − cx)/2 = (${Lx} − ${input.cx})/2 = ${f1(e)} cm`);
-  }
+  st.push(`V1. ${v1Label} = ${f1(e)} cm`);
 
   // Paso V2 — reacción en la zapata vecina (cierre del esquema)
   st.push(
@@ -1140,6 +1139,10 @@ function designVigaFundacion(input: BaseInput): BaseResult {
     qu: centrada.qu,
     Lcol,
     elemento: "zapata",
+    v1Label:
+      input.type === "medianera-x"
+        ? `e = (Ly − cy)/2 = (${Ly} − ${input.cy})/2`
+        : `e = (Lx − cx)/2 = (${Lx} − ${input.cx})/2`,
   });
   st.push(...beam.steps);
   st.push("");
@@ -1311,6 +1314,7 @@ export interface CabezalVigaInput {
   fy: number; // MPa
   Lx: number; // cm — cabezal en planta
   Ly: number; // cm
+  dMed: number; // cm — distancia de la medianera al centro del cabezal
   Lcol: number; // cm — distancia a la columna que equilibra
   bViga?: number; // cm — viga (auto si falta)
   hViga?: number; // cm — viga (auto si falta)
@@ -1329,6 +1333,11 @@ export function designVigaCabezal(input: CabezalVigaInput): BaseResult {
   if (!(input.cx > 0) || !(input.cy > 0)) {
     throw new Error("Ingresá las dimensiones de la columna (cx, cy).");
   }
+  if (!(input.dMed > 0)) {
+    throw new Error(
+      "Ingresá la distancia de la medianera al centro del cabezal (dMed).",
+    );
+  }
   if (!(input.Lcol > 0)) {
     throw new Error("Ingresá la distancia a la columna que equilibra (Lcol).");
   }
@@ -1338,10 +1347,12 @@ export function designVigaCabezal(input: CabezalVigaInput): BaseResult {
       "La carga de la columna (PD + PL) debe ser mayor que cero.",
     );
   }
-  const e = (input.Lx - input.cx) / 2;
+  // La columna apoya en la medianera; el cabezal puede estar retirado:
+  // e = (medianera → centro del cabezal) − cx/2.
+  const e = input.dMed - input.cx / 2;
   if (e <= 0) {
     throw new Error(
-      "La columna no puede ser más ancha que el cabezal (cx debe ser menor que Lx).",
+      "El centro del cabezal debe estar más lejos de la medianera que cx/2 (la columna debe entrar en el cabezal).",
     );
   }
   if (input.Lcol <= e) {
@@ -1380,6 +1391,7 @@ export function designVigaCabezal(input: CabezalVigaInput): BaseResult {
     qu,
     Lcol: input.Lcol,
     elemento: "cabezal",
+    v1Label: `e = dMed − cx/2 = ${input.dMed} − ${input.cx}/2`,
   });
   st.push(...beam.steps);
   st.push("");

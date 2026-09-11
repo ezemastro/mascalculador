@@ -550,6 +550,7 @@ export default function BasesResults({
             fy: fullInput.fy,
             Lx: fullInput.Lx ?? 0,
             Ly: fullInput.Ly ?? 0,
+            dMed: fullInput.dMed ?? 0,
             Lcol: fullInput.Lcol ?? 0,
             bViga: fullInput.bViga,
             hViga: fullInput.hViga,
@@ -1125,6 +1126,11 @@ export default function BasesResults({
         <section className="bg-surface rounded-xl border border-border p-5">
           <SectionHeading>Viga de fundación</SectionHeading>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <DataCard
+              label="P<sub>u</sub>"
+              value={`${fmt(result.Pu, 1)}`}
+              sub="kN"
+            />
             <DataCard
               label="Excentricidad (e)"
               value={`${fmt(result.e, 1)}`}

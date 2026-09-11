@@ -70,6 +70,7 @@ const initialState: CabezalFormState = {
   fy: 420,
   Lx: 220,
   Ly: 440,
+  dMed: 110,
   Lcol: 400,
   cover: 7,
 };
@@ -131,14 +132,25 @@ function CabezalDiagram({
   lx,
   ly,
   lcol,
+  dMed,
 }: {
   lx: number;
   ly: number;
   lcol?: number;
+  dMed?: number;
 }) {
   const dim = "var(--color-text-muted)";
   const ink = "var(--color-text)";
   const brand = "var(--color-brand)";
+  // Retiro del cabezal respecto de la medianera, en px (los 70 px del
+  // rectángulo representan Lx). El cabezal puede no estar pegado; la columna
+  // siempre apoya en la medianera.
+  const gap =
+    dMed && lx > 0
+      ? Math.max(-16, Math.min(60, ((dMed - lx / 2) / lx) * 70))
+      : 0;
+  const capX = 18 + gap;
+  const col2X = 208 + gap;
   return (
     <svg
       viewBox="0 0 280 168"
@@ -160,7 +172,7 @@ function CabezalDiagram({
       </text>
 
       <rect
-        x="18"
+        x={capX}
         y="34"
         width="70"
         height="92"
@@ -170,7 +182,7 @@ function CabezalDiagram({
       />
       <rect x="18" y="62" width="30" height="36" fill={brand} />
       <rect
-        x="48"
+        x={48 + gap}
         y="70"
         width="160"
         height="20"
@@ -179,32 +191,94 @@ function CabezalDiagram({
         stroke={ink}
         strokeWidth="1"
       />
-      <rect x="208" y="66" width="30" height="28" fill={brand} />
+      <rect x={col2X} y="66" width="30" height="28" fill={brand} />
 
-      <line x1="18" y1="140" x2="88" y2="140" stroke={dim} strokeWidth="1" />
-      <line x1="18" y1="136" x2="18" y2="144" stroke={dim} strokeWidth="1" />
-      <line x1="88" y1="136" x2="88" y2="144" stroke={dim} strokeWidth="1" />
-      <text x="53" y="136" fontSize="9" fill={dim} textAnchor="middle">
+      <line
+        x1={capX}
+        y1="140"
+        x2={capX + 70}
+        y2="140"
+        stroke={dim}
+        strokeWidth="1"
+      />
+      <line
+        x1={capX}
+        y1="136"
+        x2={capX}
+        y2="144"
+        stroke={dim}
+        strokeWidth="1"
+      />
+      <line
+        x1={capX + 70}
+        y1="136"
+        x2={capX + 70}
+        y2="144"
+        stroke={dim}
+        strokeWidth="1"
+      />
+      <text x={capX + 35} y="136" fontSize="9" fill={dim} textAnchor="middle">
         Lx {lx}
       </text>
 
-      <line x1="33" y1="158" x2="223" y2="158" stroke={dim} strokeWidth="1" />
+      <line
+        x1="33"
+        y1="158"
+        x2={col2X + 15}
+        y2="158"
+        stroke={dim}
+        strokeWidth="1"
+      />
       <line x1="33" y1="154" x2="33" y2="162" stroke={dim} strokeWidth="1" />
-      <line x1="223" y1="154" x2="223" y2="162" stroke={dim} strokeWidth="1" />
-      <text x="128" y="154" fontSize="9" fill={dim} textAnchor="middle">
+      <line
+        x1={col2X + 15}
+        y1="154"
+        x2={col2X + 15}
+        y2="162"
+        stroke={dim}
+        strokeWidth="1"
+      />
+      <text
+        x={(33 + col2X + 15) / 2}
+        y="154"
+        fontSize="9"
+        fill={dim}
+        textAnchor="middle"
+      >
         Lcol {lcol ?? "—"}
       </text>
 
-      <line x1="104" y1="34" x2="104" y2="126" stroke={dim} strokeWidth="1" />
-      <line x1="100" y1="34" x2="108" y2="34" stroke={dim} strokeWidth="1" />
-      <line x1="100" y1="126" x2="108" y2="126" stroke={dim} strokeWidth="1" />
+      <line
+        x1={104 + gap}
+        y1="34"
+        x2={104 + gap}
+        y2="126"
+        stroke={dim}
+        strokeWidth="1"
+      />
+      <line
+        x1={100 + gap}
+        y1="34"
+        x2={108 + gap}
+        y2="34"
+        stroke={dim}
+        strokeWidth="1"
+      />
+      <line
+        x1={100 + gap}
+        y1="126"
+        x2={108 + gap}
+        y2="126"
+        stroke={dim}
+        strokeWidth="1"
+      />
       <text
-        x="114"
+        x={114 + gap}
         y="80"
         fontSize="9"
         fill={dim}
         textAnchor="middle"
-        transform="rotate(-90 114 80)"
+        transform={`rotate(-90 ${114 + gap} 80)`}
         stroke="var(--color-surface)"
         strokeWidth="3"
         paintOrder="stroke"
@@ -331,6 +405,7 @@ export default function CabezalForm() {
       if (typeof f.fy === "number") next.fy = f.fy;
       if (typeof f.Lx === "number") next.Lx = f.Lx;
       if (typeof f.Ly === "number") next.Ly = f.Ly;
+      if (typeof f.dMed === "number") next.dMed = f.dMed;
       if (typeof f.h === "number") next.h = f.h;
       if (typeof f.hTalon === "number") next.hTalon = f.hTalon;
       if (typeof f.Lcol === "number") next.Lcol = f.Lcol;
@@ -353,9 +428,9 @@ export default function CabezalForm() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!state.Lx || !state.Ly || !state.Lcol) {
+    if (!state.Lx || !state.Ly || !state.dMed || !state.Lcol) {
       alert(
-        "Completá las dimensiones en planta del cabezal (Lx, Ly) y la distancia a la columna que equilibra (Lcol).",
+        "Completá las dimensiones en planta del cabezal (Lx, Ly), la distancia de la medianera a su centro (dMed) y la distancia a la columna que equilibra (Lcol).",
       );
       return;
     }
@@ -657,10 +732,36 @@ export default function CabezalForm() {
                     }
                   />
                 </Field>
+                <Field
+                  label={
+                    <>
+                      d<sub>med</sub> (cm)
+                    </>
+                  }
+                  hint="Medianera → centro del cabezal. Si está pegado, = Lx/2."
+                >
+                  <input
+                    type="number"
+                    step="1"
+                    min="0"
+                    value={state.dMed ?? ""}
+                    onKeyDown={handleCommaKey}
+                    onChange={(e) =>
+                      setState((prev) => ({
+                        ...prev,
+                        dMed: e.target.value
+                          ? Number(e.target.value)
+                          : undefined,
+                      }))
+                    }
+                  />
+                </Field>
               </div>
               <p className="mt-4 text-[11px] leading-snug text-text-muted">
-                Dimensiones en planta del cabezal (todavía no se calculan los
-                pilotes: el cabezal se dimensionará en una próxima etapa).
+                El cabezal puede estar retirado de la medianera; la columna sí
+                apoya en ella. La excentricidad es e = d<sub>med</sub> − c
+                <sub>x</sub>/2. Los pilotes se dimensionarán en una próxima
+                etapa.
               </p>
             </Section>
 
@@ -781,6 +882,7 @@ export default function CabezalForm() {
                 lx={Math.round(state.Lx ?? 0)}
                 ly={Math.round(state.Ly ?? 0)}
                 lcol={state.Lcol ? Math.round(state.Lcol) : undefined}
+                dMed={state.dMed}
               />
               <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-border pt-3 text-xs">
                 <div className="flex items-baseline justify-between gap-2">
@@ -793,6 +895,12 @@ export default function CabezalForm() {
                   <dt className="text-text-muted">Ly</dt>
                   <dd className="font-semibold tabular-nums text-text">
                     {state.Ly ? `${Math.round(state.Ly)} cm` : "—"}
+                  </dd>
+                </div>
+                <div className="flex items-baseline justify-between gap-2">
+                  <dt className="text-text-muted">dmed</dt>
+                  <dd className="font-semibold tabular-nums text-text">
+                    {state.dMed ? `${Math.round(state.dMed)} cm` : "—"}
                   </dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-2">

@@ -343,6 +343,9 @@ export interface CabezalFormState {
   fy: number;
   Lx?: number;
   Ly?: number;
+  /** cm — distancia de la medianera al centro del cabezal (puede no estar
+   *  pegado: la columna sí apoya en la medianera). */
+  dMed?: number;
   h?: number;
   hTalon?: number;
   Lcol?: number;
