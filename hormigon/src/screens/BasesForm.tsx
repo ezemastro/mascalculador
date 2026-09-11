@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import ScreenHeader from "../components/ScreenHeader";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import { SavedBeams } from "@mascalculador/shared";
@@ -422,47 +423,29 @@ export default function BasesForm() {
   // ------------------------------------------------------------------
   return (
     <MainLayout>
-      <header className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
-          <svg
-            className="w-5 h-5 text-primary"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
+      <ScreenHeader
+        title="Dimensionado de Bases"
+        subtitle="CIRSOC 201"
+        badge={
+          loadedSaveName
+            ? {
+                label: /^\d+$/.test(loadedSaveName)
+                  ? `Base Nº ${loadedSaveName}`
+                  : loadedSaveName,
+                tone: "saved",
+              }
+            : { label: "Sin guardar", tone: "unsaved" }
+        }
+        actions={
+          <button
+            type="button"
+            onClick={handleNew}
+            className="rounded-lg border border-border bg-surface px-3.5 py-2 text-sm font-semibold text-text-muted transition-colors hover:bg-surface-alt hover:text-text active:translate-y-px"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
-            />
-          </svg>
-        </div>
-        <div>
-          <h1 className="text-xl font-semibold text-text">
-            Dimensionado de Bases
-          </h1>
-          {loadedSaveName ? (
-            <span className="inline-flex items-center mt-1 text-sm font-semibold text-primary bg-primary/10 border border-primary/30 px-2.5 py-0.5 rounded-full">
-              {/^\d+$/.test(loadedSaveName)
-                ? `Base Nº ${loadedSaveName}`
-                : loadedSaveName}
-            </span>
-          ) : (
-            <span className="inline-flex items-center mt-1 text-sm font-semibold text-warning bg-warning/10 border border-warning/30 px-2.5 py-0.5 rounded-full">
-              Sin guardar
-            </span>
-          )}
-        </div>
-        <span className="ml-auto text-xs text-text-muted">CIRSOC 201</span>
-        <button
-          type="button"
-          onClick={handleNew}
-          className="text-sm bg-surface-alt border border-border text-text-muted px-3 py-1.5 rounded-lg hover:bg-surface hover:text-text transition-colors"
-        >
-          + Nueva
-        </button>
-      </header>
+            + Nueva
+          </button>
+        }
+      />
 
       {/* Load saved bases */}
       <SavedBeams
@@ -493,9 +476,7 @@ export default function BasesForm() {
       >
         {/* ── 1. Suelo ──────────────────────────────────────── */}
         <section className="bg-surface rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-            Suelo
-          </h2>
+          <h2 className="section-title mb-4">Suelo</h2>
           <div className="grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
@@ -532,9 +513,7 @@ export default function BasesForm() {
 
         {/* ── 2. Materiales ─────────────────────────────────── */}
         <section className="bg-surface rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-            Materiales
-          </h2>
+          <h2 className="section-title mb-4">Materiales</h2>
           <div className="grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
@@ -572,9 +551,7 @@ export default function BasesForm() {
 
         {/* ── 3. Cargas ─────────────────────────────────────── */}
         <section className="bg-surface rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-            Cargas
-          </h2>
+          <h2 className="section-title mb-4">Cargas</h2>
 
           {/* Column load dropdown */}
           <div className="mb-4">
@@ -657,9 +634,7 @@ export default function BasesForm() {
 
         {/* ── 4. Tipo de base ───────────────────────────────── */}
         <section className="bg-surface rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-            Tipo de base
-          </h2>
+          <h2 className="section-title mb-4">Tipo de base</h2>
           <div className="flex flex-col gap-3">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <label
@@ -1008,9 +983,7 @@ export default function BasesForm() {
 
         {/* ── 5. Geometría ───────────────────────────────────── */}
         <section className="bg-surface rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-            Geometría
-          </h2>
+          <h2 className="section-title mb-4">Geometría</h2>
 
           {/* Auto-predim preview */}
           <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg mb-4">

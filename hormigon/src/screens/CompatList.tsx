@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import ScreenHeader from "../components/ScreenHeader";
 import { useNavigate, useLocation } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import {
@@ -518,39 +519,35 @@ export default function CompatList() {
 
   return (
     <MainLayout>
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-text">
-            Dimensionado de apoyo en losas
-          </h1>
-          <p className="text-sm text-text-muted">
-            {savedItems.length} apoyo
-            {savedItems.length !== 1 ? "s" : ""} guardado
-            {savedItems.length !== 1 ? "s" : ""}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={handleNewIndividual}
-            className="text-sm bg-primary/10 text-primary border border-primary/20 px-3 py-1.5 rounded-lg hover:bg-primary/20 transition-colors"
-          >
-            + Nuevo apoyo individual
-          </button>
-          <button
-            onClick={() => navigate("/slab-compat")}
-            className="text-sm bg-primary/10 text-primary border border-primary/20 px-3 py-1.5 rounded-lg hover:bg-primary/20 transition-colors"
-          >
-            + Nuevo apoyo compartido
-          </button>
-        </div>
-      </header>
+      <ScreenHeader
+        title="Dimensionado de apoyo en losas"
+        subtitle={`${savedItems.length} apoyo${
+          savedItems.length !== 1 ? "s" : ""
+        } guardado${savedItems.length !== 1 ? "s" : ""}`}
+        actions={
+          <>
+            <button
+              onClick={handleNewIndividual}
+              className="rounded-lg border border-border bg-surface px-3.5 py-2 text-sm font-semibold text-text-muted transition-colors hover:bg-surface-alt hover:text-text active:translate-y-px"
+            >
+              + Nuevo apoyo individual
+            </button>
+            <button
+              onClick={() => navigate("/slab-compat")}
+              className="rounded-lg border border-border bg-surface px-3.5 py-2 text-sm font-semibold text-text-muted transition-colors hover:bg-surface-alt hover:text-text active:translate-y-px"
+            >
+              + Nuevo apoyo compartido
+            </button>
+          </>
+        }
+      />
 
       {/* Saved list — misma lógica que Losas: colapsable, se cierra al cargar */}
       <section className="bg-surface rounded-xl border border-border p-4">
         <button
           type="button"
           onClick={() => setListOpen(!listOpen)}
-          className="text-sm font-semibold text-text-muted uppercase tracking-wider w-full text-left"
+          className="section-title w-full text-left"
         >
           {listOpen ? "▼" : "▶"} Apoyos guardados ({savedItems.length})
         </button>
@@ -630,9 +627,7 @@ export default function CompatList() {
       {individualOpen && !loadedCompat && (
         <section className="bg-surface rounded-xl border border-border p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
-              Diseñar apoyo individual
-            </h2>
+            <h2 className="section-title">Diseñar apoyo individual</h2>
             <button
               type="button"
               onClick={() => setIndividualOpen(false)}
@@ -873,9 +868,7 @@ export default function CompatList() {
       {/* Loaded compatibilization — solo la cargada, no se mantienen abiertas */}
       {loadedCompat && (
         <section className="bg-surface rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
-            Compatibilización cargada
-          </h2>
+          <h2 className="section-title mb-3">Compatibilización cargada</h2>
           <CompatCard
             key={loadedCompat.name}
             data={loadedCompat}

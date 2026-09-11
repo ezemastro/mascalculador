@@ -1,8 +1,15 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import ScreenHeader from "../components/ScreenHeader";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import { SavedBeams } from "@mascalculador/shared";
-import { predimCoef, unidirectionalSpan, validateSlabSupports, type EdgeCondition, type SlabInput } from "../lib/slab-calc";
+import {
+  predimCoef,
+  unidirectionalSpan,
+  validateSlabSupports,
+  type EdgeCondition,
+  type SlabInput,
+} from "../lib/slab-calc";
 import {
   saveLastSlabFormState,
   loadLastSlabFormState,
@@ -252,64 +259,48 @@ export default function SlabForm() {
 
   return (
     <MainLayout>
-      <header className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
-          <svg
-            className="w-5 h-5 text-primary"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
+      <ScreenHeader
+        title="Dimensionado de Losas"
+        subtitle="CIRSOC 201-05"
+        badge={
+          loadedSaveName
+            ? {
+                label: /^\d+$/.test(loadedSaveName)
+                  ? `Losa Nº ${loadedSaveName}`
+                  : loadedSaveName,
+                tone: "saved",
+              }
+            : { label: "Sin guardar", tone: "unsaved" }
+        }
+        actions={
+          <button
+            type="button"
+            onClick={() => {
+              setLx(4);
+              setLy(5);
+              setEdgeX0("simple");
+              setEdgeXL("simple");
+              setEdgeY0("simple");
+              setEdgeYL("simple");
+              setD(1.5);
+              setL(2.0);
+              setFc(25);
+              setFy(420);
+              setCover(15);
+              setHAdop(0);
+              setDBarX(10);
+              setDBarY(10);
+              setIncludeSelfWeight(true);
+              setLoadedSaveId(null);
+              setLoadedSaveName(null);
+              localStorage.removeItem("mascalculador_last_slab_form");
+            }}
+            className="rounded-lg border border-border bg-surface px-3.5 py-2 text-sm font-semibold text-text-muted transition-colors hover:bg-surface-alt hover:text-text active:translate-y-px"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M3 3h18v18H3z"
-            />
-          </svg>
-        </div>
-        <div className="flex-1">
-          <h1 className="text-xl font-semibold text-text">Dimensionado de Losas</h1>
-          {loadedSaveName ? (
-            <span className="inline-flex items-center mt-1 text-sm font-semibold text-primary bg-primary/10 border border-primary/30 px-2.5 py-0.5 rounded-full">
-              {/^\d+$/.test(loadedSaveName)
-                ? `Losa Nº ${loadedSaveName}`
-                : loadedSaveName}
-            </span>
-          ) : (
-            <span className="inline-flex items-center mt-1 text-sm font-semibold text-warning bg-warning/10 border border-warning/30 px-2.5 py-0.5 rounded-full">
-              Sin guardar
-            </span>
-          )}
-        </div>
-        <span className="ml-auto text-xs text-text-muted">CIRSOC 201-05</span>
-        <button
-          type="button"
-          onClick={() => {
-            setLx(4);
-            setLy(5);
-            setEdgeX0("simple");
-            setEdgeXL("simple");
-            setEdgeY0("simple");
-            setEdgeYL("simple");
-            setD(1.5);
-            setL(2.0);
-            setFc(25);
-            setFy(420);
-            setCover(15);
-            setHAdop(0);
-            setDBarX(10);
-            setDBarY(10);
-            setIncludeSelfWeight(true);
-            setLoadedSaveId(null);
-            setLoadedSaveName(null);
-            localStorage.removeItem("mascalculador_last_slab_form");
-          }}
-          className="text-sm bg-surface-alt border border-border text-text-muted px-3 py-1.5 rounded-lg hover:bg-surface hover:text-text transition-colors"
-        >
-          + Nueva
-        </button>
-      </header>
+            + Nueva
+          </button>
+        }
+      />
 
       <SavedBeams
         app="concrete"
@@ -351,9 +342,7 @@ export default function SlabForm() {
         className="flex flex-col gap-6"
       >
         <section className="bg-surface rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
-            Dimensiones
-          </h2>
+          <h2 className="section-title mb-3">Dimensiones</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
@@ -380,9 +369,7 @@ export default function SlabForm() {
         </section>
 
         <section className="bg-surface rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
-            Condiciones de borde
-          </h2>
+          <h2 className="section-title mb-3">Condiciones de borde</h2>
           {supportError && (
             <p className="text-sm text-danger bg-danger/10 border border-danger/30 rounded-lg px-3 py-2 mb-3">
               {supportError}
@@ -436,9 +423,7 @@ export default function SlabForm() {
         </section>
 
         <section className="bg-surface rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
-            Cargas y materiales
-          </h2>
+          <h2 className="section-title mb-3">Cargas y materiales</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 items-end">
             <label className="flex flex-row items-center gap-2 col-span-2 py-2">
               <input

@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import ScreenHeader from "../components/ScreenHeader";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import { SlabPlan } from "@mascalculador/shared";
@@ -356,78 +357,88 @@ export default function SlabResults() {
 
   return (
     <MainLayout>
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-text flex items-center gap-3">
+      <ScreenHeader
+        title={
+          <>
             Losa {lx}×{ly} m
-            {savedName ? (
-              <span className="inline-flex items-center text-sm font-semibold text-primary bg-primary/10 border border-primary/30 px-2.5 py-0.5 rounded-full">
-                {/^\d+$/.test(savedName) ? `Losa Nº ${savedName}` : savedName}
-              </span>
-            ) : (
-              <span className="text-sm font-normal text-warning bg-warning/10 border border-warning/30 px-2.5 py-0.5 rounded-full">
-                Sin guardar
-              </span>
-            )}
-          </h1>
-          <p className="text-sm text-text-muted">
+          </>
+        }
+        subtitle={
+          <>
             q<sub>u</sub> = {result.qu.toFixed(2)} kN/m²
-          </p>
-        </div>
-        <div className="flex gap-1.5">
-          <button
-            type="button"
-            onClick={async () => {
-              const slabInput = currentSlabInput;
-              if (savedId) {
-                updateSlab(savedId, slabInput, {
-                  ...result,
-                  adoptedAsX,
-                  adoptedAsY,
-                });
-                return;
+          </>
+        }
+        badge={
+          savedName
+            ? {
+                label: /^\d+$/.test(savedName)
+                  ? `Losa Nº ${savedName}`
+                  : savedName,
+                tone: "saved",
               }
-              const name = prompt("Nombre para guardar la losa:");
-              if (!name) return;
-              const target = await pickObraIfNeeded();
-              if (target === null) return;
-              try {
-                const saved = saveSlab(name, slabInput, {
-                  ...result,
-                  adoptedAsX,
-                  adoptedAsY,
-                }, target);
-                setSavedId(saved.id);
-                setSavedName(name);
-              } catch (err: unknown) {
-                alert(err instanceof Error ? err.message : "Error al guardar");
+            : { label: "Sin guardar", tone: "unsaved" }
+        }
+        actions={
+          <>
+            <button
+              type="button"
+              onClick={async () => {
+                const slabInput = currentSlabInput;
+                if (savedId) {
+                  updateSlab(savedId, slabInput, {
+                    ...result,
+                    adoptedAsX,
+                    adoptedAsY,
+                  });
+                  return;
+                }
+                const name = prompt("Nombre para guardar la losa:");
+                if (!name) return;
+                const target = await pickObraIfNeeded();
+                if (target === null) return;
+                try {
+                  const saved = saveSlab(
+                    name,
+                    slabInput,
+                    {
+                      ...result,
+                      adoptedAsX,
+                      adoptedAsY,
+                    },
+                    target,
+                  );
+                  setSavedId(saved.id);
+                  setSavedName(name);
+                } catch (err: unknown) {
+                  alert(
+                    err instanceof Error ? err.message : "Error al guardar",
+                  );
+                }
+              }}
+              className="rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-hover active:translate-y-px dark:text-[#241a10]"
+            >
+              Guardar
+            </button>
+            <button
+              onClick={() =>
+                navigate("/slab", {
+                  state: {
+                    ...s,
+                    loadedSaveId: savedId,
+                    loadedSaveName: savedName,
+                  },
+                })
               }
-            }}
-            className="text-sm bg-primary text-white font-semibold px-3 py-1.5 rounded-lg hover:bg-primary-hover transition-colors"
-          >
-            Guardar
-          </button>
-          <button
-            onClick={() =>
-              navigate("/slab", {
-                state: {
-                  ...s,
-                  loadedSaveId: savedId,
-                  loadedSaveName: savedName,
-                },
-              })
-            }
-            className="text-sm bg-surface-alt border border-border text-text-muted px-3 py-1.5 rounded-lg hover:bg-surface hover:text-text transition-colors"
-          >
-            ← Volver
-          </button>
-        </div>
-      </header>
+              className="rounded-lg border border-border bg-surface px-3.5 py-2 text-sm font-semibold text-text-muted transition-colors hover:bg-surface-alt hover:text-text active:translate-y-px"
+            >
+              ← Volver
+            </button>
+          </>
+        }
+      />
 
       <section className="bg-surface rounded-xl border border-border p-5">
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
-          Datos
-        </h2>
+        <h2 className="section-title mb-3">Datos</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-8 gap-3 text-sm">
           <div>
             <span className="text-xs text-text-muted">Lx (m)</span>
@@ -604,7 +615,7 @@ export default function SlabResults() {
       />
 
       <details className="bg-surface rounded-xl border border-border p-5">
-        <summary className="cursor-pointer text-sm font-semibold text-text-muted uppercase tracking-wider">
+        <summary className="cursor-pointer section-title">
           Ver cuentas completas
         </summary>
         <pre className="mt-3 p-3 bg-surface-alt rounded-lg text-xs text-text-muted font-mono whitespace-pre-wrap overflow-x-auto">

@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import ScreenHeader from "../components/ScreenHeader";
 import { useLocation, useNavigate } from "react-router";
 import { Coordinates, Mafs, Plot, Polygon, Text } from "mafs";
 import { MainLayout } from "@mascalculador/shared";
@@ -573,77 +574,83 @@ export default function ConcreteResults() {
   return (
     <MainLayout>
       {/* Header */}
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-text">
-            {savedName ? `Viga: ${savedName}` : "Viga H° A°"}
-          </h1>
-          <p className="text-sm text-text-muted">
+      <ScreenHeader
+        title="Viga H° A°"
+        subtitle={
+          <>
             {(bw / 10).toFixed(0)}×{(h / 10).toFixed(0)} cm &middot; f'c={fc}{" "}
-            MPa &middot; L={L} m &middot; {nSpans} tramo{nSpans > 1 ? "s" : ""}
-          </p>
-        </div>
-        <div className="flex gap-1.5">
-          <button
-            type="button"
-            onClick={async () => {
-              const data = saveData;
-              if (savedId) {
-                updateSave(savedId, data);
-                return;
+            MPa &middot; L={L} m &middot; {nSpans} tramo
+            {nSpans > 1 ? "s" : ""}
+          </>
+        }
+        badge={
+          savedName
+            ? { label: savedName, tone: "saved" }
+            : { label: "Sin guardar", tone: "unsaved" }
+        }
+        actions={
+          <>
+            <button
+              type="button"
+              onClick={async () => {
+                const data = saveData;
+                if (savedId) {
+                  updateSave(savedId, data);
+                  return;
+                }
+                const name = prompt("Nombre para guardar los resultados:");
+                if (!name) return;
+                const target = await pickObraIfNeeded();
+                if (target === null) return;
+                try {
+                  const saved = saveBeam(name, "hormigon", data, target);
+                  setSavedId(saved.id);
+                  setSavedName(name);
+                } catch (err: unknown) {
+                  alert(
+                    err instanceof Error ? err.message : "Error al guardar",
+                  );
+                }
+              }}
+              className="rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-hover active:translate-y-px dark:text-[#241a10]"
+            >
+              Guardar resultados
+            </button>
+            <button
+              onClick={() =>
+                navigate("/concrete", {
+                  state: {
+                    ...s,
+                    loadedSaveId: savedId,
+                    loadedSaveName: savedName,
+                    barQty,
+                    barDiam,
+                    compBarQty,
+                    compBarDiam,
+                    stirrupLegs,
+                    stirrupDiam,
+                    stirrupSpacing,
+                    supportWidths,
+                    supBarQty,
+                    supBarDiam,
+                    directSupport,
+                    sustainedPct,
+                    timeFactor,
+                    ieMethod,
+                  },
+                })
               }
-              const name = prompt("Nombre para guardar los resultados:");
-              if (!name) return;
-              const target = await pickObraIfNeeded();
-              if (target === null) return;
-              try {
-                const saved = saveBeam(name, "hormigon", data, target);
-                setSavedId(saved.id);
-                setSavedName(name);
-              } catch (err: unknown) {
-                alert(err instanceof Error ? err.message : "Error al guardar");
-              }
-            }}
-            className="text-sm bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
-          >
-            Guardar resultados
-          </button>
-          <button
-            onClick={() =>
-              navigate("/concrete", {
-                state: {
-                  ...s,
-                  loadedSaveId: savedId,
-                  loadedSaveName: savedName,
-                  barQty,
-                  barDiam,
-                  compBarQty,
-                  compBarDiam,
-                  stirrupLegs,
-                  stirrupDiam,
-                  stirrupSpacing,
-                  supportWidths,
-                  supBarQty,
-                  supBarDiam,
-                  directSupport,
-                  sustainedPct,
-                  timeFactor,
-                  ieMethod,
-                },
-              })
-            }
-            className="text-sm bg-surface-alt border-border hover:bg-surface text-text-muted"
-          >
-            ← Volver
-          </button>
-        </div>
-      </header>
+              className="rounded-lg border border-border bg-surface px-3.5 py-2 text-sm font-semibold text-text-muted transition-colors hover:bg-surface-alt hover:text-text active:translate-y-px"
+            >
+              ← Volver
+            </button>
+          </>
+        }
+      />
 
       {/* Datos de entrada */}
       <section className="bg-surface rounded-xl border border-border p-5">
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
-          Datos
-        </h2>
+        <h2 className="section-title mb-3">Datos</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-sm">
           <div>
             <span className="text-xs text-text-muted">Tramos (m)</span>
@@ -770,7 +777,7 @@ export default function ConcreteResults() {
             key={i}
             className="bg-surface rounded-xl border border-border p-5"
           >
-            <h2 className="text-sm font-semibold text-primary uppercase tracking-wider mb-3">
+            <h2 className="section-title mb-3">
               Tramo {i + 1} — {dom.length.toFixed(2)} m
             </h2>
 
@@ -1032,7 +1039,7 @@ export default function ConcreteResults() {
           interiores + extremos empotrados (voladizos). */}
       {designSupportIdx.length > 0 && (
         <div className="space-y-4">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
+          <h2 className="section-title">
             Armadura de apoyo (momento negativo)
           </h2>
           {designSupportIdx.map((supportIdx) => {
@@ -1078,7 +1085,7 @@ export default function ConcreteResults() {
                 key={supportIdx}
                 className="bg-surface rounded-xl border border-border p-5"
               >
-                <h3 className="text-sm font-semibold text-primary uppercase tracking-wider mb-3">
+                <h3 className="section-title mb-3">
                   Apoyo {supportIdx + 1} — M<sub>u,apoyo</sub> ={" "}
                   {Mneg.toFixed(1)} kN·m
                 </h3>
@@ -1327,7 +1334,7 @@ export default function ConcreteResults() {
 
       {/* Flechas — estado de servicio, sección fisurada */}
       <section className="bg-surface rounded-xl border border-border p-5">
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-1">
+        <h2 className="section-title mb-1">
           Flechas — estado de servicio (sección fisurada)
         </h2>
         <p className="text-xs text-text-muted mb-3">

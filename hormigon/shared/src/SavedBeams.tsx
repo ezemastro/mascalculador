@@ -68,7 +68,7 @@ export default function SavedBeams({
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="text-sm font-semibold text-text-muted uppercase tracking-wider w-full text-left"
+        className="section-title w-full text-left"
       >
         {open ? "▼" : "▶"} {heading} ({items.length})
       </button>

@@ -23,9 +23,7 @@ export default function ComputoSection({
   if (!computo) return null;
   return (
     <section className="bg-surface rounded-xl border border-border p-5">
-      <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-        {title}
-      </h2>
+      <h2 className="section-title mb-4">{title}</h2>
       <div
         className={`grid gap-3 mb-4 ${showConcrete ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-1 sm:max-w-48"}`}
       >

@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import ScreenHeader from "../components/ScreenHeader";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import {
@@ -318,73 +319,50 @@ export default function RCColumnResults() {
 
   return (
     <MainLayout>
-      <header className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
-            <svg
-              className="w-5 h-5 text-primary"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
+      <ScreenHeader
+        title="Columna"
+        subtitle={
+          <>
+            f'<sub>c</sub> = {fc} MPa &middot; f<sub>y</sub> = {fy} MPa &middot;
+            l<sub>u</sub> = {lu} m
+          </>
+        }
+        badge={
+          savedName
+            ? { label: savedName, tone: "saved" }
+            : { label: "Sin guardar", tone: "unsaved" }
+        }
+        actions={
+          <>
+            <button
+              type="button"
+              onClick={handleSaveFromResults}
+              className="rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-hover active:translate-y-px dark:text-[#241a10]"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zM9 17l-2-2 2-2m6 4l2-2-2-2M12 15l-2-6"
-              />
-            </svg>
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold text-text flex items-center gap-3">
-              Columna
-              {savedName ? (
-                <span className="text-sm font-normal text-text-muted bg-surface-alt border border-border px-2.5 py-0.5 rounded-full">
-                  {savedName}
-                </span>
-              ) : (
-                <span className="text-sm font-normal text-warning bg-warning/10 border border-warning/30 px-2.5 py-0.5 rounded-full">
-                  Sin guardar
-                </span>
-              )}
-            </h1>
-            <p className="text-sm text-text-muted">
-              f'<sub>c</sub> = {fc} MPa &middot; f<sub>y</sub> = {fy} MPa
-              &middot; l<sub>u</sub> = {lu} m
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-1.5">
-          <button
-            type="button"
-            onClick={handleSaveFromResults}
-            className="text-sm bg-primary text-white font-semibold px-3 py-1.5 rounded-lg hover:bg-primary-hover transition-colors"
-          >
-            Guardar
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              navigate("/rc-column", {
-                state: {
-                  ...state,
-                  loadedSaveId: savedId,
-                  loadedSaveName: savedName,
-                },
-              })
-            }
-            className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-4 py-1.5 rounded-lg"
-          >
-            ← Volver
-          </button>
-        </div>
-      </header>
+              Guardar
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                navigate("/rc-column", {
+                  state: {
+                    ...state,
+                    loadedSaveId: savedId,
+                    loadedSaveName: savedName,
+                  },
+                })
+              }
+              className="rounded-lg border border-border bg-surface px-3.5 py-2 text-sm font-semibold text-text-muted transition-colors hover:bg-surface-alt hover:text-text active:translate-y-px"
+            >
+              ← Volver
+            </button>
+          </>
+        }
+      />
 
       {/* Datos de entrada */}
       <section className="bg-surface rounded-xl border border-border p-5">
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
-          Datos
-        </h2>
+        <h2 className="section-title mb-3">Datos</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-sm">
           <div>
             <span className="text-xs text-text-muted">
@@ -515,9 +493,7 @@ export default function RCColumnResults() {
 
       {/* ─── Armado longitudinal INTERACTIVO ─── */}
       <section className="bg-surface rounded-xl border border-border p-5">
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-          Armado longitudinal
-        </h2>
+        <h2 className="section-title mb-4">Armado longitudinal</h2>
 
         {/* Inputs */}
         <div className="flex flex-wrap items-center justify-center gap-4 mb-4">
@@ -721,9 +697,7 @@ export default function RCColumnResults() {
       {armaduraConfirmada && (
         <section className="bg-surface rounded-xl border border-border p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
-              Estribos
-            </h2>
+            <h2 className="section-title">Estribos</h2>
             <button
               type="button"
               onClick={() => setArmaduraConfirmada(false)}
@@ -749,9 +723,7 @@ export default function RCColumnResults() {
       {/* Direction X card */}
       <section className="bg-surface rounded-xl border border-border p-5">
         <div className="flex items-center gap-2 mb-4">
-          <span className="text-sm font-semibold text-text-muted uppercase tracking-wider">
-            Dirección X
-          </span>
+          <span className="section-title">Dirección X</span>
           <span
             className={`text-xs px-2 py-0.5 rounded-full ${result.dirX.columnType === "SHORT" ? "bg-success/10 text-success" : "bg-warning/10 text-warning"}`}
           >
@@ -811,9 +783,7 @@ export default function RCColumnResults() {
       {/* Direction Y card */}
       <section className="bg-surface rounded-xl border border-border p-5">
         <div className="flex items-center gap-2 mb-4">
-          <span className="text-sm font-semibold text-text-muted uppercase tracking-wider">
-            Dirección Y
-          </span>
+          <span className="section-title">Dirección Y</span>
           <span
             className={`text-xs px-2 py-0.5 rounded-full ${result.dirY.columnType === "SHORT" ? "bg-success/10 text-success" : "bg-warning/10 text-warning"}`}
           >
@@ -876,9 +846,7 @@ export default function RCColumnResults() {
         <>
           {result.dirX.columnType === "SLENDER" && (
             <section className="bg-surface rounded-xl border border-border p-5">
-              <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
-                Efectos 2° orden — Dir X
-              </h2>
+              <h2 className="section-title mb-3">Efectos 2° orden — Dir X</h2>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="bg-surface-alt rounded-lg p-3">
                   <span className="text-xs text-text-muted">
@@ -917,9 +885,7 @@ export default function RCColumnResults() {
           )}
           {result.dirY.columnType === "SLENDER" && (
             <section className="bg-surface rounded-xl border border-border p-5">
-              <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
-                Efectos 2° orden — Dir Y
-              </h2>
+              <h2 className="section-title mb-3">Efectos 2° orden — Dir Y</h2>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div className="bg-surface-alt rounded-lg p-3">
                   <span className="text-xs text-text-muted">
@@ -961,9 +927,7 @@ export default function RCColumnResults() {
 
       {/* Detailed steps */}
       <section className="no-print bg-surface rounded-xl border border-border p-5">
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
-          Cuentas completas
-        </h2>
+        <h2 className="section-title mb-3">Cuentas completas</h2>
         <pre className="p-3 bg-surface-alt rounded-lg text-xs text-text-muted font-mono whitespace-pre-wrap overflow-x-auto max-h-[32rem] overflow-y-auto">
           {result.steps.join("\n")}
         </pre>

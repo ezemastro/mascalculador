@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import ScreenHeader from "../components/ScreenHeader";
 import { flushCloudStorage } from "../lib/cloud-storage.ts";
 
 type AdminUser = {
@@ -60,7 +61,10 @@ export default function AdminScreen({
 
   return (
     <div className="max-w-3xl">
-      <h1 className="text-lg font-semibold mb-4">Usuarios registrados</h1>
+      <ScreenHeader
+        title="Usuarios registrados"
+        subtitle="Módulo interno — administración de cuentas"
+      />
       {error && <p className="text-xs text-danger">{error}</p>}
       {!users && !error && (
         <p className="text-sm text-text-muted">Cargando...</p>

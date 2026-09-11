@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import ScreenHeader from "../components/ScreenHeader";
 import { MainLayout } from "@mascalculador/shared";
 import { getActiveObraName } from "../lib/storage";
 import { computoObraActiva, type FamiliaComputo } from "../lib/computo-obra";
@@ -34,15 +35,10 @@ export default function ComputosObraScreen() {
 
   return (
     <MainLayout>
-      <header>
-        <h1 className="text-xl font-semibold text-text">
-          Cómputos — {obraName}
-        </h1>
-        <p className="text-sm text-text-muted">
-          Resumen de hormigón (m³) y acero (metros lineales y kg) discriminado
-          por diámetro, para todos los elementos guardados de la obra.
-        </p>
-      </header>
+      <ScreenHeader
+        title={`Cómputos — ${obraName}`}
+        subtitle="Resumen de hormigón (m³) y acero (metros lineales y kg) discriminado por diámetro, para todos los elementos guardados de la obra."
+      />
 
       {vacia && (
         <section className="bg-surface rounded-xl border border-border p-8 text-center">

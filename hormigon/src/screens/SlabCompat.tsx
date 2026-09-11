@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import ScreenHeader from "../components/ScreenHeader";
 import { useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import {
@@ -169,30 +170,26 @@ export default function SlabCompat() {
 
   return (
     <MainLayout>
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-text">
-            Compatibilizar Losas
-          </h1>
-          <p className="text-sm text-text-muted">
-            CIRSOC 201-05 — Compatibilización de apoyos
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => navigate("/slab-compats")}
-            className="text-sm bg-surface-alt border-border hover:bg-surface text-text-muted"
-          >
-            Volver a Apoyos losas
-          </button>
-          <button
-            onClick={() => navigate("/slab")}
-            className="text-sm bg-surface-alt border-border hover:bg-surface text-text-muted"
-          >
-            Calcular losas
-          </button>
-        </div>
-      </header>
+      <ScreenHeader
+        title="Compatibilizar Losas"
+        subtitle="CIRSOC 201-05 — Compatibilización de apoyos"
+        actions={
+          <>
+            <button
+              onClick={() => navigate("/slab-compats")}
+              className="rounded-lg border border-border bg-surface px-3.5 py-2 text-sm font-semibold text-text-muted transition-colors hover:bg-surface-alt hover:text-text active:translate-y-px"
+            >
+              Volver a Apoyos losas
+            </button>
+            <button
+              onClick={() => navigate("/slab")}
+              className="rounded-lg border border-border bg-surface px-3.5 py-2 text-sm font-semibold text-text-muted transition-colors hover:bg-surface-alt hover:text-text active:translate-y-px"
+            >
+              Calcular losas
+            </button>
+          </>
+        }
+      />
 
       {savedSlabs.length < 2 ? (
         <div className="bg-surface rounded-xl border border-border p-8 text-center">
@@ -206,9 +203,7 @@ export default function SlabCompat() {
       ) : (
         <>
           <section className="bg-surface rounded-xl border border-border p-5">
-            <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
-              Seleccionar losas
-            </h2>
+            <h2 className="section-title mb-3">Seleccionar losas</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <label className="flex flex-col gap-1">
                 <span className="text-xs text-text-muted">Losa A</span>
@@ -261,9 +256,7 @@ export default function SlabCompat() {
 
           {detection && (
             <section className="bg-surface rounded-xl border border-border p-5">
-              <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
-                Detección de borde
-              </h2>
+              <h2 className="section-title mb-3">Detección de borde</h2>
               <p className="text-sm text-text-muted mb-3">
                 {detection.message}
               </p>
@@ -333,9 +326,7 @@ export default function SlabCompat() {
 
           {result && (
             <section className="bg-surface rounded-xl border border-border p-5">
-              <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
-                Resultado
-              </h2>
+              <h2 className="section-title mb-3">Resultado</h2>
               <div
                 className={`p-4 rounded-lg text-sm ${result.compatOK ? "bg-success/10 text-success" : "bg-warning/10 text-warning"}`}
               >

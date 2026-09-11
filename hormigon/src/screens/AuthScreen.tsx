@@ -94,7 +94,7 @@ export default function AuthScreen({
   }
 
   const inputClass =
-    "w-full bg-surface-alt border border-border rounded px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:border-primary";
+    "auth-field w-full bg-surface-alt border border-border rounded px-3 py-2 text-sm text-text placeholder:text-text-muted focus:outline-none focus:border-primary";
 
   return (
     <div className="min-h-screen bg-bg text-text flex items-center justify-center px-4">

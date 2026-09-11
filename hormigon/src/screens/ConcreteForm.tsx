@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef } from "react";
+import ScreenHeader from "../components/ScreenHeader";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import { SavedBeams } from "@mascalculador/shared";
@@ -339,47 +340,29 @@ export default function ConcreteForm() {
 
   return (
     <MainLayout>
-      <header className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
-          <svg
-            className="w-5 h-5 text-primary"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
+      <ScreenHeader
+        title="Dimensionado de Vigas"
+        subtitle="CIRSOC 201-05"
+        badge={
+          loadedSaveName
+            ? {
+                label: /^\d+$/.test(loadedSaveName)
+                  ? `Viga Nº ${loadedSaveName}`
+                  : loadedSaveName,
+                tone: "saved",
+              }
+            : { label: "Sin guardar", tone: "unsaved" }
+        }
+        actions={
+          <button
+            type="button"
+            onClick={handleNew}
+            className="rounded-lg border border-border bg-surface px-3.5 py-2 text-sm font-semibold text-text-muted transition-colors hover:bg-surface-alt hover:text-text active:translate-y-px"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 7h6m-6 4h6m-6 4h6M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"
-            />
-          </svg>
-        </div>
-        <div>
-          <h1 className="text-xl font-semibold text-text">
-            Dimensionado de Vigas
-          </h1>
-          {loadedSaveName ? (
-            <span className="inline-flex items-center mt-1 text-sm font-semibold text-primary bg-primary/10 border border-primary/30 px-2.5 py-0.5 rounded-full">
-              {/^\d+$/.test(loadedSaveName)
-                ? `Viga Nº ${loadedSaveName}`
-                : loadedSaveName}
-            </span>
-          ) : (
-            <span className="inline-flex items-center mt-1 text-sm font-semibold text-warning bg-warning/10 border border-warning/30 px-2.5 py-0.5 rounded-full">
-              Sin guardar
-            </span>
-          )}
-        </div>
-        <span className="ml-auto text-xs text-text-muted">CIRSOC 201-05</span>
-        <button
-          type="button"
-          onClick={handleNew}
-          className="text-sm bg-surface-alt border border-border text-text-muted px-3 py-1.5 rounded-lg hover:bg-surface hover:text-text transition-colors"
-        >
-          + Nueva
-        </button>
-      </header>
+            + Nueva
+          </button>
+        }
+      />
 
       <SavedBeams
         app="concrete"
@@ -432,9 +415,7 @@ export default function ConcreteForm() {
         className="flex flex-col gap-6"
       >
         <section className="bg-surface rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-            Viga
-          </h2>
+          <h2 className="section-title mb-4">Viga</h2>
           <div className="flex flex-col gap-4">
             <label className="flex flex-col gap-1.5">
               <span className="text-xs text-text-muted font-medium">
@@ -475,9 +456,7 @@ export default function ConcreteForm() {
 
         <div className="flex flex-col gap-6">
           <section className="bg-surface rounded-xl border border-border p-4">
-            <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-3">
-              Apoyos
-            </h2>
+            <h2 className="section-title mb-3">Apoyos</h2>
             <div className="flex flex-wrap gap-2">
               {supportTypes.map((type, i) => {
                 const isEnd = i === 0 || i === supportTypes.length - 1;
@@ -520,9 +499,7 @@ export default function ConcreteForm() {
 
           <section className="bg-surface rounded-xl border border-border p-5">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider">
-                Cargas D + L → U
-              </h2>
+              <h2 className="section-title">Cargas D + L → U</h2>
               <button
                 type="button"
                 onClick={addLoad}
@@ -851,9 +828,7 @@ export default function ConcreteForm() {
         </div>
 
         <section className="bg-surface rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-            Geometría
-          </h2>
+          <h2 className="section-title mb-4">Geometría</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 items-end">
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">

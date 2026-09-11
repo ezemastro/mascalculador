@@ -27,7 +27,11 @@
 }
 
 :root {
-  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  font-family:
+    "Inter",
+    system-ui,
+    -apple-system,
+    sans-serif;
   line-height: 1.5;
   font-weight: 400;
   color-scheme: dark;
@@ -89,6 +93,44 @@ input[type="text"]::placeholder {
   color: var(--color-text-muted);
 }
 
+/* Anchos máximos: los formularios de cálculo no necesitan cajas enormes.
+ * Se achica el espacio vacío, no la tipografía. */
+input[type="number"],
+input[type="text"],
+input:not([type]),
+input[readonly] {
+  max-width: 11rem;
+}
+
+select {
+  max-width: 18rem;
+}
+
+/* Login / registro: campos a ancho completo del formulario. */
+.theme-mastro .auth-field {
+  max-width: 100%;
+}
+
+/* Título de sección unificado: barra naranja de marca + sentence case. */
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25rem;
+  color: var(--color-text);
+}
+
+.section-title::before {
+  content: "";
+  width: 0.25rem;
+  height: 1rem;
+  border-radius: 9999px;
+  background: var(--color-brand);
+  flex: none;
+}
+
 button {
   border-radius: 0.5rem;
   border: 1px solid transparent;
@@ -123,10 +165,9 @@ button:focus-visible {
   }
 }
 
-/* ---- Identidad Mastropietro (alcance: módulo Cabezales) ----
- * El wrapper .theme-mastro redefine los tokens de Tailwind v4: las utilidades
- * (bg-surface, text-primary, border-border, …) toman estos valores dentro del
- * módulo sin afectar al resto de la app. */
+/* ---- Identidad Mastropietro (toda la app) ----
+ * Se aplica en <body class="theme-mastro">: redefine los tokens de Tailwind v4
+ * (bg-surface, text-primary, border-border, …) para toda la aplicación. */
 .theme-mastro {
   --color-page: #f6f3ee;
   --color-surface: #ffffff;
@@ -140,8 +181,10 @@ button:focus-visible {
   --color-danger-hover: #8c1d18;
   --color-success: #2f7d3b;
   --color-warning: #9a6700;
+  color-scheme: light;
   font-family: var(--font-display);
   color: var(--color-text);
+  background-color: var(--color-page);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -158,6 +201,7 @@ button:focus-visible {
     --color-danger-hover: #fca5a5;
     --color-success: #4ade80;
     --color-warning: #fbbf24;
+    color-scheme: dark;
   }
 }
 
@@ -169,8 +213,7 @@ button:focus-visible {
 .theme-mastro input[type="number"]:focus,
 .theme-mastro input[type="text"]:focus,
 .theme-mastro select:focus {
-  box-shadow: 0 0 0 3px
-    color-mix(in srgb, var(--color-brand) 22%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-brand) 22%, transparent);
 }
 
 .theme-mastro input[type="number"]:not([readonly]):not(:disabled):focus,
