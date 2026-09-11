@@ -35,6 +35,31 @@ function Badge({ ok }: { ok: boolean }) {
   );
 }
 
+/** Título de sección: Cabezales usa el lenguaje de marca; Bases queda igual. */
+function SectionHeading({
+  variant,
+  children,
+}: {
+  variant: "base" | "cabezal";
+  children: React.ReactNode;
+}) {
+  if (variant === "cabezal") {
+    return (
+      <div className="mb-4 flex items-center gap-2.5">
+        <span className="h-4 w-1 rounded-full bg-brand" />
+        <h2 className="font-display text-sm font-semibold text-text">
+          {children}
+        </h2>
+      </div>
+    );
+  }
+  return (
+    <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
+      {children}
+    </h2>
+  );
+}
+
 function DataCard({
   label,
   value,
@@ -643,78 +668,145 @@ export default function BasesResults({
   return (
     <MainLayout>
       {/* ─── Header ─── */}
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="w-10 h-10 shrink-0 rounded-xl bg-primary/20 flex items-center justify-center">
-            <svg
-              className="w-5 h-5 text-primary"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
+      {isCabezal ? (
+        <header className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
+          <div className="h-1.5 bg-gradient-to-r from-brand to-[#2f7d3b]" />
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-4 p-5">
+            <img
+              src="/brand-logo.png"
+              alt="Marcelo Mastropietro Atelier — Ingeniería & Arquitectura"
+              className="h-14 w-auto rounded-lg bg-white px-3 py-2 ring-1 ring-black/5"
+            />
+            <div className="hidden h-12 w-px bg-border sm:block" />
+            <div className="min-w-0">
+              <h1 className="font-display text-xl font-bold tracking-tight text-text sm:text-2xl">
+                Cabezal {typeLabel} — L<sub>x</sub> {result.Lx} × L<sub>y</sub>{" "}
+                {result.Ly} × {result.h} cm
+              </h1>
+              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-muted">
+                <span>{`f'c = ${input.fc} MPa · fy = ${input.fy} MPa · σadm = ${input.qa} kN/m²`}</span>
+                {isViga && (
+                  <span>
+                    · Viga de fundación (L<sub>col</sub> = {input.Lcol ?? "—"}{" "}
+                    cm)
+                  </span>
+                )}
+                {isTensor &&
+                  (tensorPending ? (
+                    <span>· Tensor: completar datos ↓</span>
+                  ) : (
+                    <span>· Tensor</span>
+                  ))}
+                {savedName ? (
+                  <span className="inline-flex items-center rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-xs font-semibold text-success">
+                    {savedName}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center rounded-full border border-warning/30 bg-warning/10 px-2.5 py-1 text-xs font-semibold text-warning">
+                    Sin guardar
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <PrintButton />
+              <button
+                type="button"
+                onClick={handleSave}
+                className="rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-hover active:translate-y-px dark:text-[#241a10]"
+              >
+                Guardar resultados
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  navigate(formPath, {
+                    state: {
+                      ...(fullInput as unknown as Record<string, unknown>),
+                      loadedSaveId: savedId,
+                      loadedSaveName: savedName,
+                    },
+                  })
+                }
+                className="rounded-lg border border-border bg-surface px-3.5 py-2 text-sm font-semibold text-text-muted transition-colors hover:bg-surface-alt hover:text-text active:translate-y-px"
+              >
+                ← Volver
+              </button>
+            </div>
+          </div>
+        </header>
+      ) : (
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="w-10 h-10 shrink-0 rounded-xl bg-primary/20 flex items-center justify-center">
+              <svg
+                className="w-5 h-5 text-primary"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+                />
+              </svg>
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-xl font-semibold text-text">
+                Base {typeLabel} — L<sub>x</sub> {result.Lx} × L<sub>y</sub>{" "}
+                {result.Ly} × {result.h} cm
+                {savedName ? (
+                  <span className="ml-3 align-middle text-sm font-normal text-text-muted bg-surface-alt border border-border px-2.5 py-0.5 rounded-full">
+                    {savedName}
+                  </span>
+                ) : (
+                  <span className="ml-3 align-middle text-sm font-normal text-warning bg-warning/10 border border-warning/30 px-2.5 py-0.5 rounded-full">
+                    Sin guardar
+                  </span>
+                )}
+              </h1>
+              <p className="text-sm text-text-muted">
+                {`f'c = ${input.fc} MPa · fy = ${input.fy} MPa · σadm = ${input.qa} kN/m²`}
+                {isViga &&
+                  ` · Viga de fundación (Lcol${isMedianera && input.type === "medianera-x" ? ` = ${input.Lcol} cm` : ` = ${input.Lcol ?? "—"} cm`})`}
+                {isTensor &&
+                  (tensorPending
+                    ? " · Tensor: completar datos ↓"
+                    : " · Tensor")}
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={handleSave}
+              className="text-sm bg-primary text-white font-semibold px-3 py-1.5 rounded-lg hover:bg-primary-hover transition-colors"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
-              />
-            </svg>
+              Guardar resultados
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                navigate(formPath, {
+                  state: {
+                    ...(fullInput as unknown as Record<string, unknown>),
+                    loadedSaveId: savedId,
+                    loadedSaveName: savedName,
+                  },
+                })
+              }
+              className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-4 py-1.5 rounded-lg"
+            >
+              ← Volver
+            </button>
           </div>
-          <div className="min-w-0">
-            <h1 className="text-xl font-semibold text-text">
-              {isCabezal ? "Cabezal" : "Base"} {typeLabel} — L<sub>x</sub>{" "}
-              {result.Lx} × L<sub>y</sub> {result.Ly} × {result.h} cm
-              {savedName ? (
-                <span className="ml-3 align-middle text-sm font-normal text-text-muted bg-surface-alt border border-border px-2.5 py-0.5 rounded-full">
-                  {savedName}
-                </span>
-              ) : (
-                <span className="ml-3 align-middle text-sm font-normal text-warning bg-warning/10 border border-warning/30 px-2.5 py-0.5 rounded-full">
-                  Sin guardar
-                </span>
-              )}
-            </h1>
-            <p className="text-sm text-text-muted">
-              {`f'c = ${input.fc} MPa · fy = ${input.fy} MPa · σadm = ${input.qa} kN/m²`}
-              {isViga &&
-                ` · Viga de fundación (Lcol${isMedianera && input.type === "medianera-x" ? ` = ${input.Lcol} cm` : ` = ${input.Lcol ?? "—"} cm`})`}
-              {isTensor &&
-                (tensorPending ? " · Tensor: completar datos ↓" : " · Tensor")}
-            </p>
-          </div>
-        </div>
-        <div className="flex shrink-0 flex-wrap gap-1.5">
-          {isCabezal && <PrintButton />}
-          <button
-            type="button"
-            onClick={handleSave}
-            className="text-sm bg-primary text-white font-semibold px-3 py-1.5 rounded-lg hover:bg-primary-hover transition-colors"
-          >
-            Guardar resultados
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              navigate(formPath, {
-                state: {
-                  ...(fullInput as unknown as Record<string, unknown>),
-                  loadedSaveId: savedId,
-                  loadedSaveName: savedName,
-                },
-              })
-            }
-            className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-4 py-1.5 rounded-lg"
-          >
-            ← Volver
-          </button>
-        </div>
-      </header>
-
+        </header>
+      )}
       {/* ─── Resumen (datos + resultados) ─── */}
       <section className="bg-surface rounded-xl border border-border p-5">
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-          Resumen
-        </h2>
+        <SectionHeading variant={variant}>Resumen</SectionHeading>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <DataCard
             label="P<sub>u</sub>"
@@ -742,9 +834,9 @@ export default function BasesResults({
       {/* ─── Esquina — sistema de equilibrio ─── */}
       {isEsquina && input.subType === "viga-de-equilibrio" && (
         <section className="bg-surface rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
+          <SectionHeading variant={variant}>
             Esquina — vigas de equilibrio
-          </h2>
+          </SectionHeading>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             <DataCard
               label="e<sub>x</sub>"
@@ -782,9 +874,7 @@ export default function BasesResults({
 
       {/* ─── Verificaciones ─── */}
       <section className="bg-surface rounded-xl border border-border p-5">
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-          Verificaciones
-        </h2>
+        <SectionHeading variant={variant}>Verificaciones</SectionHeading>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <DataCard
             label="Punzonado V<sub>u</sub>"
@@ -840,9 +930,7 @@ export default function BasesResults({
 
       {/* ─── Armadura (adopción) ─── */}
       <section className="bg-surface rounded-xl border border-border p-5">
-        <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-          Armadura
-        </h2>
+        <SectionHeading variant={variant}>Armadura</SectionHeading>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <SteelEditor
             dir="X"
@@ -875,9 +963,9 @@ export default function BasesResults({
       {/* ─── Tensores (si se eligió) ─── */}
       {isTensor && (
         <section className="bg-surface rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
+          <SectionHeading variant={variant}>
             Dimensionado de tensores
-          </h2>
+          </SectionHeading>
           {tensorPending && (
             <button
               type="button"
@@ -1100,6 +1188,9 @@ export default function BasesResults({
       {/* ─── Medianera — viga de fundación ─── */}
       {isViga && (
         <section className="bg-surface rounded-xl border border-border p-5">
+          {isCabezal && (
+            <SectionHeading variant={variant}>Viga de fundación</SectionHeading>
+          )}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <DataCard
               label="Excentricidad (e)"

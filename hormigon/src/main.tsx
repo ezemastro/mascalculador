@@ -179,7 +179,12 @@ function HomeRedirect() {
 
 /** Resultados del módulo admin de cabezales (reusa la pantalla de Bases). */
 function CabezalResults() {
-  return <BasesResults variant="cabezal" />;
+  return (
+    <div className="theme-mastro relative">
+      <div className="fixed inset-0 -z-10 bg-page" aria-hidden="true" />
+      <BasesResults variant="cabezal" />
+    </div>
+  );
 }
 
 function Layout({

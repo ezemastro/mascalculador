@@ -75,25 +75,143 @@ const initialState: CabezalFormState = {
   cover: 7,
 };
 
+/** Tarjeta de sección del formulario, con título y ayuda opcional. */
+function Section({
+  title,
+  hint,
+  children,
+}: {
+  title: string;
+  hint?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-xl border border-border bg-surface shadow-sm">
+      <div className="flex items-center gap-2.5 border-b border-border px-5 py-3">
+        <span className="h-4 w-1 rounded-full bg-brand" />
+        <h2 className="font-display text-sm font-semibold text-text">
+          {title}
+        </h2>
+        {hint ? (
+          <span className="ml-auto text-[11px] text-text-muted">{hint}</span>
+        ) : null}
+      </div>
+      <div className="p-5">{children}</div>
+    </section>
+  );
+}
+
+/** Campo de formulario: etiqueta arriba, control, ayuda opcional abajo. */
+function Field({
+  label,
+  hint,
+  className,
+  children,
+}: {
+  label: React.ReactNode;
+  hint?: React.ReactNode;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className={`flex min-w-0 flex-col gap-1.5 ${className ?? ""}`}>
+      <span className="text-xs font-medium text-text-muted">{label}</span>
+      {children}
+      {hint ? (
+        <span className="text-[11px] leading-snug text-text-muted/80">
+          {hint}
+        </span>
+      ) : null}
+    </label>
+  );
+}
+
 /** Planta del cabezal: columna en la medianera (izq.) y columna que
  *  equilibra unida por la viga de fundación. */
-function CabezalSketch() {
-  const stroke = "var(--color-text-muted, #9ca3af)";
-  const col = "var(--color-primary, #2563eb)";
+function CabezalDiagram({
+  lx,
+  ly,
+  lcol,
+}: {
+  lx: number;
+  ly: number;
+  lcol?: number;
+}) {
+  const dim = "var(--color-text-muted)";
+  const ink = "var(--color-text)";
+  const brand = "var(--color-brand)";
   return (
-    <svg width="72" height="40" viewBox="0 0 72 40" className="shrink-0">
+    <svg
+      viewBox="0 0 280 168"
+      className="w-full"
+      role="img"
+      aria-label="Planta del cabezal"
+    >
+      <line
+        x1="18"
+        y1="12"
+        x2="18"
+        y2="150"
+        stroke={dim}
+        strokeWidth="1"
+        strokeDasharray="4 3"
+      />
+      <text x="6" y="9" fontSize="9" fill={dim}>
+        Medianera
+      </text>
+
       <rect
-        x="4"
-        y="6"
-        width="28"
-        height="28"
+        x="18"
+        y="34"
+        width="70"
+        height="92"
         fill="none"
-        stroke={stroke}
+        stroke={ink}
         strokeWidth="1.5"
       />
-      <rect x="4" y="16" width="8" height="8" fill={col} />
-      <line x1="12" y1="20" x2="58" y2="20" stroke={stroke} strokeWidth="1.5" />
-      <rect x="54" y="16" width="8" height="8" fill={col} />
+      <rect x="18" y="62" width="30" height="36" fill={brand} />
+      <rect
+        x="48"
+        y="70"
+        width="160"
+        height="20"
+        fill={ink}
+        fillOpacity="0.12"
+        stroke={ink}
+        strokeWidth="1"
+      />
+      <rect x="208" y="66" width="30" height="28" fill={brand} />
+
+      <line x1="18" y1="140" x2="88" y2="140" stroke={dim} strokeWidth="1" />
+      <line x1="18" y1="136" x2="18" y2="144" stroke={dim} strokeWidth="1" />
+      <line x1="88" y1="136" x2="88" y2="144" stroke={dim} strokeWidth="1" />
+      <text x="53" y="136" fontSize="9" fill={dim} textAnchor="middle">
+        Lx {lx}
+      </text>
+
+      <line x1="33" y1="158" x2="223" y2="158" stroke={dim} strokeWidth="1" />
+      <line x1="33" y1="154" x2="33" y2="162" stroke={dim} strokeWidth="1" />
+      <line x1="223" y1="154" x2="223" y2="162" stroke={dim} strokeWidth="1" />
+      <text x="128" y="154" fontSize="9" fill={dim} textAnchor="middle">
+        Lcol {lcol ?? "—"}
+      </text>
+
+      <line x1="104" y1="34" x2="104" y2="126" stroke={dim} strokeWidth="1" />
+      <line x1="100" y1="34" x2="108" y2="34" stroke={dim} strokeWidth="1" />
+      <line x1="100" y1="126" x2="108" y2="126" stroke={dim} strokeWidth="1" />
+      <text
+        x="114"
+        y="80"
+        fontSize="9"
+        fill={dim}
+        textAnchor="middle"
+        transform="rotate(-90 114 80)"
+        stroke="var(--color-surface)"
+        strokeWidth="3"
+        paintOrder="stroke"
+      >
+        Ly {ly}
+      </text>
     </svg>
   );
 }
@@ -297,440 +415,569 @@ export default function CabezalForm() {
 
   return (
     <MainLayout>
-      <header className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
-          <CabezalSketch />
-        </div>
-        <div>
-          <h1 className="text-xl font-semibold text-text">
-            Vigas de fundación para cabezales
-          </h1>
-          {loadedSaveName ? (
-            <span className="inline-flex items-center mt-1 text-sm font-semibold text-primary bg-primary/10 border border-primary/30 px-2.5 py-0.5 rounded-full">
-              {loadedSaveName}
-            </span>
-          ) : (
-            <span className="inline-flex items-center mt-1 text-sm font-semibold text-warning bg-warning/10 border border-warning/30 px-2.5 py-0.5 rounded-full">
-              Sin guardar
-            </span>
-          )}
-        </div>
-        <span className="ml-auto text-xs text-text-muted">
-          CIRSOC 201 — módulo admin
-        </span>
-        <button
-          type="button"
-          onClick={handleSave}
-          className="text-sm bg-primary text-white font-semibold px-3 py-1.5 rounded-lg hover:bg-primary-hover transition-colors"
-        >
-          Guardar
-        </button>
-        <button
-          type="button"
-          onClick={handleNew}
-          className="text-sm bg-surface-alt border border-border text-text-muted px-3 py-1.5 rounded-lg hover:bg-surface hover:text-text transition-colors"
-        >
-          + Nueva
-        </button>
-      </header>
+      <div className="theme-mastro relative">
+        <div className="fixed inset-0 -z-10 bg-page" aria-hidden="true" />
 
-      <SavedBeams
-        app="concrete"
-        type="cabezal"
-        listSaves={() => getSavedBeams("cabezal")}
-        deleteSave={(id) => deleteSave(id)}
-        onLoad={handleLoadCabezal}
-        label="Cabezales guardados"
-      />
-
-      <form
-        onSubmit={handleSubmit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            const target = e.target as HTMLElement;
-            if (
-              target.tagName === "INPUT" &&
-              typeof target.blur === "function"
-            ) {
-              target.blur();
-            }
-          }
-        }}
-        className="flex flex-col gap-6"
-      >
-        {/* ── Suelo ─────────────────────────────────────────── */}
-        <section className="bg-surface rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-            Suelo
-          </h2>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">
-                σ<sub>adm</sub> (kN/m²)
-              </span>
-              <input
-                type="number"
-                step="1"
-                min="0"
-                value={state.qa || ""}
-                onKeyDown={handleCommaKey}
-                onChange={(e) =>
-                  setState((prev) => ({ ...prev, qa: Number(e.target.value) }))
-                }
+        <div className="flex flex-col gap-6">
+          <header className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
+            <div className="h-1.5 bg-gradient-to-r from-brand to-[#2f7d3b]" />
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-4 p-5">
+              <img
+                src="/brand-logo.png"
+                alt="Marcelo Mastropietro Atelier — Ingeniería & Arquitectura"
+                className="h-14 w-auto rounded-lg bg-white px-3 py-2 ring-1 ring-black/5"
               />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">
-                D<sub>f</sub> (m) — profundidad de la fundación
-              </span>
-              <input
-                type="number"
-                step="0.1"
-                min="0"
-                value={state.Df || ""}
-                onKeyDown={handleCommaKey}
-                onChange={(e) =>
-                  setState((prev) => ({ ...prev, Df: Number(e.target.value) }))
-                }
-              />
-            </label>
-          </div>
-        </section>
-
-        {/* ── Materiales ────────────────────────────────────── */}
-        <section className="bg-surface rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-            Materiales
-          </h2>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">
-                f'<sub>c</sub> (MPa)
-              </span>
-              <select
-                value={state.fc}
-                onChange={(e) =>
-                  setState((prev) => ({ ...prev, fc: Number(e.target.value) }))
-                }
-              >
-                <option value={20}>20 (H-20)</option>
-                <option value={25}>25 (H-25)</option>
-                <option value={30}>30 (H-30)</option>
-                <option value={35}>35 (H-35)</option>
-                <option value={40}>40 (H-40)</option>
-              </select>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">
-                f<sub>y</sub> (MPa)
-              </span>
-              <select
-                value={state.fy}
-                onChange={(e) =>
-                  setState((prev) => ({ ...prev, fy: Number(e.target.value) }))
-                }
-              >
-                <option value={420}>420 (ADN 420)</option>
-                <option value={500}>500 (ADN 500)</option>
-              </select>
-            </label>
-          </div>
-        </section>
-
-        {/* ── Columna en medianera ──────────────────────────── */}
-        <section className="bg-surface rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-            Columna que apoya en medianera
-          </h2>
-          <div className="mb-4">
-            <div className="flex items-baseline justify-between gap-2 mb-1">
-              <span className="text-xs font-semibold text-text">Columna</span>
-              <span className="text-xs text-text-muted">
-                Cargar columna guardada
-              </span>
+              <div className="hidden h-12 w-px bg-border sm:block" />
+              <div className="min-w-0">
+                <h1 className="font-display text-xl font-bold tracking-tight text-text sm:text-2xl">
+                  Vigas de fundación para cabezales
+                </h1>
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-text-muted">
+                    CIRSOC 201 · Hormigón armado
+                  </span>
+                  <span className="rounded-full border border-border px-2 py-0.5 text-[11px] font-medium text-text-muted">
+                    Módulo interno
+                  </span>
+                </div>
+              </div>
+              <div className="ml-auto flex flex-wrap items-center gap-2">
+                {loadedSaveName ? (
+                  <span className="inline-flex items-center rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-xs font-semibold text-success">
+                    {loadedSaveName}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center rounded-full border border-warning/30 bg-warning/10 px-2.5 py-1 text-xs font-semibold text-warning">
+                    Sin guardar
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  className="rounded-lg bg-primary px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-hover active:translate-y-px dark:text-[#241a10]"
+                >
+                  Guardar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleNew}
+                  className="rounded-lg border border-border bg-surface px-3.5 py-2 text-sm font-semibold text-text-muted transition-colors hover:bg-surface-alt hover:text-text active:translate-y-px"
+                >
+                  + Nueva
+                </button>
+              </div>
             </div>
-            <select
-              className="w-full"
-              defaultValue=""
-              onChange={(e) => {
-                if (e.target.value) handleLoadColumn(e.target.value);
+          </header>
+
+          <SavedBeams
+            app="concrete"
+            type="cabezal"
+            listSaves={() => getSavedBeams("cabezal")}
+            deleteSave={(id) => deleteSave(id)}
+            onLoad={handleLoadCabezal}
+            label="Cabezales guardados"
+          />
+
+          <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <form
+              id="cabezal-form"
+              onSubmit={handleSubmit}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  const target = e.target as HTMLElement;
+                  if (
+                    target.tagName === "INPUT" &&
+                    typeof target.blur === "function"
+                  ) {
+                    target.blur();
+                  }
+                }
               }}
+              className="flex flex-col gap-5"
             >
-              <option value="" disabled>
-                {savedColumns.length === 0
-                  ? "No hay columnas guardadas"
-                  : "Seleccionar columna guardada..."}
-              </option>
-              {savedColumns.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name} — P<sub>D</sub>={c.PD.toFixed(2)}, P<sub>L</sub>=
-                  {c.PL.toFixed(2)} kN, {c.cx}×{c.cy} cm
-                </option>
-              ))}
-            </select>
-            {columnName && (
-              <p className="text-xs text-primary mt-1">
-                Columna cargada: {columnName}
-              </p>
-            )}
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">
-                P<sub>D</sub> (kN)
-              </span>
-              <input
-                type="number"
-                step="1"
-                min="0"
-                value={state.PD || ""}
-                onKeyDown={handleCommaKey}
-                onChange={(e) =>
-                  setState((prev) => ({ ...prev, PD: Number(e.target.value) }))
-                }
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">
-                P<sub>L</sub> (kN)
-              </span>
-              <input
-                type="number"
-                step="1"
-                min="0"
-                value={state.PL || ""}
-                onKeyDown={handleCommaKey}
-                onChange={(e) =>
-                  setState((prev) => ({ ...prev, PL: Number(e.target.value) }))
-                }
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">
-                c<sub>x</sub> (cm)
-              </span>
-              <input
-                type="number"
-                step="1"
-                min="0"
-                value={state.cx || ""}
-                onKeyDown={handleCommaKey}
-                onChange={(e) =>
-                  setState((prev) => ({ ...prev, cx: Number(e.target.value) }))
-                }
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">
-                c<sub>y</sub> (cm)
-              </span>
-              <input
-                type="number"
-                step="1"
-                min="0"
-                value={state.cy || ""}
-                onKeyDown={handleCommaKey}
-                onChange={(e) =>
-                  setState((prev) => ({ ...prev, cy: Number(e.target.value) }))
-                }
-              />
-            </label>
-          </div>
-        </section>
+              {/* ── Suelo ─────────────────────────────────────────── */}
+              <Section title="Suelo">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <Field
+                    label={
+                      <>
+                        σ<sub>adm</sub> (kN/m²)
+                      </>
+                    }
+                  >
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={state.qa || ""}
+                      onKeyDown={handleCommaKey}
+                      onChange={(e) =>
+                        setState((prev) => ({
+                          ...prev,
+                          qa: Number(e.target.value),
+                        }))
+                      }
+                    />
+                  </Field>
+                  <Field
+                    label={
+                      <>
+                        D<sub>f</sub> (m) — profundidad de la fundación
+                      </>
+                    }
+                  >
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={state.Df || ""}
+                      onKeyDown={handleCommaKey}
+                      onChange={(e) =>
+                        setState((prev) => ({
+                          ...prev,
+                          Df: Number(e.target.value),
+                        }))
+                      }
+                    />
+                  </Field>
+                </div>
+              </Section>
 
-        {/* ── Cabezal ───────────────────────────────────────── */}
-        <section className="bg-surface rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-            Cabezal
-          </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">
-                L<sub>x</sub> (cm){" "}
-                <span className="text-text-muted/60">(sug. {geo.Lx})</span>
-              </span>
-              <input
-                type="number"
-                step="1"
-                min="0"
-                value={state.Lx ?? ""}
-                onKeyDown={handleCommaKey}
-                onChange={(e) =>
-                  setState((prev) => ({
-                    ...prev,
-                    Lx: e.target.value ? Number(e.target.value) : undefined,
-                  }))
-                }
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">
-                L<sub>y</sub> (cm){" "}
-                <span className="text-text-muted/60">(sug. {geo.Ly})</span>
-              </span>
-              <input
-                type="number"
-                step="1"
-                min="0"
-                value={state.Ly ?? ""}
-                onKeyDown={handleCommaKey}
-                onChange={(e) =>
-                  setState((prev) => ({
-                    ...prev,
-                    Ly: e.target.value ? Number(e.target.value) : undefined,
-                  }))
-                }
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">
-                h (cm){" "}
-                <span className="text-text-muted/60">
-                  (sug. {Math.round(geo.h)})
-                </span>
-              </span>
-              <input
-                type="number"
-                step="1"
-                min="0"
-                value={state.h ?? ""}
-                onKeyDown={handleCommaKey}
-                onChange={(e) =>
-                  setState((prev) => ({
-                    ...prev,
-                    h: e.target.value ? Number(e.target.value) : undefined,
-                  }))
-                }
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">
-                Talón h<sub>t</sub> (cm){" "}
-                <span className="text-text-muted/60">
-                  (sug. {Math.round(geo.hTalon)})
-                </span>
-              </span>
-              <input
-                type="number"
-                step="1"
-                min="0"
-                value={state.hTalon ?? ""}
-                onKeyDown={handleCommaKey}
-                onChange={(e) =>
-                  setState((prev) => ({
-                    ...prev,
-                    hTalon: e.target.value ? Number(e.target.value) : undefined,
-                  }))
-                }
-              />
-            </label>
+              {/* ── Materiales ────────────────────────────────────── */}
+              <Section title="Materiales">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <Field
+                    label={
+                      <>
+                        f'<sub>c</sub> (MPa)
+                      </>
+                    }
+                  >
+                    <select
+                      value={state.fc}
+                      onChange={(e) =>
+                        setState((prev) => ({
+                          ...prev,
+                          fc: Number(e.target.value),
+                        }))
+                      }
+                    >
+                      <option value={20}>20 (H-20)</option>
+                      <option value={25}>25 (H-25)</option>
+                      <option value={30}>30 (H-30)</option>
+                      <option value={35}>35 (H-35)</option>
+                      <option value={40}>40 (H-40)</option>
+                    </select>
+                  </Field>
+                  <Field
+                    label={
+                      <>
+                        f<sub>y</sub> (MPa)
+                      </>
+                    }
+                  >
+                    <select
+                      value={state.fy}
+                      onChange={(e) =>
+                        setState((prev) => ({
+                          ...prev,
+                          fy: Number(e.target.value),
+                        }))
+                      }
+                    >
+                      <option value={420}>420 (ADN 420)</option>
+                      <option value={500}>500 (ADN 500)</option>
+                    </select>
+                  </Field>
+                </div>
+              </Section>
+
+              {/* ── Columna en medianera ──────────────────────────── */}
+              <Section title="Columna que apoya en medianera">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <Field
+                    label="Columna guardada"
+                    className="sm:col-span-2 lg:col-span-4"
+                    hint={
+                      columnName ? (
+                        <span className="font-medium text-brand">
+                          Cargada: {columnName}
+                        </span>
+                      ) : (
+                        "Opcional: trae PD, PL, cx y cy de una columna calculada."
+                      )
+                    }
+                  >
+                    <select
+                      className="w-full"
+                      defaultValue=""
+                      onChange={(e) => {
+                        if (e.target.value) handleLoadColumn(e.target.value);
+                      }}
+                    >
+                      <option value="" disabled>
+                        {savedColumns.length === 0
+                          ? "No hay columnas guardadas"
+                          : "Seleccionar columna guardada..."}
+                      </option>
+                      {savedColumns.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} — P<sub>D</sub>={c.PD.toFixed(2)}, P
+                          <sub>L</sub>={c.PL.toFixed(2)} kN, {c.cx}×{c.cy} cm
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field
+                    label={
+                      <>
+                        P<sub>D</sub> (kN)
+                      </>
+                    }
+                  >
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={state.PD || ""}
+                      onKeyDown={handleCommaKey}
+                      onChange={(e) =>
+                        setState((prev) => ({
+                          ...prev,
+                          PD: Number(e.target.value),
+                        }))
+                      }
+                    />
+                  </Field>
+                  <Field
+                    label={
+                      <>
+                        P<sub>L</sub> (kN)
+                      </>
+                    }
+                  >
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={state.PL || ""}
+                      onKeyDown={handleCommaKey}
+                      onChange={(e) =>
+                        setState((prev) => ({
+                          ...prev,
+                          PL: Number(e.target.value),
+                        }))
+                      }
+                    />
+                  </Field>
+                  <Field
+                    label={
+                      <>
+                        c<sub>x</sub> (cm)
+                      </>
+                    }
+                  >
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={state.cx || ""}
+                      onKeyDown={handleCommaKey}
+                      onChange={(e) =>
+                        setState((prev) => ({
+                          ...prev,
+                          cx: Number(e.target.value),
+                        }))
+                      }
+                    />
+                  </Field>
+                  <Field
+                    label={
+                      <>
+                        c<sub>y</sub> (cm)
+                      </>
+                    }
+                  >
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={state.cy || ""}
+                      onKeyDown={handleCommaKey}
+                      onChange={(e) =>
+                        setState((prev) => ({
+                          ...prev,
+                          cy: Number(e.target.value),
+                        }))
+                      }
+                    />
+                  </Field>
+                </div>
+              </Section>
+
+              {/* ── Cabezal ───────────────────────────────────────── */}
+              <Section title="Cabezal">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <Field
+                    label={
+                      <>
+                        L<sub>x</sub> (cm)
+                      </>
+                    }
+                    hint={`Sugerido ${geo.Lx}`}
+                  >
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      placeholder={String(geo.Lx)}
+                      value={state.Lx ?? ""}
+                      onKeyDown={handleCommaKey}
+                      onChange={(e) =>
+                        setState((prev) => ({
+                          ...prev,
+                          Lx: e.target.value
+                            ? Number(e.target.value)
+                            : undefined,
+                        }))
+                      }
+                    />
+                  </Field>
+                  <Field
+                    label={
+                      <>
+                        L<sub>y</sub> (cm)
+                      </>
+                    }
+                    hint={`Sugerido ${geo.Ly}`}
+                  >
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      placeholder={String(geo.Ly)}
+                      value={state.Ly ?? ""}
+                      onKeyDown={handleCommaKey}
+                      onChange={(e) =>
+                        setState((prev) => ({
+                          ...prev,
+                          Ly: e.target.value
+                            ? Number(e.target.value)
+                            : undefined,
+                        }))
+                      }
+                    />
+                  </Field>
+                  <Field label="h (cm)" hint={`Sugerido ${Math.round(geo.h)}`}>
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      placeholder={String(Math.round(geo.h))}
+                      value={state.h ?? ""}
+                      onKeyDown={handleCommaKey}
+                      onChange={(e) =>
+                        setState((prev) => ({
+                          ...prev,
+                          h: e.target.value
+                            ? Number(e.target.value)
+                            : undefined,
+                        }))
+                      }
+                    />
+                  </Field>
+                  <Field
+                    label={
+                      <>
+                        Talón h<sub>t</sub> (cm)
+                      </>
+                    }
+                    hint={`Sugerido ${Math.round(geo.hTalon)}`}
+                  >
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      placeholder={String(Math.round(geo.hTalon))}
+                      value={state.hTalon ?? ""}
+                      onKeyDown={handleCommaKey}
+                      onChange={(e) =>
+                        setState((prev) => ({
+                          ...prev,
+                          hTalon: e.target.value
+                            ? Number(e.target.value)
+                            : undefined,
+                        }))
+                      }
+                    />
+                  </Field>
+                </div>
+                <p className="mt-4 text-[11px] leading-snug text-text-muted">
+                  Vacío = dimensión automática del motor. Sugerido: {geo.Lx}×
+                  {geo.Ly}×{Math.round(geo.h)} cm.
+                </p>
+              </Section>
+
+              {/* ── Viga de fundación ─────────────────────────────── */}
+              <Section title="Viga de fundación">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <Field
+                    label={<>b viga (cm)</>}
+                    hint={
+                      <>
+                        Vacío = máx(c<sub>y</sub>, 20)
+                      </>
+                    }
+                  >
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={state.bViga ?? ""}
+                      onKeyDown={handleCommaKey}
+                      onChange={(e) =>
+                        setState((prev) => ({
+                          ...prev,
+                          bViga: e.target.value
+                            ? Number(e.target.value)
+                            : undefined,
+                        }))
+                      }
+                    />
+                  </Field>
+                  <Field
+                    label={<>h viga (cm)</>}
+                    hint="Vacío = sugerida por flexión"
+                  >
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={state.hViga ?? ""}
+                      onKeyDown={handleCommaKey}
+                      onChange={(e) =>
+                        setState((prev) => ({
+                          ...prev,
+                          hViga: e.target.value
+                            ? Number(e.target.value)
+                            : undefined,
+                        }))
+                      }
+                    />
+                  </Field>
+                  <Field label="Recubrimiento (cm)">
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={state.cover ?? 7}
+                      onKeyDown={handleCommaKey}
+                      onChange={(e) =>
+                        setState((prev) => ({
+                          ...prev,
+                          cover: e.target.value
+                            ? Number(e.target.value)
+                            : undefined,
+                        }))
+                      }
+                    />
+                  </Field>
+                </div>
+              </Section>
+
+              {/* ── Columna que equilibra ─────────────────────────── */}
+              <Section title="Columna que equilibra">
+                <div className="max-w-xs">
+                  <Field
+                    label={
+                      <>
+                        L<sub>col</sub> (cm)
+                      </>
+                    }
+                    hint="Distancia entre ejes de columnas."
+                  >
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={state.Lcol ?? ""}
+                      onKeyDown={handleCommaKey}
+                      onChange={(e) =>
+                        setState((prev) => ({
+                          ...prev,
+                          Lcol: e.target.value
+                            ? Number(e.target.value)
+                            : undefined,
+                        }))
+                      }
+                    />
+                  </Field>
+                </div>
+                <p className="mt-4 text-[11px] leading-snug text-text-muted">
+                  La viga re-centra la resultante: R<sub>u</sub> = P<sub>u</sub>
+                  ·e / (L<sub>col</sub> − e).
+                </p>
+              </Section>
+            </form>
+
+            <aside className="flex flex-col gap-4 xl:sticky xl:top-6">
+              <div className="rounded-xl border border-border bg-surface p-4 shadow-sm">
+                <div className="mb-2 flex items-center gap-2.5">
+                  <span className="h-4 w-1 rounded-full bg-brand" />
+                  <h2 className="font-display text-sm font-semibold text-text">
+                    Vista previa
+                  </h2>
+                  <span className="ml-auto text-[11px] text-text-muted">
+                    automática
+                  </span>
+                </div>
+                <CabezalDiagram
+                  lx={Math.round(state.Lx ?? geo.Lx)}
+                  ly={Math.round(state.Ly ?? geo.Ly)}
+                  lcol={state.Lcol ? Math.round(state.Lcol) : undefined}
+                />
+                <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-border pt-3 text-xs">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <dt className="text-text-muted">Lx</dt>
+                    <dd className="font-semibold tabular-nums text-text">
+                      {Math.round(state.Lx ?? geo.Lx)} cm
+                    </dd>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <dt className="text-text-muted">Ly</dt>
+                    <dd className="font-semibold tabular-nums text-text">
+                      {Math.round(state.Ly ?? geo.Ly)} cm
+                    </dd>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <dt className="text-text-muted">h</dt>
+                    <dd className="font-semibold tabular-nums text-text">
+                      {Math.round(state.h ?? geo.h)} cm
+                    </dd>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <dt className="text-text-muted">Talón</dt>
+                    <dd className="font-semibold tabular-nums text-text">
+                      {Math.round(state.hTalon ?? geo.hTalon)} cm
+                    </dd>
+                  </div>
+                </dl>
+                <p className="mt-3 text-[11px] leading-snug text-text-muted">
+                  Los campos vacíos adoptan la dimensión automática del motor.
+                </p>
+              </div>
+              <button
+                type="submit"
+                form="cabezal-form"
+                className="w-full rounded-xl bg-primary px-5 py-3 font-display text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-hover active:translate-y-px dark:text-[#241a10]"
+              >
+                Dimensionar cabezal y viga
+              </button>
+            </aside>
           </div>
-          <p className="text-xs text-text-muted mt-2">
-            Vacío = dimensión automática del motor. Sugerido: {geo.Lx}×{geo.Ly}×
-            {Math.round(geo.h)} cm.
-          </p>
-        </section>
-
-        {/* ── Viga de fundación ─────────────────────────────── */}
-        <section className="bg-surface rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-            Viga de fundación
-          </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">
-                b viga (cm) — vacío = máx(c<sub>y</sub>, 20)
-              </span>
-              <input
-                type="number"
-                step="1"
-                min="0"
-                value={state.bViga ?? ""}
-                onKeyDown={handleCommaKey}
-                onChange={(e) =>
-                  setState((prev) => ({
-                    ...prev,
-                    bViga: e.target.value ? Number(e.target.value) : undefined,
-                  }))
-                }
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">
-                h viga (cm) — vacío = sugerida por flexión
-              </span>
-              <input
-                type="number"
-                step="1"
-                min="0"
-                value={state.hViga ?? ""}
-                onKeyDown={handleCommaKey}
-                onChange={(e) =>
-                  setState((prev) => ({
-                    ...prev,
-                    hViga: e.target.value ? Number(e.target.value) : undefined,
-                  }))
-                }
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">
-                Recubrimiento (cm)
-              </span>
-              <input
-                type="number"
-                step="1"
-                min="0"
-                value={state.cover ?? 7}
-                onKeyDown={handleCommaKey}
-                onChange={(e) =>
-                  setState((prev) => ({
-                    ...prev,
-                    cover: e.target.value ? Number(e.target.value) : undefined,
-                  }))
-                }
-              />
-            </label>
-          </div>
-        </section>
-
-        {/* ── Columna que equilibra ─────────────────────────── */}
-        <section className="bg-surface rounded-xl border border-border p-5">
-          <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
-            Columna que equilibra
-          </h2>
-          <label className="flex flex-col gap-1 max-w-xs">
-            <span className="text-xs text-text-muted">
-              L<sub>col</sub> (cm) — distancia entre ejes de columnas
-            </span>
-            <input
-              type="number"
-              step="1"
-              min="0"
-              value={state.Lcol ?? ""}
-              onKeyDown={handleCommaKey}
-              onChange={(e) =>
-                setState((prev) => ({
-                  ...prev,
-                  Lcol: e.target.value ? Number(e.target.value) : undefined,
-                }))
-              }
-            />
-          </label>
-          <p className="text-xs text-text-muted mt-2">
-            La viga re-centra la resultante: R<sub>u</sub> = P<sub>u</sub>·e /
-            (L<sub>col</sub> − e).
-          </p>
-        </section>
-
-        <button
-          type="submit"
-          className="self-center bg-primary text-white font-semibold px-6 py-2.5 rounded-lg hover:bg-primary-hover transition-colors"
-        >
-          Dimensionar cabezal y viga
-        </button>
-      </form>
+        </div>
+      </div>
     </MainLayout>
   );
 }

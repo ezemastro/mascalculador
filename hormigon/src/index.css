@@ -1,6 +1,14 @@
 @import "tailwindcss";
 @import "mafs/core.css";
 
+@font-face {
+  font-family: "Raleway";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url("/fonts/raleway-latin.woff2") format("woff2");
+}
+
 @theme {
   --color-surface: #1e1e2e;
   --color-surface-alt: #2a2a3c;
@@ -13,6 +21,9 @@
   --color-text-muted: #9090b0;
   --color-success: #4ade80;
   --color-warning: #fbbf24;
+  --color-brand: #e07611;
+  --color-page: #141420;
+  --font-display: "Raleway", system-ui, -apple-system, sans-serif;
 }
 
 :root {
@@ -112,6 +123,62 @@ button:focus-visible {
   }
 }
 
+/* ---- Identidad Mastropietro (alcance: módulo Cabezales) ----
+ * El wrapper .theme-mastro redefine los tokens de Tailwind v4: las utilidades
+ * (bg-surface, text-primary, border-border, …) toman estos valores dentro del
+ * módulo sin afectar al resto de la app. */
+.theme-mastro {
+  --color-page: #f6f3ee;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f5f1eb;
+  --color-border: #e4ddd2;
+  --color-primary: #b05a09;
+  --color-primary-hover: #8f4a07;
+  --color-text: #262220;
+  --color-text-muted: #6e675e;
+  --color-danger: #b3261e;
+  --color-danger-hover: #8c1d18;
+  --color-success: #2f7d3b;
+  --color-warning: #9a6700;
+  font-family: var(--font-display);
+  color: var(--color-text);
+}
+
+@media (prefers-color-scheme: dark) {
+  .theme-mastro {
+    --color-page: #171512;
+    --color-surface: #211e1b;
+    --color-surface-alt: #2b2724;
+    --color-border: #3b3631;
+    --color-primary: #e07611;
+    --color-primary-hover: #f28c2b;
+    --color-text: #ece8e3;
+    --color-text-muted: #a79f95;
+    --color-danger: #f87171;
+    --color-danger-hover: #fca5a5;
+    --color-success: #4ade80;
+    --color-warning: #fbbf24;
+  }
+}
+
+.theme-mastro input,
+.theme-mastro select {
+  font-variant-numeric: tabular-nums;
+}
+
+.theme-mastro input[type="number"]:focus,
+.theme-mastro input[type="text"]:focus,
+.theme-mastro select:focus {
+  box-shadow: 0 0 0 3px
+    color-mix(in srgb, var(--color-brand) 22%, transparent);
+}
+
+.theme-mastro input[type="number"]:not([readonly]):not(:disabled):focus,
+.theme-mastro input[type="text"]:not([readonly]):not(:disabled):focus,
+.theme-mastro select:focus {
+  border-color: var(--color-primary);
+}
+
 @media print {
   :root {
     color-scheme: light;
@@ -126,6 +193,17 @@ button:focus-visible {
     --color-text-muted: #4b5563;
     --color-success: #15803d;
     --color-warning: #b45309;
+  }
+
+  .theme-mastro {
+    --color-page: #ffffff;
+    --color-surface: #ffffff;
+    --color-surface-alt: #ffffff;
+    --color-border: #c8ccd4;
+    --color-primary: #b05a09;
+    --color-primary-hover: #8f4a07;
+    --color-text: #111827;
+    --color-text-muted: #4b5563;
   }
 
   body {
