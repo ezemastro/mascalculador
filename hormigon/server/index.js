@@ -75,17 +75,27 @@ try {
   // ya existe
 }
 
-// Migración: is_admin (el primer usuario del server es el administrador).
+// Migración: is_admin. El administrador se define por nombre de usuario
+// (ADMIN_USERNAMES, por defecto marcmastro), no por ser el primero en
+// registrarse: así sólo esa cuenta accede a las pantallas de admin.
 try {
   db.exec("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0");
 } catch {
   // ya existe
 }
-db.exec(`
-  UPDATE users SET is_admin = 1
-  WHERE id = (SELECT id FROM users ORDER BY id LIMIT 1)
-    AND NOT EXISTS (SELECT 1 FROM users WHERE is_admin = 1);
-`);
+const ADMIN_USERNAMES = new Set(
+  String(process.env.ADMIN_USERNAMES ?? "marcmastro")
+    .split(",")
+    .map((name) => name.trim().toLowerCase())
+    .filter(Boolean),
+);
+if (ADMIN_USERNAMES.size > 0) {
+  const names = [...ADMIN_USERNAMES];
+  const placeholders = names.map(() => "?").join(", ");
+  db.prepare(
+    `UPDATE users SET is_admin = CASE WHEN username_lower IN (${placeholders}) THEN 1 ELSE 0 END`,
+  ).run(...names);
+}
 
 // Hash dummy para comparar en time constante cuando el usuario no existe:
 // evita que el login revele qué nombres están registrados.
@@ -129,6 +139,7 @@ const statements = {
   ),
   countUsers: db.prepare("SELECT COUNT(*) AS n FROM users"),
   makeAdmin: db.prepare("UPDATE users SET is_admin = 1 WHERE id = ?"),
+  setAdmin: db.prepare("UPDATE users SET is_admin = ? WHERE id = ?"),
   adminUsers: db.prepare(`
     SELECT u.id, u.username, u.email, u.is_admin, u.created_at,
            (SELECT COUNT(*) FROM kv k WHERE k.user_id = u.id) AS key_count
@@ -364,8 +375,10 @@ app.post("/api/auth/register", (req, res) => {
   const userId = Number(result.lastInsertRowid);
   const { n } = statements.countUsers.get();
   if (n === 1) {
-    statements.makeAdmin.run(userId);
     statements.claimKeysWithoutUser.run({ userId });
+  }
+  if (ADMIN_USERNAMES.has(lowered)) {
+    statements.makeAdmin.run(userId);
   }
   const token = createSession(userId);
   setSessionCookie(res, token);
@@ -389,6 +402,12 @@ app.post("/api/auth/login", (req, res) => {
       );
   if (!user || !ok) {
     return res.status(401).json({ error: "usuario o contraseña incorrectos" });
+  }
+  // Sincroniza el flag con la lista de administradores (cambios de env entre
+  // reinicios o cuentas creadas antes de la migración).
+  const shouldAdmin = ADMIN_USERNAMES.has(user.username_lower) ? 1 : 0;
+  if (user.is_admin !== shouldAdmin) {
+    statements.setAdmin.run(shouldAdmin, user.id);
   }
   const token = createSession(user.id);
   setSessionCookie(res, token);
@@ -583,4 +602,10 @@ if (fs.existsSync(DIST_DIR)) {
 app.listen(PORT, () => {
   console.log(`hormigon server listening on :${PORT}`);
   console.log(`SQLite database at ${path.join(DATA_DIR, "storage.db")}`);
+  const admins = db
+    .prepare("SELECT username FROM users WHERE is_admin = 1 ORDER BY username")
+    .all();
+  console.log(
+    `Administrador: ${admins.map((a) => a.username).join(", ") || "(sin definir)"}`,
+  );
 });
