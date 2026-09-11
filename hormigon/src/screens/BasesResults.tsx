@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import ScreenHeader from "../components/ScreenHeader";
 import { useLocation, useNavigate, Link } from "react-router";
 import { MainLayout, PrintButton } from "@mascalculador/shared";
-import { designBase } from "../lib/bases-calc";
+import { designBase, designVigaCabezal } from "../lib/bases-calc";
 import type { BaseInput } from "../lib/bases-calc";
 import { saveBeam, updateSave } from "../lib/storage";
 import { pickObraIfNeeded } from "../components/ObraPicker";
@@ -538,14 +538,32 @@ export default function BasesResults({
   const { result, calcError } = useMemo(() => {
     if (!fullInput) return { result: null, calcError: null };
     try {
-      return { result: designBase(fullInput), calcError: null };
+      // El módulo de cabezales dimensiona SOLO la viga de fundación: el
+      // cabezal sobre pilotes se calcula en una etapa posterior.
+      const result = isCabezal
+        ? designVigaCabezal({
+            PD: fullInput.PD,
+            PL: fullInput.PL,
+            cx: fullInput.cx,
+            cy: fullInput.cy,
+            fc: fullInput.fc,
+            fy: fullInput.fy,
+            Lx: fullInput.Lx ?? 0,
+            Ly: fullInput.Ly ?? 0,
+            Lcol: fullInput.Lcol ?? 0,
+            bViga: fullInput.bViga,
+            hViga: fullInput.hViga,
+            cover: fullInput.cover,
+          })
+        : designBase(fullInput);
+      return { result, calcError: null };
     } catch (e: unknown) {
       return {
         result: null,
         calcError: e instanceof Error ? e.message : String(e),
       };
     }
-  }, [fullInput]);
+  }, [fullInput, isCabezal]);
 
   // ─── No data guard ───
   if (!input) {
@@ -651,14 +669,24 @@ export default function BasesResults({
       {/* ─── Header ─── */}
       <ScreenHeader
         title={
-          <>
-            {isCabezal ? "Cabezal" : "Base"} {typeLabel} — L<sub>x</sub>{" "}
-            {result.Lx} × L<sub>y</sub> {result.Ly} × {result.h} cm
-          </>
+          isCabezal ? (
+            <>
+              Cabezal — L<sub>x</sub> {result.Lx} × L<sub>y</sub> {result.Ly} cm
+            </>
+          ) : (
+            <>
+              Base {typeLabel} — L<sub>x</sub> {result.Lx} × L<sub>y</sub>{" "}
+              {result.Ly} × {result.h} cm
+            </>
+          )
         }
         subtitle={
           <>
-            <span>{`f'c = ${input.fc} MPa · fy = ${input.fy} MPa · σadm = ${input.qa} kN/m²`}</span>
+            <span>
+              {isCabezal
+                ? `f'c = ${input.fc} MPa · fy = ${input.fy} MPa`
+                : `f'c = ${input.fc} MPa · fy = ${input.fy} MPa · σadm = ${input.qa} kN/m²`}
+            </span>
             {isViga && (
               <span>
                 · Viga de fundación (Lcol
@@ -709,32 +737,34 @@ export default function BasesResults({
           </>
         }
       />
-      {/* ─── Resumen (datos + resultados) ─── */}
-      <section className="bg-surface rounded-xl border border-border p-5">
-        <SectionHeading>Resumen</SectionHeading>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <DataCard
-            label="P<sub>u</sub>"
-            value={`${fmt(result.Pu, 1)}`}
-            sub="kN"
-          />
-          <DataCard
-            label="q<sub>u</sub>"
-            value={`${fmt(result.qu, 6)}`}
-            sub="kN/cm²"
-          />
-          <DataCard
-            label="Voladizo k<sub>x</sub>"
-            value={`${fmt(result.kx, 1)}`}
-            sub="cm"
-          />
-          <DataCard
-            label="Voladizo k<sub>y</sub>"
-            value={`${fmt(result.ky, 1)}`}
-            sub="cm"
-          />
-        </div>
-      </section>
+      {/* ─── Resumen (datos + resultados) — sólo bases ─── */}
+      {!isCabezal && (
+        <section className="bg-surface rounded-xl border border-border p-5">
+          <SectionHeading>Resumen</SectionHeading>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <DataCard
+              label="P<sub>u</sub>"
+              value={`${fmt(result.Pu, 1)}`}
+              sub="kN"
+            />
+            <DataCard
+              label="q<sub>u</sub>"
+              value={`${fmt(result.qu, 6)}`}
+              sub="kN/cm²"
+            />
+            <DataCard
+              label="Voladizo k<sub>x</sub>"
+              value={`${fmt(result.kx, 1)}`}
+              sub="cm"
+            />
+            <DataCard
+              label="Voladizo k<sub>y</sub>"
+              value={`${fmt(result.ky, 1)}`}
+              sub="cm"
+            />
+          </div>
+        </section>
+      )}
 
       {/* ─── Esquina — sistema de equilibrio ─── */}
       {isEsquina && input.subType === "viga-de-equilibrio" && (
@@ -775,93 +805,97 @@ export default function BasesResults({
         </section>
       )}
 
-      {/* ─── Verificaciones ─── */}
-      <section className="bg-surface rounded-xl border border-border p-5">
-        <SectionHeading>Verificaciones</SectionHeading>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          <DataCard
-            label="Punzonado V<sub>u</sub>"
-            value={`${fmt(result.Vu_punch, 1)} kN`}
-            sub={
-              <span>
-                φV<sub>c</sub> = {fmt(result.phiVc_punch, 1)} kN{" "}
-                <Badge ok={result.punchOK} />
-              </span>
-            }
-          />
-          <DataCard
-            label="Corte X V<sub>ux</sub>"
-            value={`${fmt(result.Vux, 1)} kN`}
-            sub={
-              <span>
-                φV<sub>c</sub> = {fmt(result.phiVc_beam_x, 1)} kN{" "}
-                <Badge ok={result.Vux <= result.phiVc_beam_x} />
-              </span>
-            }
-          />
-          <DataCard
-            label="Corte Y V<sub>uy</sub>"
-            value={`${fmt(result.Vuy, 1)} kN`}
-            sub={
-              <span>
-                φV<sub>c</sub> = {fmt(result.phiVc_beam_y, 1)} kN{" "}
-                <Badge ok={result.Vuy <= result.phiVc_beam_y} />
-              </span>
-            }
-          />
-          {isTensor && !tensorPending && (
-            <DataCard
-              label="Rozamiento (deslizamiento)"
-              value={
-                isEsquina
-                  ? `Tracción Tu,x = ${fmt(result.Tux ?? 0, 1)} · Tu,y = ${fmt(
-                      result.Tuy ?? 0,
-                      1,
-                    )} kN`
-                  : `Tracción Tu = ${fmt(tuFric, 1)} kN`
-              }
-              sub={
-                <span>
-                  Roce disponible PD·μ = {fmt(input.PD, 1)}·{fmt(muFric, 2)} ={" "}
-                  {fmt(rfFric, 1)} kN <Badge ok={result.FrictionOK} />
-                </span>
-              }
-            />
-          )}
-        </div>
-      </section>
+      {/* ─── Verificaciones + armadura de la zapata — sólo bases ─── */}
+      {!isCabezal && (
+        <>
+          <section className="bg-surface rounded-xl border border-border p-5">
+            <SectionHeading>Verificaciones</SectionHeading>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              <DataCard
+                label="Punzonado V<sub>u</sub>"
+                value={`${fmt(result.Vu_punch, 1)} kN`}
+                sub={
+                  <span>
+                    φV<sub>c</sub> = {fmt(result.phiVc_punch, 1)} kN{" "}
+                    <Badge ok={result.punchOK} />
+                  </span>
+                }
+              />
+              <DataCard
+                label="Corte X V<sub>ux</sub>"
+                value={`${fmt(result.Vux, 1)} kN`}
+                sub={
+                  <span>
+                    φV<sub>c</sub> = {fmt(result.phiVc_beam_x, 1)} kN{" "}
+                    <Badge ok={result.Vux <= result.phiVc_beam_x} />
+                  </span>
+                }
+              />
+              <DataCard
+                label="Corte Y V<sub>uy</sub>"
+                value={`${fmt(result.Vuy, 1)} kN`}
+                sub={
+                  <span>
+                    φV<sub>c</sub> = {fmt(result.phiVc_beam_y, 1)} kN{" "}
+                    <Badge ok={result.Vuy <= result.phiVc_beam_y} />
+                  </span>
+                }
+              />
+              {isTensor && !tensorPending && (
+                <DataCard
+                  label="Rozamiento (deslizamiento)"
+                  value={
+                    isEsquina
+                      ? `Tracción Tu,x = ${fmt(result.Tux ?? 0, 1)} · Tu,y = ${fmt(
+                          result.Tuy ?? 0,
+                          1,
+                        )} kN`
+                      : `Tracción Tu = ${fmt(tuFric, 1)} kN`
+                  }
+                  sub={
+                    <span>
+                      Roce disponible PD·μ = {fmt(input.PD, 1)}·{fmt(muFric, 2)}{" "}
+                      = {fmt(rfFric, 1)} kN <Badge ok={result.FrictionOK} />
+                    </span>
+                  }
+                />
+              )}
+            </div>
+          </section>
 
-      {/* ─── Armadura (adopción) ─── */}
-      <section className="bg-surface rounded-xl border border-border p-5">
-        <SectionHeading>Armadura</SectionHeading>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <SteelEditor
-            dir="X"
-            asNec={asxNec}
-            spread={result.Ly}
-            cover={cover}
-            diam={diamX}
-            qty={qtyX}
-            onDiam={setDiamX}
-            onQty={setQtyX}
-          />
-          <SteelEditor
-            dir="Y"
-            asNec={asyNec}
-            spread={result.Lx}
-            cover={cover}
-            diam={diamY}
-            qty={qtyY}
-            onDiam={setDiamY}
-            onQty={setQtyY}
-          />
-        </div>
-        <p className="text-xs text-text-muted mt-3">
-          As mín = {fmt(result.AsMin, 2)} cm² · Dirección X: As nec sobre L
-          <sub>x</sub> = {fmt(asxNec, 2)} cm² · Dirección Y: As nec sobre L
-          <sub>y</sub> = {fmt(asyNec, 2)} cm²
-        </p>
-      </section>
+          {/* ─── Armadura (adopción) ─── */}
+          <section className="bg-surface rounded-xl border border-border p-5">
+            <SectionHeading>Armadura</SectionHeading>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <SteelEditor
+                dir="X"
+                asNec={asxNec}
+                spread={result.Ly}
+                cover={cover}
+                diam={diamX}
+                qty={qtyX}
+                onDiam={setDiamX}
+                onQty={setQtyX}
+              />
+              <SteelEditor
+                dir="Y"
+                asNec={asyNec}
+                spread={result.Lx}
+                cover={cover}
+                diam={diamY}
+                qty={qtyY}
+                onDiam={setDiamY}
+                onQty={setQtyY}
+              />
+            </div>
+            <p className="text-xs text-text-muted mt-3">
+              As mín = {fmt(result.AsMin, 2)} cm² · Dirección X: As nec sobre L
+              <sub>x</sub> = {fmt(asxNec, 2)} cm² · Dirección Y: As nec sobre L
+              <sub>y</sub> = {fmt(asyNec, 2)} cm²
+            </p>
+          </section>
+        </>
+      )}
 
       {/* ─── Tensores (si se eligió) ─── */}
       {isTensor && (
@@ -1224,47 +1258,49 @@ export default function BasesResults({
         </section>
       )}
 
-      {/* ─── Cómputo de materiales ─── */}
-      <ComputoSection
-        computo={computoBase({
-          lxCm: result.Lx,
-          lyCm: result.Ly,
-          hCm: result.h,
-          heelCm: result.heel,
-          kxCm: result.kx,
-          kyCm: result.ky,
-          paletaType: input.type,
-          diamX,
-          qtyX,
-          diamY,
-          qtyY,
-          vigas: isEsquina
-            ? input.subType === "viga-de-equilibrio"
-              ? [
-                  {
-                    bCm: result.b_vigaX ?? 0,
-                    hCm: result.h_vigaX ?? 0,
-                    lengthCm: input.LcolX ?? 0,
-                  },
-                  {
-                    bCm: result.b_vigaY ?? 0,
-                    hCm: result.h_vigaY ?? 0,
-                    lengthCm: input.LcolY ?? 0,
-                  },
-                ]
-              : []
-            : isViga
-              ? [
-                  {
-                    bCm: result.b_viga,
-                    hCm: result.h_viga,
-                    lengthCm: input.Lcol ?? 0,
-                  },
-                ]
-              : [],
-        })}
-        note="El hormigón incluye la viga de fundación / vigas de equilibrio. El acero de vigas y tensores queda fuera (adopción de barras pendiente)."
-      />
+      {/* ─── Cómputo de materiales — sólo bases ─── */}
+      {!isCabezal && (
+        <ComputoSection
+          computo={computoBase({
+            lxCm: result.Lx,
+            lyCm: result.Ly,
+            hCm: result.h,
+            heelCm: result.heel,
+            kxCm: result.kx,
+            kyCm: result.ky,
+            paletaType: input.type,
+            diamX,
+            qtyX,
+            diamY,
+            qtyY,
+            vigas: isEsquina
+              ? input.subType === "viga-de-equilibrio"
+                ? [
+                    {
+                      bCm: result.b_vigaX ?? 0,
+                      hCm: result.h_vigaX ?? 0,
+                      lengthCm: input.LcolX ?? 0,
+                    },
+                    {
+                      bCm: result.b_vigaY ?? 0,
+                      hCm: result.h_vigaY ?? 0,
+                      lengthCm: input.LcolY ?? 0,
+                    },
+                  ]
+                : []
+              : isViga
+                ? [
+                    {
+                      bCm: result.b_viga,
+                      hCm: result.h_viga,
+                      lengthCm: input.Lcol ?? 0,
+                    },
+                  ]
+                : [],
+          })}
+          note="El hormigón incluye la viga de fundación / vigas de equilibrio. El acero de vigas y tensores queda fuera (adopción de barras pendiente)."
+        />
+      )}
     </MainLayout>
   );
 }

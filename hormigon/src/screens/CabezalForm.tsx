@@ -1,10 +1,11 @@
 // Módulo admin "Vigas de fundación para cabezales".
 //
-// Reutiliza el motor de base medianera + viga de fundación (designBase con
-// type "medianera-y" y subType "viga-de-fundacion"): el cabezal se comporta
-// como la base, la columna apoya en la medianera y Lcol ubica la columna que
-// equilibra. Los guardados usan el tipo propio "cabezal" para no mezclarse
-// con los de Bases.
+// Por ahora dimensiona SÓLO la viga de fundación (misma formulación que la
+// viga de una base medianera: Ru = Pu·e/(Lcol − e), diagrama, As y estribos).
+// El cabezal en sí (prisma sobre pilotes: cantidad/diámetro de pilotes,
+// reacciones, punzonado, flexión) queda pendiente para una próxima etapa, por
+// eso el módulo no pide suelo ni calcula la zapata. Los guardados usan el tipo
+// propio "cabezal" para no mezclarse con los de Bases.
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout, SavedBeams } from "@mascalculador/shared";
@@ -20,12 +21,6 @@ import {
 } from "../lib/storage";
 import { pickObraIfNeeded } from "../components/ObraPicker";
 import ScreenHeader from "../components/ScreenHeader";
-import {
-  suggestBaseDims,
-  suggestBaseHeight,
-  vuelos,
-  type BaseInput,
-} from "../lib/bases-calc";
 
 function handleCommaKey(e: React.KeyboardEvent<HTMLInputElement>) {
   if (e.key === ",") {
@@ -65,14 +60,17 @@ function getSavedColumns(): Array<{
 }
 
 const initialState: CabezalFormState = {
-  qa: 200,
-  Df: 1,
+  qa: 0,
+  Df: 0,
   PD: 500,
   PL: 300,
   cx: 30,
   cy: 30,
   fc: 25,
   fy: 420,
+  Lx: 220,
+  Ly: 440,
+  Lcol: 400,
   cover: 7,
 };
 
@@ -265,51 +263,6 @@ export default function CabezalForm() {
     });
   }, [state, columnId, columnName]);
 
-  // Vista previa: mismas sugerencias que el motor de bases.
-  const geo = useMemo(() => {
-    const input = {
-      qa: state.qa > 0 ? state.qa : 200,
-      Df: state.Df,
-      PD: Math.max(0, state.PD),
-      PL: Math.max(0, state.PL),
-      cx: state.cx,
-      cy: state.cy,
-      fc: state.fc,
-      fy: state.fy,
-      type: "medianera-y" as const,
-      subType: "viga-de-fundacion" as const,
-      Lx: state.Lx,
-      Ly: state.Ly,
-      Lcol: state.Lcol,
-      cover: state.cover ?? 7,
-      includeSelfWeight: true,
-    } as BaseInput;
-    const dims = suggestBaseDims(input);
-    const hgt = suggestBaseHeight(input, dims.Lx, dims.Ly);
-    const { kx, ky } = vuelos(input, dims.Lx, dims.Ly);
-    const kmin = Math.min(kx, ky);
-    return {
-      Lx: dims.Lx,
-      Ly: dims.Ly,
-      h: hgt.h,
-      hTalon: Math.max(25, (state.h ?? hgt.h) - kmin),
-    };
-  }, [
-    state.qa,
-    state.Df,
-    state.PD,
-    state.PL,
-    state.cx,
-    state.cy,
-    state.fc,
-    state.fy,
-    state.Lx,
-    state.Ly,
-    state.Lcol,
-    state.cover,
-    state.h,
-  ]);
-
   const savedColumns = useMemo(() => getSavedColumns(), []);
 
   function handleLoadColumn(id: string) {
@@ -400,6 +353,12 @@ export default function CabezalForm() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!state.Lx || !state.Ly || !state.Lcol) {
+      alert(
+        "Completá las dimensiones en planta del cabezal (Lx, Ly) y la distancia a la columna que equilibra (Lcol).",
+      );
+      return;
+    }
     navigate("/cabezales-results", {
       state: {
         input: {
@@ -479,54 +438,6 @@ export default function CabezalForm() {
             }}
             className="flex flex-col gap-5"
           >
-            {/* ── Suelo ─────────────────────────────────────────── */}
-            <Section title="Suelo">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field
-                  label={
-                    <>
-                      σ<sub>adm</sub> (kN/m²)
-                    </>
-                  }
-                >
-                  <input
-                    type="number"
-                    step="1"
-                    min="0"
-                    value={state.qa || ""}
-                    onKeyDown={handleCommaKey}
-                    onChange={(e) =>
-                      setState((prev) => ({
-                        ...prev,
-                        qa: Number(e.target.value),
-                      }))
-                    }
-                  />
-                </Field>
-                <Field
-                  label={
-                    <>
-                      D<sub>f</sub> (m) — profundidad de la fundación
-                    </>
-                  }
-                >
-                  <input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    value={state.Df || ""}
-                    onKeyDown={handleCommaKey}
-                    onChange={(e) =>
-                      setState((prev) => ({
-                        ...prev,
-                        Df: Number(e.target.value),
-                      }))
-                    }
-                  />
-                </Field>
-              </div>
-            </Section>
-
             {/* ── Materiales ────────────────────────────────────── */}
             <Section title="Materiales">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -708,13 +619,12 @@ export default function CabezalForm() {
                       L<sub>x</sub> (cm)
                     </>
                   }
-                  hint={`Sugerido ${geo.Lx}`}
+                  hint="Ancho del cabezal (dirección de la excentricidad)."
                 >
                   <input
                     type="number"
                     step="1"
                     min="0"
-                    placeholder={String(geo.Lx)}
                     value={state.Lx ?? ""}
                     onKeyDown={handleCommaKey}
                     onChange={(e) =>
@@ -731,13 +641,12 @@ export default function CabezalForm() {
                       L<sub>y</sub> (cm)
                     </>
                   }
-                  hint={`Sugerido ${geo.Ly}`}
+                  hint="Largo del cabezal en la dirección de la viga."
                 >
                   <input
                     type="number"
                     step="1"
                     min="0"
-                    placeholder={String(geo.Ly)}
                     value={state.Ly ?? ""}
                     onKeyDown={handleCommaKey}
                     onChange={(e) =>
@@ -748,51 +657,10 @@ export default function CabezalForm() {
                     }
                   />
                 </Field>
-                <Field label="h (cm)" hint={`Sugerido ${Math.round(geo.h)}`}>
-                  <input
-                    type="number"
-                    step="1"
-                    min="0"
-                    placeholder={String(Math.round(geo.h))}
-                    value={state.h ?? ""}
-                    onKeyDown={handleCommaKey}
-                    onChange={(e) =>
-                      setState((prev) => ({
-                        ...prev,
-                        h: e.target.value ? Number(e.target.value) : undefined,
-                      }))
-                    }
-                  />
-                </Field>
-                <Field
-                  label={
-                    <>
-                      Talón h<sub>t</sub> (cm)
-                    </>
-                  }
-                  hint={`Sugerido ${Math.round(geo.hTalon)}`}
-                >
-                  <input
-                    type="number"
-                    step="1"
-                    min="0"
-                    placeholder={String(Math.round(geo.hTalon))}
-                    value={state.hTalon ?? ""}
-                    onKeyDown={handleCommaKey}
-                    onChange={(e) =>
-                      setState((prev) => ({
-                        ...prev,
-                        hTalon: e.target.value
-                          ? Number(e.target.value)
-                          : undefined,
-                      }))
-                    }
-                  />
-                </Field>
               </div>
               <p className="mt-4 text-[11px] leading-snug text-text-muted">
-                Vacío = dimensión automática del motor. Sugerido: {geo.Lx}×
-                {geo.Ly}×{Math.round(geo.h)} cm.
+                Dimensiones en planta del cabezal (todavía no se calculan los
+                pilotes: el cabezal se dimensionará en una próxima etapa).
               </p>
             </Section>
 
@@ -910,38 +778,33 @@ export default function CabezalForm() {
                 </span>
               </div>
               <CabezalDiagram
-                lx={Math.round(state.Lx ?? geo.Lx)}
-                ly={Math.round(state.Ly ?? geo.Ly)}
+                lx={Math.round(state.Lx ?? 0)}
+                ly={Math.round(state.Ly ?? 0)}
                 lcol={state.Lcol ? Math.round(state.Lcol) : undefined}
               />
               <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-border pt-3 text-xs">
                 <div className="flex items-baseline justify-between gap-2">
                   <dt className="text-text-muted">Lx</dt>
                   <dd className="font-semibold tabular-nums text-text">
-                    {Math.round(state.Lx ?? geo.Lx)} cm
+                    {state.Lx ? `${Math.round(state.Lx)} cm` : "—"}
                   </dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-2">
                   <dt className="text-text-muted">Ly</dt>
                   <dd className="font-semibold tabular-nums text-text">
-                    {Math.round(state.Ly ?? geo.Ly)} cm
+                    {state.Ly ? `${Math.round(state.Ly)} cm` : "—"}
                   </dd>
                 </div>
                 <div className="flex items-baseline justify-between gap-2">
-                  <dt className="text-text-muted">h</dt>
+                  <dt className="text-text-muted">Lcol</dt>
                   <dd className="font-semibold tabular-nums text-text">
-                    {Math.round(state.h ?? geo.h)} cm
-                  </dd>
-                </div>
-                <div className="flex items-baseline justify-between gap-2">
-                  <dt className="text-text-muted">Talón</dt>
-                  <dd className="font-semibold tabular-nums text-text">
-                    {Math.round(state.hTalon ?? geo.hTalon)} cm
+                    {state.Lcol ? `${Math.round(state.Lcol)} cm` : "—"}
                   </dd>
                 </div>
               </dl>
               <p className="mt-3 text-[11px] leading-snug text-text-muted">
-                Los campos vacíos adoptan la dimensión automática del motor.
+                Sólo se dimensiona la viga de fundación. El cabezal sobre
+                pilotes queda para una próxima etapa.
               </p>
             </div>
             <button
@@ -949,7 +812,7 @@ export default function CabezalForm() {
               form="cabezal-form"
               className="w-full rounded-xl bg-primary px-5 py-3 font-display text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-hover active:translate-y-px dark:text-[#241a10]"
             >
-              Dimensionar cabezal y viga
+              Dimensionar viga de fundación
             </button>
           </aside>
         </div>

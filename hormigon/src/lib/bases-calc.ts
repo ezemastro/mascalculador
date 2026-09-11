@@ -874,54 +874,53 @@ function designCentrada(input: BaseInput, quOverride?: number): BaseResult {
 // Función de diseño — medianera viga de fundación (7 pasos)
 // ---------------------------------------------------------------------------
 
-function designVigaFundacion(input: BaseInput): BaseResult {
-  if (input.Lcol === undefined || input.Lcol <= 0) {
-    throw new Error(
-      "Para viga de fundación, se requiere la luz entre columnas (Lcol).",
-    );
-  }
+/** Resultado del bloque viga de fundación (sin la zapata/cabezal). */
+interface VigaBeamResult {
+  b_viga: number;
+  h_viga: number;
+  d_viga: number;
+  vigVuVol: number;
+  vigVuTramo: number;
+  vigPhiVc: number;
+  vigAvsReqVol: number;
+  vigAvsReqTramo: number;
+  vigAvsMin: number;
+  vigSmax: number;
+  Mnv: number;
+  As_sup: number;
+  As_inf: number;
+  mn_med: number;
+  ka_med: number;
+  steps: string[];
+  warnings: string[];
+}
 
-  // Esquema cerrado: el momento volcador de la columna excéntrica (Pu·e) se
-  // equilibra con la reacción vertical Ru que la viga transfiere a la zapata
-  // vecina, de modo que la presión bajo la zapata medianera queda uniforme:
-  //   Pu·e = Ru·(Lcol − e)  →  Ru = Pu·e/(Lcol − e)
-  //   qu = (Pu + Ru)/(Lx·Ly) — el suelo lleva la columna más la reacción.
-  const Pu = step2_Pu(input.PD, input.PL);
-  const dims0 = step1_Dimensions(input);
-  // Lados adoptados (los mismos que usa la zapata): si el usuario fijó Lx/Ly,
-  // el esquema cerrado se calcula con esos, no con los automáticos.
-  const Lx0 = input.Lx ?? dims0.Lx;
-  const Ly0 = input.Ly ?? dims0.Ly;
-  const Lcol = input.Lcol!;
-  const dimsE = medGeom(input, Lx0, Ly0);
-  const e = dimsE.e;
-  if (Lcol <= e) {
-    throw new Error(
-      "La luz entre columnas (Lcol) debe ser mayor que la excentricidad e.",
-    );
-  }
-  const Ru = (Pu * e) / (Lcol - e);
-  const quClosed = (Pu + Ru) / (Lx0 * Ly0);
-
-  // Zapata centrada con la presión del esquema cerrado
-  const centrada = designCentrada(input, quClosed);
-  const { Lx, Ly } = centrada;
+/**
+ * Bloque común de la viga de fundación (pasos V1–V7). NO incluye el
+ * dimensionado de la zapata/cabezal: el caller aporta Pu, e, la geometría en
+ * planta, la presión q y la luz Lcol. `elemento` sólo cambia los textos de la
+ * traza ("zapata" | "cabezal").
+ */
+function computeFoundationBeam(
+  input: BaseInput,
+  p: {
+    Pu: number;
+    e: number;
+    Ru: number;
+    Lx: number;
+    Ly: number;
+    qu: number;
+    Lcol: number;
+    elemento: string;
+  },
+): VigaBeamResult {
+  const { Pu, e, Ru, Lx, Ly, qu, Lcol, elemento } = p;
   const st: string[] = [];
   const wr: string[] = [];
-  const er: string[] = [];
-
-  st.push("=== BASE MEDIANERA — VIGA DE FUNDACIÓN — CIRSOC 201 ===");
-  st.push("");
-  st.push(
-    "La zapata se dimensiona a flexión/corte/punzonado con presión uniforme qu = (Pu + Ru)/(Lx·Ly).",
-  );
-  st.push(
-    "La viga de fundación transfiere a la zapata vecina la reacción Ru que re-centra la resultante.",
-  );
-  st.push("");
-
-  // Paso V1 — excentricidad de la columna respecto del centroide de la zapata
+  const dimsE = medGeom(input, Lx, Ly);
   const b_viga = input.bViga && input.bViga > 0 ? input.bViga : dimsE.bViga;
+
+  // Paso V1 — excentricidad de la columna respecto del centroide
   if (input.type === "medianera-x") {
     st.push(`V1. e = (Ly − cy)/2 = (${Ly} − ${input.cy})/2 = ${f1(e)} cm`);
   } else {
@@ -934,32 +933,31 @@ function designVigaFundacion(input: BaseInput): BaseResult {
   );
   st.push(`    (el par Pu·e = Ru·(Lcol − e) re-centra la resultante)`);
   st.push(
-    `    qu = (Pu + Ru) / (Lx·Ly) = (${f1(Pu)} + ${f1(Ru)}) / (${Lx}·${Ly}) = ${fmt(centrada.qu, 6)} kN/cm²`,
+    `    qu = (Pu + Ru) / (Lx·Ly) = (${f1(Pu)} + ${f1(Ru)}) / (${Lx}·${Ly}) = ${fmt(qu, 6)} kN/cm²`,
   );
 
   // Paso V3 — momento de la viga por su diagrama de cargas. La viga apoya
-  // sobre su zapata: recibe la presión del suelo hacia arriba (w = qu·ancho
-  // perpendicular) sobre el tramo apoyado (largo = lado de la zapata en la
+  // sobre su ${elemento}: recibe la presión del suelo hacia arriba (w = qu·ancho
+  // perpendicular) sobre el tramo apoyado (largo = lado del ${elemento} en la
   // dirección de la viga, medido desde el borde exterior) y cierra con Ru
   // abajo en la columna vecina. El momento de diseño (tracción arriba) es el
   // máximo del diagrama: en el corte nulo x* = Pu/w (si cae dentro del tramo
-  // apoyado) y en el borde de la zapata.
+  // apoyado) y en el borde del ${elemento}.
   const stripW = input.type === "medianera-x" ? Lx : Ly;
   const alongFtg = input.type === "medianera-x" ? Ly : Lx;
   const alongCol = input.type === "medianera-x" ? input.cy : input.cx;
-  const w = centrada.qu * stripW;
+  const w = qu * stripW;
   const xStar = Pu / w;
   const Mborde = (w * alongFtg * alongFtg) / 2 - Pu * (alongFtg - alongCol / 2);
   const MxStar = (w * xStar * xStar) / 2 - Pu * (xStar - alongCol / 2);
   const inRange = xStar > alongCol / 2 && xStar < alongFtg;
   const Mviga = Math.max(0, -(inRange ? Math.min(MxStar, Mborde) : Mborde));
   const Mnv = Mviga / 0.9;
-  const Mu = Pu * e;
   st.push(
-    `V3. Diagrama de la viga (x medido desde el borde exterior de la zapata):`,
+    `V3. Diagrama de la viga (x medido desde el borde exterior del ${elemento}):`,
   );
   st.push(
-    `    w = qu·ancho = ${fmt(centrada.qu, 6)}·${stripW} = ${f2(w)} kN/cm hacia arriba (tramo apoyado: largo ${f1(alongFtg)} cm)`,
+    `    w = qu·ancho = ${fmt(qu, 6)}·${stripW} = ${f2(w)} kN/cm hacia arriba (tramo apoyado: largo ${f1(alongFtg)} cm)`,
   );
   st.push(
     `    Mu volcador = Pu·e = ${f1(Pu)}·${f1(e)} = ${f1(Pu * e)} kN·cm — el diagrama descuenta el alivio de la presión del suelo.`,
@@ -971,7 +969,7 @@ function designVigaFundacion(input: BaseInput): BaseResult {
     );
   }
   st.push(
-    `    M(borde de zapata, x = ${f1(alongFtg)}) = w·lado²/2 − Pu·(lado−c/2) = ${f2(w)}·${f1(alongFtg)}²/2 − ${f1(Pu)}·(${f1(alongFtg)}−${f1(alongCol / 2)}) = ${f1(-Mborde)} kN·cm`,
+    `    M(borde del ${elemento}, x = ${f1(alongFtg)}) = w·lado²/2 − Pu·(lado−c/2) = ${f2(w)}·${f1(alongFtg)}²/2 − ${f1(Pu)}·(${f1(alongFtg)}−${f1(alongCol / 2)}) = ${f1(-Mborde)} kN·cm`,
   );
   st.push(
     `    Mviga = máx de los anteriores = ${f1(Mviga)} kN·cm (tracción arriba)`,
@@ -1041,19 +1039,19 @@ function designVigaFundacion(input: BaseInput): BaseResult {
   st.push(
     `    φVc = 0.75·b·d·√f'c/60 = 0.75·${b_viga}·${f1(d_viga)}·√${input.fc}/60 = ${f1(phiVc_vig)} kN`,
   );
-  st.push(`    Zona voladizo (cara de la columna, dentro de la zapata):`);
+  st.push(`    Zona voladizo (cara de la columna, dentro del ${elemento}):`);
   st.push(
     `    Vu = Pu − w·c = ${f1(Pu)} − ${f2(w)}·${f1(alongCol)} = ${f1(Vu_vig_vol)} kN ${Vu_vig_vol <= phiVc_vig ? "✓ ≤ φVc" : "✗ > φVc → estribos"}`,
   );
   st.push(
     `    Vs = (Vu − φVc)/0.75 = ${f1(Vs_vol)} kN → Av/s = Vs/(fy·d) = ${f2(Avs_req_vol)} cm²/m`,
   );
-  st.push(`    Zona tramo (después del borde de la zapata):`);
+  st.push(`    Zona tramo (después del borde del ${elemento}):`);
   st.push(
     `    Vu = w·lado − Pu = Ru = ${f1(Vu_vig_tramo)} kN ${Vu_vig_tramo <= phiVc_vig ? "✓ ≤ φVc" : "✗ > φVc → estribos"}`,
   );
   st.push(
-    `    Vs = (Vu − φVc)/0.75 = ${f1(Vs_tramo)} kN → Av/s = ${f2(Avs_req_tramo)} cm²/m`,
+    `    Vs = (Vu − φVc)/0.75 = ${f1(Vs_tramo)} kN → Av/s = Vs/(fy·d) = ${f2(Avs_req_tramo)} cm²/m`,
   );
   st.push(
     `    Av/s mín = max(0.0625·√f'c, 0.35)·b/fy = ${f2(AvsMin)} cm²/m | s_máx = ${f1(sMaxVig)} cm`,
@@ -1069,15 +1067,7 @@ function designVigaFundacion(input: BaseInput): BaseResult {
     );
   }
 
-  st.push("");
-  st.push(`=== RESUMEN VIGA DE FUNDACIÓN ===`);
-  st.push(`Base: ${Lx}×${Ly} cm | e = ${f1(e)} cm | Mu = ${f1(Mu)} kN·cm`);
-  st.push(
-    `Viga: ${b_viga}×${f1(h_viga)} cm | As_sup = ${f2(As_sup)} cm² | As_inf = ${f2(As_inf)} cm²`,
-  );
-
   return {
-    ...centrada,
     b_viga,
     h_viga,
     d_viga,
@@ -1088,14 +1078,97 @@ function designVigaFundacion(input: BaseInput): BaseResult {
     vigAvsReqTramo: Avs_req_tramo,
     vigAvsMin: AvsMin,
     vigSmax: sMaxVig,
-    e,
-    Mu,
-    Ru,
     Mnv,
     As_sup,
     As_inf,
     mn_med,
     ka_med,
+    steps: st,
+    warnings: wr,
+  };
+}
+
+function designVigaFundacion(input: BaseInput): BaseResult {
+  if (input.Lcol === undefined || input.Lcol <= 0) {
+    throw new Error(
+      "Para viga de fundación, se requiere la luz entre columnas (Lcol).",
+    );
+  }
+
+  // Esquema cerrado: el momento volcador de la columna excéntrica (Pu·e) se
+  // equilibra con la reacción vertical Ru que la viga transfiere a la zapata
+  // vecina, de modo que la presión bajo la zapata medianera queda uniforme:
+  //   Pu·e = Ru·(Lcol − e)  →  Ru = Pu·e/(Lcol − e)
+  //   qu = (Pu + Ru)/(Lx·Ly) — el suelo lleva la columna más la reacción.
+  const Pu = step2_Pu(input.PD, input.PL);
+  const dims0 = step1_Dimensions(input);
+  // Lados adoptados (los mismos que usa la zapata): si el usuario fijó Lx/Ly,
+  // el esquema cerrado se calcula con esos, no con los automáticos.
+  const Lx0 = input.Lx ?? dims0.Lx;
+  const Ly0 = input.Ly ?? dims0.Ly;
+  const Lcol = input.Lcol;
+  const dimsE = medGeom(input, Lx0, Ly0);
+  const e = dimsE.e;
+  if (Lcol <= e) {
+    throw new Error(
+      "La luz entre columnas (Lcol) debe ser mayor que la excentricidad e.",
+    );
+  }
+  const Ru = (Pu * e) / (Lcol - e);
+  const quClosed = (Pu + Ru) / (Lx0 * Ly0);
+
+  // Zapata centrada con la presión del esquema cerrado
+  const centrada = designCentrada(input, quClosed);
+  const { Lx, Ly } = centrada;
+  const st: string[] = [];
+  st.push("=== BASE MEDIANERA — VIGA DE FUNDACIÓN — CIRSOC 201 ===");
+  st.push("");
+  st.push(
+    "La zapata se dimensiona a flexión/corte/punzonado con presión uniforme qu = (Pu + Ru)/(Lx·Ly).",
+  );
+  st.push(
+    "La viga de fundación transfiere a la zapata vecina la reacción Ru que re-centra la resultante.",
+  );
+  st.push("");
+
+  const beam = computeFoundationBeam(input, {
+    Pu,
+    e,
+    Ru,
+    Lx,
+    Ly,
+    qu: centrada.qu,
+    Lcol,
+    elemento: "zapata",
+  });
+  st.push(...beam.steps);
+  st.push("");
+  st.push(`=== RESUMEN VIGA DE FUNDACIÓN ===`);
+  st.push(`Base: ${Lx}×${Ly} cm | e = ${f1(e)} cm | Mu = ${f1(Pu * e)} kN·cm`);
+  st.push(
+    `Viga: ${beam.b_viga}×${f1(beam.h_viga)} cm | As_sup = ${f2(beam.As_sup)} cm² | As_inf = ${f2(beam.As_inf)} cm²`,
+  );
+
+  return {
+    ...centrada,
+    b_viga: beam.b_viga,
+    h_viga: beam.h_viga,
+    d_viga: beam.d_viga,
+    vigVuVol: beam.vigVuVol,
+    vigVuTramo: beam.vigVuTramo,
+    vigPhiVc: beam.vigPhiVc,
+    vigAvsReqVol: beam.vigAvsReqVol,
+    vigAvsReqTramo: beam.vigAvsReqTramo,
+    vigAvsMin: beam.vigAvsMin,
+    vigSmax: beam.vigSmax,
+    e,
+    Mu: Pu * e,
+    Ru,
+    Mnv: beam.Mnv,
+    As_sup: beam.As_sup,
+    As_inf: beam.As_inf,
+    mn_med: beam.mn_med,
+    ka_med: beam.ka_med,
     Tu: 0,
     FrictionOK: true,
     As_tensor: 0,
@@ -1127,8 +1200,224 @@ function designVigaFundacion(input: BaseInput): BaseResult {
     tronco_Vy: 0,
     tensorPending: false,
     steps: [...st, ...centrada.steps],
-    warnings: [...wr, ...centrada.warnings],
-    errors: [...er, ...centrada.errors],
+    warnings: [...beam.warnings, ...centrada.warnings],
+    errors: [...centrada.errors],
+  };
+}
+
+/** BaseResult en cero: sólo para el módulo de cabezales, que no dimensiona
+ *  la zapata (el cabezal se calculará con pilotes en una etapa posterior). */
+function zeroBaseResult(): BaseResult {
+  return {
+    Areq: 0,
+    Ap: 0,
+    Lx: 0,
+    Ly: 0,
+    h: 0,
+    d: 0,
+    kx: 0,
+    ky: 0,
+    Pu: 0,
+    qu: 0,
+    Mux: 0,
+    Muy: 0,
+    Mnx: 0,
+    Mny: 0,
+    Vu_punch: 0,
+    phiVc_punch: 0,
+    punchOK: true,
+    Vux: 0,
+    Vuy: 0,
+    phiVc_beam: 0,
+    beamShearOK: true,
+    phiVc_beam_x: 0,
+    phiVc_beam_y: 0,
+    mnx: 0,
+    mny: 0,
+    kax: 0,
+    kay: 0,
+    Asx: 0,
+    Asy: 0,
+    AsMin: 0,
+    db: 0,
+    nb_x: 0,
+    nb_y: 0,
+    sep_x: 0,
+    sep_y: 0,
+    sepCheckOK: true,
+    heel: 0,
+    heelOK: true,
+    e: 0,
+    Mu: 0,
+    Ru: 0,
+    Mnv: 0,
+    b_viga: 0,
+    As_sup: 0,
+    As_inf: 0,
+    mn_med: 0,
+    ka_med: 0,
+    h_viga: 0,
+    d_viga: 0,
+    vigVuVol: 0,
+    vigVuTramo: 0,
+    vigPhiVc: 0,
+    vigAvsReqVol: 0,
+    vigAvsReqTramo: 0,
+    vigAvsMin: 0,
+    vigSmax: 0,
+    Tu: 0,
+    FrictionOK: true,
+    As_tensor: 0,
+    h_tensor: 0,
+    eX: 0,
+    eY: 0,
+    MuX_volc: 0,
+    MuY_volc: 0,
+    Rux: 0,
+    Ruy: 0,
+    b_vigaX: 0,
+    b_vigaY: 0,
+    h_vigaX: 0,
+    h_vigaY: 0,
+    As_supX: 0,
+    As_supY: 0,
+    As_infX: 0,
+    As_infY: 0,
+    Tux: 0,
+    Tuy: 0,
+    As_tensorX: 0,
+    As_tensorY: 0,
+    h_tensorX: 0,
+    h_tensorY: 0,
+    tronco_N: 0,
+    tronco_Mx: 0,
+    tronco_My: 0,
+    tronco_Vx: 0,
+    tronco_Vy: 0,
+    tensorPending: false,
+    steps: [],
+    warnings: [],
+    errors: [],
+  };
+}
+
+/** Datos del módulo admin de cabezales (sin suelo: el cabezal va sobre pilotes). */
+export interface CabezalVigaInput {
+  PD: number; // kN — columna medianera
+  PL: number; // kN
+  cx: number; // cm — columna en la medianera
+  cy: number; // cm
+  fc: number; // MPa
+  fy: number; // MPa
+  Lx: number; // cm — cabezal en planta
+  Ly: number; // cm
+  Lcol: number; // cm — distancia a la columna que equilibra
+  bViga?: number; // cm — viga (auto si falta)
+  hViga?: number; // cm — viga (auto si falta)
+  cover?: number; // cm
+}
+
+/**
+ * Módulo admin de cabezales: dimensiona SÓLO la viga de fundación con la
+ * geometría en planta provista por el usuario. El cabezal en sí (pilotes,
+ * punzonado, flexión) queda pendiente para una próxima etapa.
+ */
+export function designVigaCabezal(input: CabezalVigaInput): BaseResult {
+  if (!(input.Lx > 0) || !(input.Ly > 0)) {
+    throw new Error("Ingresá las dimensiones en planta del cabezal (Lx y Ly).");
+  }
+  if (!(input.cx > 0) || !(input.cy > 0)) {
+    throw new Error("Ingresá las dimensiones de la columna (cx, cy).");
+  }
+  if (!(input.Lcol > 0)) {
+    throw new Error("Ingresá la distancia a la columna que equilibra (Lcol).");
+  }
+  const Pu = step2_Pu(input.PD, input.PL);
+  if (!(Pu > 0)) {
+    throw new Error(
+      "La carga de la columna (PD + PL) debe ser mayor que cero.",
+    );
+  }
+  const e = (input.Lx - input.cx) / 2;
+  if (e <= 0) {
+    throw new Error(
+      "La columna no puede ser más ancha que el cabezal (cx debe ser menor que Lx).",
+    );
+  }
+  if (input.Lcol <= e) {
+    throw new Error(
+      "La luz entre columnas (Lcol) debe ser mayor que la excentricidad e.",
+    );
+  }
+  const Ru = (Pu * e) / (input.Lcol - e);
+  const qu = (Pu + Ru) / (input.Lx * input.Ly);
+
+  const baseInput = {
+    ...input,
+    qa: 1,
+    Df: 0,
+    type: "medianera-y",
+    subType: "viga-de-fundacion",
+  } as BaseInput;
+
+  const st: string[] = [];
+  st.push("=== CABEZAL — VIGA DE FUNDACIÓN — CIRSOC 201 ===");
+  st.push("");
+  st.push(
+    "Esquema cerrado: la viga equilibra el momento de la columna medianera y re-centra la resultante.",
+  );
+  st.push(
+    "Dimensionado del cabezal (pilotes, punzonado, flexión): pendiente para una próxima etapa.",
+  );
+  st.push("");
+
+  const beam = computeFoundationBeam(baseInput, {
+    Pu,
+    e,
+    Ru,
+    Lx: input.Lx,
+    Ly: input.Ly,
+    qu,
+    Lcol: input.Lcol,
+    elemento: "cabezal",
+  });
+  st.push(...beam.steps);
+  st.push("");
+  st.push(`=== RESUMEN VIGA DE FUNDACIÓN ===`);
+  st.push(
+    `Cabezal: ${input.Lx}×${input.Ly} cm | e = ${f1(e)} cm | Mu = ${f1(Pu * e)} kN·cm`,
+  );
+  st.push(
+    `Viga: ${beam.b_viga}×${f1(beam.h_viga)} cm | As_sup = ${f2(beam.As_sup)} cm² | As_inf = ${f2(beam.As_inf)} cm²`,
+  );
+
+  return {
+    ...zeroBaseResult(),
+    Lx: input.Lx,
+    Ly: input.Ly,
+    Pu,
+    qu,
+    e,
+    Mu: Pu * e,
+    Ru,
+    Mnv: beam.Mnv,
+    b_viga: beam.b_viga,
+    h_viga: beam.h_viga,
+    d_viga: beam.d_viga,
+    vigVuVol: beam.vigVuVol,
+    vigVuTramo: beam.vigVuTramo,
+    vigPhiVc: beam.vigPhiVc,
+    vigAvsReqVol: beam.vigAvsReqVol,
+    vigAvsReqTramo: beam.vigAvsReqTramo,
+    vigAvsMin: beam.vigAvsMin,
+    vigSmax: beam.vigSmax,
+    As_sup: beam.As_sup,
+    As_inf: beam.As_inf,
+    mn_med: beam.mn_med,
+    ka_med: beam.ka_med,
+    steps: st,
+    warnings: beam.warnings,
+    errors: [],
   };
 }
 
