@@ -241,6 +241,7 @@ export default function ConcreteForm() {
         ? [...prev, ...Array(count + 1 - prev.length).fill(300)]
         : prev.slice(0, count + 1),
     );
+    setSpanCount(count);
   }
 
   function addLoad() {
@@ -334,6 +335,8 @@ export default function ConcreteForm() {
 
   function handleNew() {
     setSpanCount(1);
+    setSpanLengths([6]);
+    setSupportTypes(["simple", "simple"]);
     setConcreteLoads([]);
     setBw(200);
     setH(500);
