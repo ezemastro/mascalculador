@@ -12,9 +12,11 @@ import {
   deleteSave,
   loadLastBasesFormState,
   saveLastBasesFormState,
+  shouldAskObraOnSave,
   type BasesFormState,
 } from "../lib/storage";
 import { pickObraIfNeeded } from "../components/ObraPicker";
+import { registerAssistantForm } from "../lib/assistant/form-bus";
 import {
   suggestBaseDims,
   suggestBaseHeight,
@@ -300,6 +302,225 @@ export default function BasesForm() {
     setColumnId(col.id);
     setColumnName(col.name);
   }
+
+  // ------------------------------------------------------------------
+  // Asistente virtual: estado y edición asistida de la base
+  // ------------------------------------------------------------------
+  const assistantStateRef = useRef<Record<string, unknown>>({});
+  useEffect(() => {
+    assistantStateRef.current = {
+      ...state,
+      columnName: columnName ?? null,
+    };
+  });
+
+  useEffect(() => {
+    const num = (v: unknown): number | null => {
+      if (typeof v === "number" && Number.isFinite(v)) return v;
+      if (typeof v === "string") {
+        const parsed = Number(v.trim().replace(",", "."));
+        if (Number.isFinite(parsed)) return parsed;
+      }
+      return null;
+    };
+    const BASE_TYPES = [
+      "centrada",
+      "medianera",
+      "medianera-x",
+      "medianera-y",
+      "esquina",
+    ] as const;
+    const BASE_SUBTYPES = [
+      "viga-de-fundacion",
+      "viga-de-equilibrio",
+      "tensor",
+    ] as const;
+
+    return registerAssistantForm({
+      screen: "/bases",
+      title: "Base de fundación",
+      fieldDocs: `Campos (nombres exactos, unidades de UI):
+- qa: tensión admisible del terreno en kN/m².
+- Df: profundidad de fundación en metros.
+- PD, PL: cargas (muerta y viva) en kN, bajo la columna.
+- cx, cy: dimensiones de la columna en cm.
+- fc: hormigón en MPa; solo 20, 25, 30 o 35. fy: acero en MPa; 420 o 500.
+- cover: recubrimiento en cm.
+- type: "centrada" | "medianera-x" | "medianera-y" | "esquina".
+- subType (para medianeras): "viga-de-fundacion" | "viga-de-equilibrio" | "tensor".
+- Lx, Ly: lados de la base en metros (si ya se adoptaron).
+- h: altura de la base en metros. hTalon: altura del talón en metros.
+- Lcol, LcolX, LcolY: longitudes de columna en metros.
+- includeSelfWeight: boolean.`,
+      getState: () => assistantStateRef.current,
+      apply: (values) => {
+        const applied: string[] = [];
+        const errors: string[] = [];
+        const numeric = (key: string, checkPositive = true) => {
+          const v = num(values[key]);
+          if (v === null || (checkPositive && v <= 0)) {
+            errors.push(
+              `${key}: se esperaba un número ${checkPositive ? "> 0" : ""}`,
+            );
+            return null;
+          }
+          return v;
+        };
+        const setNum = (key: string, value: number) =>
+          setState((prev) => ({ ...prev, [key]: value }));
+
+        for (const key of Object.keys(values)) {
+          switch (key) {
+            case "qa":
+            case "Df":
+            case "PD":
+            case "PL":
+            case "cx":
+            case "cy":
+            case "cover":
+            case "Lx":
+            case "Ly":
+            case "h":
+            case "hTalon":
+            case "Lcol":
+            case "LcolX":
+            case "LcolY": {
+              const v = numeric(key);
+              if (v !== null) {
+                setNum(key, v);
+                applied.push(key);
+              }
+              break;
+            }
+            case "fc": {
+              const v = numeric("fc");
+              if (v !== null && ![20, 25, 30, 35].includes(v)) {
+                errors.push("fc: solo 20, 25, 30 o 35 (MPa)");
+              } else if (v !== null) {
+                setNum("fc", v);
+                applied.push("fc");
+              }
+              break;
+            }
+            case "fy": {
+              const v = numeric("fy");
+              if (v !== null && ![420, 500].includes(v)) {
+                errors.push("fy: solo 420 o 500 (MPa)");
+              } else if (v !== null) {
+                setNum("fy", v);
+                applied.push("fy");
+              }
+              break;
+            }
+            case "type": {
+              const t = String(values.type ?? "")
+                .trim()
+                .toLowerCase();
+              const baseType = (BASE_TYPES as readonly string[]).includes(t);
+              if (!baseType) {
+                errors.push(
+                  "type: centrada, medianera-x, medianera-y o esquina",
+                );
+                break;
+              }
+              // "medianera" legacy se migra a medianera-y
+              const resolved = t === "medianera" ? "medianera-y" : t;
+              setState((prev) => ({
+                ...prev,
+                type: resolved as (typeof BASE_TYPES)[number],
+              }));
+              applied.push("type");
+              break;
+            }
+            case "subType": {
+              const t = String(values.subType ?? "")
+                .trim()
+                .toLowerCase();
+              if (!(BASE_SUBTYPES as readonly string[]).includes(t)) {
+                errors.push(
+                  "subType: viga-de-fundacion, viga-de-equilibrio o tensor",
+                );
+                break;
+              }
+              setState((prev) => ({
+                ...prev,
+                subType: t as (typeof BASE_SUBTYPES)[number],
+              }));
+              applied.push("subType");
+              break;
+            }
+            case "includeSelfWeight": {
+              const truthy =
+                values[key] === true ||
+                values[key] === 1 ||
+                values[key] === "1" ||
+                values[key] === "true" ||
+                values[key] === "si" ||
+                values[key] === "sí";
+              const falsy =
+                values[key] === false ||
+                values[key] === 0 ||
+                values[key] === "0" ||
+                values[key] === "false" ||
+                values[key] === "no";
+              if (!truthy && !falsy) {
+                errors.push("includeSelfWeight: true o false");
+                break;
+              }
+              setState((prev) => ({
+                ...prev,
+                includeSelfWeight: truthy,
+              }));
+              applied.push("includeSelfWeight");
+              break;
+            }
+            default:
+              errors.push(`campo desconocido: ${key}`);
+          }
+        }
+        return { applied, errors };
+      },
+      save: async ({ name }) => {
+        const trimmed = name.trim();
+        if (!trimmed) return { applied: [], errors: ["se requiere un nombre"] };
+        if (shouldAskObraOnSave()) {
+          return {
+            applied: [],
+            errors: [
+              'la obra activa es "Sin obra": avisale al usuario que elija una obra y volvé a intentar',
+            ],
+          };
+        }
+        const data: Record<string, unknown> = {
+          ...state,
+          columnId: columnId ?? undefined,
+          columnName: columnName ?? undefined,
+        };
+        try {
+          if (loadedSaveId) {
+            updateSave(loadedSaveId, data);
+            return {
+              applied: [`guardado actualizado: ${loadedSaveName ?? ""}`],
+              errors: [],
+            };
+          }
+          const saved = saveBeam(trimmed, "bases", data);
+          setLoadedSaveId(saved.id);
+          setLoadedSaveName(trimmed);
+          return {
+            applied: [`guardado en la obra activa como "${trimmed}"`],
+            errors: [],
+          };
+        } catch (err) {
+          return {
+            applied: [],
+            errors: [err instanceof Error ? err.message : "error al guardar"],
+          };
+        }
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- registro único por montaje
+  }, []);
 
   // ------------------------------------------------------------------
   // Save / Load

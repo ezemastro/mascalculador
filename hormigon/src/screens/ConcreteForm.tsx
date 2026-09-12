@@ -12,8 +12,10 @@ import {
   deleteSave,
   saveLastConcreteFormState,
   loadLastConcreteFormState,
+  shouldAskObraOnSave,
 } from "../lib/storage";
 import { pickObraIfNeeded } from "../components/ObraPicker";
+import { registerAssistantForm } from "../lib/assistant/form-bus";
 import { DecimalInput } from "@mascalculador/shared";
 import { hasSlabDL, slabReactionToBeamLoad } from "../lib/slab-to-beam";
 import type { SlabEdge } from "../lib/slab-to-beam";
@@ -218,6 +220,298 @@ export default function ConcreteForm() {
     supportWidths,
     directSupport,
   ]);
+
+  // Abreviaturas y alias del glosario que acepta el asistente para apoyos de
+  // viga. "fixed" es el apoyo empotrado; "continuo" también se mapea acá.
+  const SUPPORT_ALIAS: Record<string, SupportType> = {
+    simple: "simple",
+    articulado: "simple",
+    apoyado: "simple",
+    fixed: "fixed",
+    empotrado: "fixed",
+    encastrado: "fixed",
+    continuo: "fixed",
+    free: "free",
+    libre: "free",
+    voladizo: "free",
+    volado: "free",
+  };
+
+  // ---- Asistente virtual: estado y edición asistida de la viga ----
+  const assistantStateRef = useRef<Record<string, unknown>>({});
+  useEffect(() => {
+    assistantStateRef.current = {
+      spans: spanLengths,
+      supportTypes,
+      concreteLoads,
+      bw,
+      h,
+      cover,
+      fc,
+      fy,
+      includeSelfWeight,
+      supportWidths,
+      directSupport,
+      loadedSaveId,
+      loadedSaveName: loadedSaveName ?? null,
+    };
+  });
+
+  useEffect(() => {
+    const num = (v: unknown): number | null => {
+      if (typeof v === "number" && Number.isFinite(v)) return v;
+      if (typeof v === "string") {
+        const parsed = Number(v.trim().replace(",", "."));
+        if (Number.isFinite(parsed)) return parsed;
+      }
+      return null;
+    };
+    const mapSupport = (v: string): SupportType | null =>
+      SUPPORT_ALIAS[v] ?? null;
+
+    return registerAssistantForm({
+      screen: "/concrete",
+      title: "Viga de hormigón",
+      fieldDocs: `Campos (nombres exactos, unidades de UI):
+- spans: array de luces en metros (ej [6, 5]); define la cantidad de tramos.
+- supportTypes: array de apoyos, largo = tramos + 1; valores "simple" (articulado/apoyado), "fixed" (empotrado/encastrado/continuo), "free" (libre/voladizo, solo en extremos).
+- concreteLoads: array de cargas. Puntual: {type:"point", D, L, position} (kN, posición en metros desde la izquierda). Distribuida: {type:"distributed", D, L, start, end} (kN/m). D=muerta, L=viva; U=1.2·D+1.6·L.
+- bw, h: ancho y alto de la viga en mm. cover: recubrimiento en mm.
+- fc: hormigón en MPa; solo 20, 25, 30 o 35. fy: acero en MPa; 420 o 500.
+- includeSelfWeight, directSupport: boolean.
+- supportWidths: (opcional) array de ancho de apoyos en mm, largo = tramos + 1.`,
+      getState: () => assistantStateRef.current,
+      apply: (values) => {
+        const applied: string[] = [];
+        const errors: string[] = [];
+        const s = assistantStateRef.current;
+        const totalLength = (s.spans as number[]).reduce((a, b) => a + b, 0);
+
+        const checkArray = (
+          raw: unknown,
+          validator: (v: unknown) => boolean,
+        ): boolean => Array.isArray(raw) && raw.every(validator);
+
+        for (const [key, raw] of Object.entries(values)) {
+          switch (key) {
+            case "spans": {
+              if (
+                !checkArray(raw, (v) => {
+                  const n = num(v);
+                  return n !== null && n > 0;
+                })
+              ) {
+                errors.push("spans: array de números > 0 (luces en m)");
+                break;
+              }
+              const arr = (raw as unknown[]).map((v) => num(v) as number);
+              setSpanLengths(arr);
+              setSpanCount(arr.length);
+              const nSupp = arr.length + 1;
+              setSupportTypes((prev) => {
+                const next = prev.slice(0, nSupp);
+                while (next.length < nSupp) next.push("simple");
+                return next;
+              });
+              setSupportWidths((prev) => {
+                const next = prev.slice(0, nSupp);
+                while (next.length < nSupp) next.push(300);
+                return next;
+              });
+              applied.push("spans");
+              break;
+            }
+            case "supportTypes": {
+              if (!Array.isArray(raw)) {
+                errors.push("supportTypes: array de apoyos");
+                break;
+              }
+              const mapped = (raw as unknown[]).map((v) =>
+                mapSupport(String(v).trim().toLowerCase()),
+              );
+              if (mapped.some((v) => v === null)) {
+                errors.push('supportTypes: valores "simple", "fixed" o "free"');
+                break;
+              }
+              setSupportTypes(mapped as SupportType[]);
+              applied.push("supportTypes");
+              break;
+            }
+            case "concreteLoads": {
+              if (!Array.isArray(raw)) {
+                errors.push("concreteLoads: array de cargas");
+                break;
+              }
+              const loads: ConcreteLoad[] = [];
+              let ok = true;
+              for (const item of raw as unknown[]) {
+                if (!item || typeof item !== "object") {
+                  ok = false;
+                  break;
+                }
+                const o = item as Record<string, unknown>;
+                const D = num(o.D) ?? 0;
+                const L = num(o.L) ?? 0;
+                const distributed = o.type === "distributed";
+                if (distributed) {
+                  loads.push({
+                    id:
+                      Math.random().toString(36).slice(2) +
+                      Date.now().toString(36),
+                    type: "distributed",
+                    D,
+                    L,
+                    start: num(o.start) ?? 0,
+                    end: num(o.end) ?? totalLength,
+                  });
+                } else {
+                  loads.push({
+                    id:
+                      Math.random().toString(36).slice(2) +
+                      Date.now().toString(36),
+                    type: "point",
+                    D,
+                    L,
+                    position: num(o.position) ?? 0,
+                  });
+                }
+              }
+              if (!ok) {
+                errors.push(
+                  "concreteLoads: cada carga debe ser {type, D, L, ...}",
+                );
+                break;
+              }
+              setConcreteLoads(loads);
+              applied.push("concreteLoads");
+              break;
+            }
+            case "bw":
+            case "h":
+            case "cover": {
+              const v = num(raw);
+              if (v === null || v <= 0) {
+                errors.push(`${key}: se esperaba un número > 0 (mm)`);
+                break;
+              }
+              if (key === "bw") setBw(v);
+              else if (key === "h") setH(v);
+              else setCover(v);
+              applied.push(key);
+              break;
+            }
+            case "supportWidths": {
+              if (
+                !checkArray(raw, (v) => {
+                  const n = num(v);
+                  return n !== null && n > 0;
+                })
+              ) {
+                errors.push("supportWidths: array de números > 0 (mm)");
+                break;
+              }
+              setSupportWidths((raw as unknown[]).map((v) => num(v) as number));
+              applied.push("supportWidths");
+              break;
+            }
+            case "fc": {
+              const v = num(raw);
+              if (v === null || ![20, 25, 30, 35].includes(v)) {
+                errors.push("fc: solo 20, 25, 30 o 35 (MPa)");
+                break;
+              }
+              setFc(v);
+              applied.push("fc");
+              break;
+            }
+            case "fy": {
+              const v = num(raw);
+              if (v === null || ![420, 500].includes(v)) {
+                errors.push("fy: solo 420 o 500 (MPa)");
+                break;
+              }
+              setFy(v);
+              applied.push("fy");
+              break;
+            }
+            case "includeSelfWeight":
+            case "directSupport": {
+              const truthy =
+                raw === true ||
+                raw === 1 ||
+                raw === "1" ||
+                raw === "true" ||
+                raw === "si" ||
+                raw === "sí";
+              const falsy =
+                raw === false ||
+                raw === 0 ||
+                raw === "0" ||
+                raw === "false" ||
+                raw === "no";
+              if (!truthy && !falsy) {
+                errors.push(`${key}: se esperaba true o false`);
+                break;
+              }
+              if (key === "includeSelfWeight") setIncludeSelfWeight(truthy);
+              else setDirectSupport(truthy);
+              applied.push(key);
+              break;
+            }
+            default:
+              errors.push(`campo desconocido: ${key}`);
+          }
+        }
+        return { applied, errors };
+      },
+      save: async ({ name }) => {
+        const trimmed = name.trim();
+        if (!trimmed) return { applied: [], errors: ["se requiere un nombre"] };
+        if (shouldAskObraOnSave()) {
+          return {
+            applied: [],
+            errors: [
+              'la obra activa es "Sin obra": avisale al usuario que elija una obra y volvé a intentar',
+            ],
+          };
+        }
+        const s = assistantStateRef.current;
+        const data: Record<string, unknown> = {
+          spans: s.spans,
+          supportTypes: s.supportTypes,
+          concreteLoads: s.concreteLoads,
+          bw: s.bw,
+          h: s.h,
+          cover: s.cover,
+          fc: s.fc,
+          fy: s.fy,
+          includeSelfWeight: s.includeSelfWeight,
+        };
+        try {
+          if (s.loadedSaveId) {
+            updateSave(s.loadedSaveId as string, data);
+            return {
+              applied: [`guardado actualizado: ${s.loadedSaveName ?? ""}`],
+              errors: [],
+            };
+          }
+          const saved = saveBeam(trimmed, "hormigon", data);
+          setLoadedSaveId(saved.id);
+          setLoadedSaveName(trimmed);
+          return {
+            applied: [`guardado en la obra activa como "${trimmed}"`],
+            errors: [],
+          };
+        } catch (err) {
+          return {
+            applied: [],
+            errors: [err instanceof Error ? err.message : "error al guardar"],
+          };
+        }
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- registro único por montaje
+  }, []);
 
   // Peso propio auto-calculado: (bw·h / 1e6) × γ_hormigón [kN/m], en mm
   const selfWeightD = useMemo(

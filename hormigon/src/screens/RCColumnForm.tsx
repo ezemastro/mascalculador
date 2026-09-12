@@ -10,8 +10,10 @@ import {
   deleteSave,
   loadLastRCColumnFormState,
   saveLastRCColumnFormState,
+  shouldAskObraOnSave,
 } from "../lib/storage";
 import { pickObraIfNeeded } from "../components/ObraPicker";
+import { registerAssistantForm } from "../lib/assistant/form-bus";
 import { DecimalInput } from "@mascalculador/shared";
 import { CONCRETE_DENSITY } from "../lib/constants";
 import {
@@ -395,6 +397,233 @@ export default function RCColumnForm() {
     contributedColumns,
     contributedBeams,
   ]);
+
+  // ---- Asistente virtual: estado y edición asistida de la columna ----
+  const assistantStateRef = useRef<Record<string, unknown>>({});
+  useEffect(() => {
+    assistantStateRef.current = {
+      fc,
+      fy,
+      PD: PDAdic,
+      PL: PLAdic,
+      lu,
+      MxSup,
+      MxInf,
+      MySup,
+      MyInf,
+      Cx,
+      Cy,
+      betaD,
+      includeSelfWeight,
+      totalPD,
+      totalPL,
+      nColumnasContrib: contributedColumns.length,
+      nVigasContrib: contributedBeams.length,
+      loadedSaveId,
+      loadedSaveName: loadedSaveName ?? null,
+    };
+  });
+
+  useEffect(() => {
+    const num = (v: unknown): number | null => {
+      if (typeof v === "number" && Number.isFinite(v)) return v;
+      if (typeof v === "string") {
+        const parsed = Number(v.trim().replace(",", "."));
+        if (Number.isFinite(parsed)) return parsed;
+      }
+      return null;
+    };
+
+    return registerAssistantForm({
+      screen: "/rc-column",
+      title: "Columna de hormigón",
+      fieldDocs: `Campos (nombres exactos, unidades de UI):
+- PD, PL: cargas manuales a nivel de piso (muerta y viva) en kN. Las contribuciones de columnas/vigas guardadas se suman automáticamente (ver totalPD/totalPL en el estado).
+- lu: altura libre de la columna en metros.
+- MxSup, MxInf, MySup, MyInf: momentos flectores en kN·m. X=flexión en X, Y=flexión en Y; Sup=cabeza, Inf=base.
+- Cx, Cy: dimensiones de la columna en cm.
+- betaD: factor beta (0 a 1).
+- fc: hormigón en MPa; solo 20, 25, 30 o 35. fy: acero en MPa; 420 o 500.
+- includeSelfWeight: boolean (suma el peso propio al P total).`,
+      getState: () => assistantStateRef.current,
+      apply: (values) => {
+        const applied: string[] = [];
+        const errors: string[] = [];
+        for (const [key, raw] of Object.entries(values)) {
+          switch (key) {
+            case "PD": {
+              const v = num(raw);
+              if (v === null || v < 0) {
+                errors.push("PD: se esperaba un número >= 0 (kN)");
+                break;
+              }
+              setPDAdic(v);
+              applied.push("PD");
+              break;
+            }
+            case "PL": {
+              const v = num(raw);
+              if (v === null || v < 0) {
+                errors.push("PL: se esperaba un número >= 0 (kN)");
+                break;
+              }
+              setPLAdic(v);
+              applied.push("PL");
+              break;
+            }
+            case "lu": {
+              const v = num(raw);
+              if (v === null || v <= 0) {
+                errors.push("lu: se esperaba un número > 0 (m)");
+                break;
+              }
+              setLu(v);
+              applied.push("lu");
+              break;
+            }
+            case "MxSup":
+            case "MxInf":
+            case "MySup":
+            case "MyInf": {
+              const v = num(raw);
+              if (v === null || v < 0) {
+                errors.push(`${key}: se esperaba un número >= 0 (kN·m)`);
+                break;
+              }
+              if (key === "MxSup") setMxSup(v);
+              else if (key === "MxInf") setMxInf(v);
+              else if (key === "MySup") setMySup(v);
+              else setMyInf(v);
+              applied.push(key);
+              break;
+            }
+            case "Cx":
+            case "Cy": {
+              const v = num(raw);
+              if (v === null || v <= 0) {
+                errors.push(`${key}: se esperaba un número > 0 (cm)`);
+                break;
+              }
+              if (key === "Cx") setCx(v);
+              else setCy(v);
+              applied.push(key);
+              break;
+            }
+            case "betaD": {
+              const v = num(raw);
+              if (v === null || v < 0 || v > 1) {
+                errors.push("betaD: número entre 0 y 1");
+                break;
+              }
+              setBetaD(v);
+              applied.push("betaD");
+              break;
+            }
+            case "fc": {
+              const v = num(raw);
+              if (v === null || ![20, 25, 30, 35].includes(v)) {
+                errors.push("fc: solo 20, 25, 30 o 35 (MPa)");
+                break;
+              }
+              setFc(v);
+              applied.push("fc");
+              break;
+            }
+            case "fy": {
+              const v = num(raw);
+              if (v === null || ![420, 500].includes(v)) {
+                errors.push("fy: solo 420 o 500 (MPa)");
+                break;
+              }
+              setFy(v);
+              applied.push("fy");
+              break;
+            }
+            case "includeSelfWeight": {
+              const truthy =
+                raw === true ||
+                raw === 1 ||
+                raw === "1" ||
+                raw === "true" ||
+                raw === "si" ||
+                raw === "sí";
+              const falsy =
+                raw === false ||
+                raw === 0 ||
+                raw === "0" ||
+                raw === "false" ||
+                raw === "no";
+              if (!truthy && !falsy) {
+                errors.push("includeSelfWeight: true o false");
+                break;
+              }
+              setIncludeSelfWeight(truthy);
+              applied.push("includeSelfWeight");
+              break;
+            }
+            default:
+              errors.push(`campo desconocido: ${key}`);
+          }
+        }
+        return { applied, errors };
+      },
+      save: async ({ name }) => {
+        const trimmed = name.trim();
+        if (!trimmed) return { applied: [], errors: ["se requiere un nombre"] };
+        if (shouldAskObraOnSave()) {
+          return {
+            applied: [],
+            errors: [
+              'la obra activa es "Sin obra": avisale al usuario que elija una obra y volvé a intentar',
+            ],
+          };
+        }
+        const data: Record<string, unknown> = {
+          fc,
+          fy,
+          PD: totalPD,
+          PL: totalPL,
+          PD_direct: 0,
+          PL_direct: 0,
+          PD_adicional: PDAdic,
+          PL_adicional: PLAdic,
+          lu,
+          MxSup,
+          MxInf,
+          MySup,
+          MyInf,
+          Cx,
+          Cy,
+          betaD,
+          includeSelfWeight,
+          contributedColumns,
+          contributedBeams,
+        };
+        try {
+          if (loadedSaveId) {
+            updateSave(loadedSaveId, data);
+            return {
+              applied: [`guardado actualizado: ${loadedSaveName ?? ""}`],
+              errors: [],
+            };
+          }
+          const saved = saveBeam(trimmed, "rc-columna", data);
+          setLoadedSaveId(saved.id);
+          setLoadedSaveName(trimmed);
+          return {
+            applied: [`guardado en la obra activa como "${trimmed}"`],
+            errors: [],
+          };
+        } catch (err) {
+          return {
+            applied: [],
+            errors: [err instanceof Error ? err.message : "error al guardar"],
+          };
+        }
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- registro único por montaje
+  }, []);
 
   async function handleSave() {
     const data: Record<string, unknown> = {
