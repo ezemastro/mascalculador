@@ -3,9 +3,11 @@ import type { Load } from "@mascalculador/shared";
 
 export type SlabEdge = "izq" | "der" | "arr" | "aba";
 
-/** Returns true if the slab result has unfactored D/L reactions for all four edges (not a legacy slab). */
-export function hasSlabDL(r: SlabResult): boolean {
+/** Returns true if the slab result has unfactored D/L reactions for all four edges (not a legacy slab).
+ *  Null-safe: losas guardadas solo con input (`saveSlabInput`) no tienen `result`. */
+export function hasSlabDL(r: SlabResult | null | undefined): boolean {
   return (
+    !!r &&
     r.RD_izq !== undefined &&
     r.RL_izq !== undefined &&
     r.RD_der !== undefined &&
@@ -19,11 +21,12 @@ export function hasSlabDL(r: SlabResult): boolean {
 
 /**
  * Converts a slab result's per-edge reaction into a distributed `Load` for use in a beam.
- * Returns `null` for legacy slabs (RD/RL undefined), when both D and L clamp to 0, or when
- * either value is not finite. The `id` is generated internally (same pattern as storage.ts).
+ * Returns `null` for legacy slabs (RD/RL undefined), result-less slabs (guardadas sin calcular),
+ * when both D and L clamp to 0, or when either value is not finite. The `id` is generated
+ * internally (same pattern as storage.ts).
  */
 export function slabReactionToBeamLoad(
-  result: SlabResult,
+  result: SlabResult | null | undefined,
   edge: SlabEdge,
   start: number,
   end: number,
@@ -35,8 +38,8 @@ export function slabReactionToBeamLoad(
     aba: { d: "RD_aba", l: "RL_aba" },
   };
   const { d, l } = map[edge];
-  const deadLoad = Math.max(0, Number(result[d]) || 0);
-  const liveLoad = Math.max(0, Number(result[l]) || 0);
+  const deadLoad = Math.max(0, Number(result?.[d]) || 0);
+  const liveLoad = Math.max(0, Number(result?.[l]) || 0);
   if (deadLoad === 0 && liveLoad === 0) return null;
   if (!Number.isFinite(deadLoad) || !Number.isFinite(liveLoad)) return null;
   return {
