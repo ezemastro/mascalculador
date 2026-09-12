@@ -575,6 +575,265 @@ app.post("/api/storage/sync", authRequired, (req, res) => {
   res.status(204).end();
 });
 
+// ---- Asistente virtual (LLM vía OpenRouter) ----
+//
+// Proxy de streaming: la API key vive solo en el server. El bucle de tools es
+// stateless y lo maneja el cliente: cada POST trae la conversación completa
+// (incluidos los resultados de tools) y el server reenvía al modelo con
+// streaming SSE. El system prompt y el catálogo de tools se definen acá; el
+// cliente solo aporta el estado de la pantalla como texto de contexto.
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY || "";
+const OPENROUTER_MODEL =
+  process.env.OPENROUTER_MODEL || "nvidia/nemotron-3-super-120b-a12b:free";
+
+// Límite propio del asistente (independiente del de auth): una sola pregunta
+// del usuario puede disparar varias pasadas del bucle de tools.
+const ASSISTANT_RATE_WINDOW_MS = 15 * 60 * 1000;
+const ASSISTANT_RATE_MAX = 60;
+const assistantCalls = new Map();
+
+function assistantRateLimit(userId) {
+  const now = Date.now();
+  const key = `assistant-${userId}`;
+  const recent = (assistantCalls.get(key) || []).filter(
+    (t) => now - t < ASSISTANT_RATE_WINDOW_MS,
+  );
+  assistantCalls.set(key, recent);
+  if (recent.length >= ASSISTANT_RATE_MAX) return false;
+  recent.push(now);
+  return true;
+}
+
+const ASSISTANT_SYSTEM = `Sos el asistente virtual de "Hormigón" (MasCalculador), una app de cálculo de estructuras de hormigón armado según CIRSOC 201-05.
+
+Módulos: Losas (dimensionado), Apoyos de losas y compatibilización, Vigas, Columnas, Bases, Cómputos de obra y (solo administradores) Cabezales y Cabezal de pilotes.
+
+Tu trabajo:
+1. Completar los formularios de la app con los datos que el usuario te dicte (por ejemplo, valores de una planilla o de un plano).
+2. Leer el estado actual y responder preguntas sobre los datos de la obra activa.
+3. Orientar sobre el uso de la app.
+
+Reglas:
+- Usá set_form_values para completar el formulario de la pantalla activa. Cargá en una sola llamada todos los campos que el usuario haya dado. No inventes valores que el usuario no dio: si falta un dato, cargá lo que tengas y preguntá por el resto.
+- Respetá las unidades y los nombres de campo exactos que lista el contexto. Si el usuario habla en otra unidad (m vs cm, kN/m vs kN/m²), convertí antes de cargar.
+- No hacés el cálculo estructural vos: la app calcula. Después de completar, sugerí apretar "Calcular".
+- Usá navigate si la tarea requiere otra pantalla (por ejemplo, para ir a cargar una losa).
+- Respondé en español, breve y concreto. Usá punto decimal.
+
+## Glosario de terminología de obra (aplicalo SIN preguntar)
+- "empotrado", "encastrado", "apoyo fijo" → borde "continuo". En el método de coeficientes (tablas de Kalmanok / CIRSOC 201-05) un borde empotrado y un borde continuo se modelan igual: con momento negativo en el apoyo.
+- "apoyado", "simplemente apoyado" → "simple" (articulado).
+- "volado", "sin apoyo", "borde libre" → "free" (libre).
+- "espesor" de losa → hAdop (cm); "recubrimiento" → cover_cm (cm). D es carga muerta y L carga viva, en kN/m².
+
+Al mapear un término del glosario, cargá el valor directamente y en tu respuesta aclará el mapeo en una frase (ej.: «empotrado lo cargué como borde continuo»). NO le preguntes al usuario cosas que este glosario ya resuelve.
+
+Guardar: para guardar los datos del formulario activo usá save_form (equivale al botón Guardar). NUNCA navegues a otra pantalla para guardar: navigate solo cambia de pantalla. /computos es la pantalla de cómputos de obra y NO tiene relación con guardar. Si el formulario ya tiene un guardado cargado, save_form lo actualiza con el mismo nombre.
+
+Explicaciones: cuando cargues valores, resumí en una línea qué dejaste cargado (campo = valor). Si piden una explicación técnica, respondé con la hipótesis que aplica la app (CIRSOC 201-05, método de coeficientes) y los valores reales del contexto, sin rodeos.
+
+El contexto "Estado actual de la app" se regenera en cada mensaje: es tu fuente de verdad sobre la pantalla, el formulario y la obra.`;
+
+const ASSISTANT_TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "set_form_values",
+      description:
+        "Completa campos del formulario de la pantalla activa. El contexto lista los campos válidos con sus unidades y opciones; los desconocidos se rechazan con error.",
+      parameters: {
+        type: "object",
+        properties: {
+          values: {
+            type: "object",
+            description:
+              'Mapa { campo: valor } en unidades de UI. Ej: { "lx": 4.2, "cover_cm": 2 }',
+          },
+        },
+        required: ["values"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "save_form",
+      description:
+        "Guarda los datos del formulario activo en la obra activa (equivale al botón Guardar). Necesita el nombre del elemento; si el usuario no lo dio, preguntáselo.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: {
+            type: "string",
+            description: 'Nombre para el elemento. Ej: "Losa Terraza"',
+          },
+        },
+        required: ["name"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "navigate",
+      description: "Navega a otra pantalla de la app.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            enum: [
+              "/slab",
+              "/slab-compats",
+              "/concrete",
+              "/rc-column",
+              "/bases",
+              "/computos",
+            ],
+          },
+        },
+        required: ["path"],
+      },
+    },
+  },
+];
+
+/**
+ * Valida y normaliza la conversación que manda el cliente. Descarta mensajes
+ * system (el system lo define el server) y recorta tamaños para que un
+ * cliente malicioso no use el endpoint como proxy libre.
+ */
+function sanitizeAssistantMessages(raw) {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > 80) return null;
+  const messages = [];
+  for (const m of raw) {
+    if (!m || typeof m !== "object") return null;
+    const role = m.role;
+    if (role === "system") continue;
+    if (role === "user" || role === "assistant" || role === "tool") {
+      const msg = { role };
+      if (role === "tool") {
+        if (typeof m.content !== "string") return null;
+        msg.content = m.content.slice(0, 8000);
+        if (typeof m.tool_call_id === "string") {
+          msg.tool_call_id = m.tool_call_id.slice(0, 128);
+        }
+      } else {
+        msg.content =
+          typeof m.content === "string" ? m.content.slice(0, 20000) : null;
+      }
+      if (role === "assistant" && Array.isArray(m.tool_calls)) {
+        msg.tool_calls = m.tool_calls.slice(0, 8).map((tc) => ({
+          id: String(tc?.id || "").slice(0, 128),
+          type: "function",
+          function: {
+            name: String(tc?.function?.name || "").slice(0, 64),
+            arguments: String(tc?.function?.arguments || "{}").slice(0, 8000),
+          },
+        }));
+      }
+      messages.push(msg);
+    } else {
+      return null;
+    }
+  }
+  return messages.length > 0 ? messages : null;
+}
+
+app.post("/api/assistant/chat", authRequired, async (req, res) => {
+  if (!OPENROUTER_KEY) {
+    return res.status(503).json({ error: "asistente no configurado" });
+  }
+  if (!assistantRateLimit(req.user.id)) {
+    return res
+      .status(429)
+      .json({ error: "límite del asistente alcanzado, probá en unos minutos" });
+  }
+  const messages = sanitizeAssistantMessages(req.body?.messages);
+  if (!messages) {
+    return res.status(400).json({ error: "conversación inválida" });
+  }
+  const context = String(req.body?.context || "").slice(0, 24000);
+  const system = {
+    role: "system",
+    content:
+      ASSISTANT_SYSTEM +
+      (context ? `\n\n## Estado actual de la app\n${context}` : ""),
+  };
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120_000);
+  // Ojo: req "close" dispara al terminar el body del request (Node moderno),
+  // no al cortarse la conexión. El cancel real se detecta en res "close"
+  // verificando que la respuesta no haya terminado normalmente.
+  res.on("close", () => {
+    if (!res.writableEnded) controller.abort();
+  });
+
+  let upstream;
+  try {
+    upstream = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${OPENROUTER_KEY}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": BASE_URL || "http://localhost:5174",
+        "X-Title": "MasCalculador - Hormigon",
+      },
+      body: JSON.stringify({
+        model: OPENROUTER_MODEL,
+        messages: [system, ...messages],
+        tools: ASSISTANT_TOOLS,
+        stream: true,
+      }),
+      signal: controller.signal,
+    });
+  } catch {
+    clearTimeout(timeout);
+    if (!res.headersSent) {
+      res.status(502).json({ error: "el asistente no está disponible ahora" });
+    }
+    return;
+  }
+
+  if (!upstream.ok || !upstream.body) {
+    clearTimeout(timeout);
+    const detail = await upstream.text().catch(() => "");
+    console.error(
+      `[asistente] OpenRouter ${upstream.status}: ${detail.slice(0, 300)}`,
+    );
+    if (!res.headersSent) {
+      res.status(502).json({ error: "el asistente no está disponible ahora" });
+    }
+    return;
+  }
+
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+  try {
+    for await (const chunk of upstream.body) {
+      if (res.closed) break;
+      if (!res.write(chunk)) {
+        await new Promise((resolve) => res.once("drain", resolve));
+      }
+    }
+  } catch (err) {
+    if (!res.writableEnded) {
+      res.write(
+        `data: ${JSON.stringify({ error: "stream interrumpido" })}\n\n`,
+      );
+    }
+  } finally {
+    clearTimeout(timeout);
+    if (!res.writableEnded) res.end();
+  }
+});
+
 // SPA fallback: sirve dist/ si existe (producción). En dev sirve vite.
 // Los assets con hash se cachean como immutables, pero el HTML SIEMPRE va
 // fresh: se manda con no-store (el navegador no lo guarda NUNCA) para que

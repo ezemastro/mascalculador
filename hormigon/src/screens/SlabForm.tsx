@@ -17,9 +17,11 @@ import {
   updateSlabInput,
   getSavedSlabs,
   deleteSlab,
+  shouldAskObraOnSave,
 } from "../lib/storage";
 import { pickObraIfNeeded } from "../components/ObraPicker";
 import { DecimalInput } from "@mascalculador/shared";
+import { registerAssistantForm } from "../lib/assistant/form-bus";
 
 export interface SlabState {
   lx: number;
@@ -58,6 +60,32 @@ const EDGE_OPTIONS: { value: EdgeCondition; label: string }[] = [
   { value: "continuo", label: "Continuo" },
   { value: "free", label: "Libre" },
 ];
+
+// Alias que acepta el asistente para las condiciones de borde. El glosario
+// técnico: empotrado/encastrado se modela como "continuo" (momento negativo
+// en el apoyo, tablas de Kalmanok); apoyado como "simple"; volado como "free".
+const EDGE_BY_ALIAS: Record<string, EdgeCondition> = {
+  simple: "simple",
+  articulado: "simple",
+  apoyado: "simple",
+  continuo: "continuo",
+  empotrado: "continuo",
+  encastrado: "continuo",
+  free: "free",
+  libre: "free",
+  volado: "free",
+};
+
+const SLAB_FIELD_DOCS = `Campos (usá exactamente estos nombres, valores en unidades de UI):
+- lx, ly: luces en metros (número > 0). Ej: 4.2
+- edgeX0, edgeXL, edgeY0, edgeYL: condición de borde; valores "simple" (articulado/apoyado), "continuo" (empotrado/encastrado) o "free" (libre/volado). X0/XL = izquierdo/derecho; Y0/YL = inferior/superior.
+- cover_cm: recubrimiento en cm (número > 0). Ej: 2
+- hAdop: espesor o altura adoptada de la losa en cm (número; 0 = usar la predimensionada).
+- D, L: cargas en kN/m² (número).
+- fc: resistencia del hormigón en MPa; solo 20, 25, 30 o 35.
+- fy: resistencia del acero en MPa; solo 420 o 500.
+- dBarX, dBarY: diámetro de barra en mm (número > 0). Ej: 10
+- includeSelfWeight: boolean.`;
 
 export default function SlabForm() {
   const location = useLocation();
@@ -188,6 +216,238 @@ export default function SlabForm() {
     dBarY,
     includeSelfWeight,
   ]);
+
+  // ---- Asistente virtual: expone el estado y la edición del formulario ----
+  // El registro corre una vez por montaje (los setters de React son
+  // estables); el estado se lee por ref para que el asistente siempre vea
+  // los valores vigentes sin re-registrar en cada render.
+  const assistantStateRef = useRef<Record<string, unknown>>({});
+  useEffect(() => {
+    assistantStateRef.current = {
+      lx,
+      ly,
+      edgeX0,
+      edgeXL,
+      edgeY0,
+      edgeYL,
+      cover_cm: cover / 10,
+      hAdop_cm: hAdop,
+      hPredim_cm: Number(hPredim.toFixed(1)),
+      D,
+      L,
+      fc,
+      fy,
+      dBarX,
+      dBarY,
+      includeSelfWeight,
+      loadedSaveId,
+      loadedSaveName: loadedSaveName ?? null,
+    };
+  });
+
+  useEffect(() => {
+    return registerAssistantForm({
+      screen: "/slab",
+      title: "Dimensionado de Losas",
+      fieldDocs: SLAB_FIELD_DOCS,
+      getState: () => assistantStateRef.current,
+      apply: (values) => {
+        const applied: string[] = [];
+        const errors: string[] = [];
+        const num = (v: unknown): number | null => {
+          if (typeof v === "number" && Number.isFinite(v)) return v;
+          if (typeof v === "string") {
+            const parsed = Number(v.trim().replace(",", "."));
+            if (Number.isFinite(parsed)) return parsed;
+          }
+          return null;
+        };
+        for (const [key, raw] of Object.entries(values)) {
+          switch (key) {
+            case "lx":
+            case "ly":
+            case "D":
+            case "L":
+            case "dBarX":
+            case "dBarY": {
+              const v = num(raw);
+              if (v === null || v <= 0) {
+                errors.push(`${key}: se esperaba un número mayor que 0`);
+                break;
+              }
+              if (key === "lx") setLx(v);
+              else if (key === "ly") setLy(v);
+              else if (key === "D") setD(v);
+              else if (key === "L") setL(v);
+              else if (key === "dBarX") setDBarX(v);
+              else setDBarY(v);
+              applied.push(key);
+              break;
+            }
+            case "hAdop": {
+              const v = num(raw);
+              if (v === null || v < 0) {
+                errors.push(
+                  "hAdop: número en cm, 0 para usar la predimensionada",
+                );
+                break;
+              }
+              setHAdop(v);
+              applied.push("hAdop");
+              break;
+            }
+            case "cover_cm": {
+              const v = num(raw);
+              if (v === null || v <= 0) {
+                errors.push("cover_cm: se esperaba un número mayor que 0 (cm)");
+                break;
+              }
+              setCover(v * 10);
+              applied.push("cover_cm");
+              break;
+            }
+            case "fc": {
+              const v = num(raw);
+              if (v === null || ![20, 25, 30, 35].includes(v)) {
+                errors.push("fc: solo 20, 25, 30 o 35 (MPa)");
+                break;
+              }
+              setFc(v);
+              applied.push("fc");
+              break;
+            }
+            case "fy": {
+              const v = num(raw);
+              if (v === null || ![420, 500].includes(v)) {
+                errors.push("fy: solo 420 o 500 (MPa)");
+                break;
+              }
+              setFy(v);
+              applied.push("fy");
+              break;
+            }
+            case "includeSelfWeight": {
+              const truthy =
+                raw === true ||
+                raw === 1 ||
+                raw === "1" ||
+                raw === "true" ||
+                raw === "si" ||
+                raw === "sí";
+              const falsy =
+                raw === false ||
+                raw === 0 ||
+                raw === "0" ||
+                raw === "false" ||
+                raw === "no";
+              if (!truthy && !falsy) {
+                errors.push("includeSelfWeight: se esperaba true o false");
+                break;
+              }
+              setIncludeSelfWeight(truthy);
+              applied.push("includeSelfWeight");
+              break;
+            }
+            case "edgeX0":
+            case "edgeXL":
+            case "edgeY0":
+            case "edgeYL": {
+              const edge =
+                EDGE_BY_ALIAS[
+                  String(raw ?? "")
+                    .trim()
+                    .toLowerCase()
+                ];
+              if (!edge) {
+                errors.push(`${key}: valores "simple", "continuo" o "free"`);
+                break;
+              }
+              if (key === "edgeX0") setEdgeX0(edge);
+              else if (key === "edgeXL") setEdgeXL(edge);
+              else if (key === "edgeY0") setEdgeY0(edge);
+              else setEdgeYL(edge);
+              applied.push(key);
+              break;
+            }
+            default:
+              errors.push(
+                `${key}: campo desconocido (mirá la lista de campos válidos)`,
+              );
+          }
+        }
+        return { applied, errors };
+      },
+      save: async ({ name }) => {
+        const s = assistantStateRef.current as {
+          lx: number;
+          ly: number;
+          edgeX0: EdgeCondition;
+          edgeXL: EdgeCondition;
+          edgeY0: EdgeCondition;
+          edgeYL: EdgeCondition;
+          cover_cm: number;
+          hAdop_cm: number;
+          hPredim_cm: number;
+          D: number;
+          L: number;
+          fc: number;
+          fy: number;
+          dBarX: number;
+          dBarY: number;
+          includeSelfWeight: boolean;
+          loadedSaveId: string | null;
+          loadedSaveName: string | null;
+        };
+        const trimmed = name.trim();
+        if (!trimmed) {
+          return { applied: [], errors: ["se requiere un nombre"] };
+        }
+        if (shouldAskObraOnSave()) {
+          return {
+            applied: [],
+            errors: [
+              'la obra activa es "Sin obra": avisale al usuario que elija una obra y volvé a intentar',
+            ],
+          };
+        }
+        const input: SlabInput = {
+          lx: s.lx,
+          ly: s.ly,
+          edges: [s.edgeX0, s.edgeXL, s.edgeY0, s.edgeYL],
+          D: s.D,
+          L: s.L,
+          fc: s.fc,
+          fy: s.fy,
+          cover: s.cover_cm * 10,
+          h: (s.hAdop_cm > 0 ? s.hAdop_cm : s.hPredim_cm) * 10,
+          dBarX: s.dBarX,
+          dBarY: s.dBarY,
+          includeSelfWeight: s.includeSelfWeight,
+        };
+        try {
+          if (s.loadedSaveId) {
+            updateSlabInput(s.loadedSaveId, input);
+            return {
+              applied: [`guardado actualizado: ${s.loadedSaveName ?? ""}`],
+              errors: [],
+            };
+          }
+          const saved = saveSlabInput(trimmed, input);
+          setLoadedSaveId(saved.id);
+          setLoadedSaveName(trimmed);
+          return {
+            applied: [`guardado en la obra activa como "${trimmed}"`],
+            errors: [],
+          };
+        } catch (err) {
+          return {
+            applied: [],
+            errors: [err instanceof Error ? err.message : "error al guardar"],
+          };
+        }
+      },
+    });
+  }, []);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

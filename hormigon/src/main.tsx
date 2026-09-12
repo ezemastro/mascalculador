@@ -36,6 +36,7 @@ import ComputosObraScreen from "./screens/ComputosObraScreen.tsx";
 import { ObraPickerHost } from "./components/ObraPicker.tsx";
 import ObraMenu from "./components/ObraMenu.tsx";
 import GlobalPrintMenu from "./components/GlobalPrintMenu.tsx";
+import AssistantWidget from "./components/AssistantWidget.tsx";
 
 class ErrorBoundary extends Component<
   { children: ReactNode },
@@ -227,6 +228,7 @@ function Layout({
         onObraChange={handleObraChange}
       />
       <ObraPickerHost onObraCreated={handleObraChange} />
+      <AssistantWidget />
       <div className="pt-10">
         <Outlet key={obraId} />
       </div>
