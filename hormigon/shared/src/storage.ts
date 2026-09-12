@@ -17,7 +17,7 @@ import type {
   SlabResult,
   CompatResult,
 } from "./slab-types";
-import type { App, Load } from "./types";
+import type { App, Load, SupportType } from "./types";
 
 export type { App };
 
@@ -33,6 +33,7 @@ const LAST_COLUMN_FORM_KEY = "last_column_form";
 const LAST_CARTEL_FORM_KEY = "last_cartel_form";
 const LAST_BASES_FORM_KEY = "last_bases_form";
 const LAST_CABEZAL_FORM_KEY = "last_cabezal_form";
+const LAST_CONCRETE_FORM_KEY = "last_concrete_form";
 const LAST_RC_COLUMN_FORM_KEY = "last_rc_column_form";
 const LAST_SLAB_FORM_KEY = "last_slab_form";
 const COMPAT_KEY = "saved-compats";
@@ -372,6 +373,56 @@ export function loadLastCabezalFormState(): CabezalFormState | null {
     const raw = localStorage.getItem(key("concrete", LAST_CABEZAL_FORM_KEY));
     if (!raw) return null;
     return JSON.parse(raw) as CabezalFormState;
+  } catch {
+    return null;
+  }
+}
+
+// ---- Especificas de hormigon (viga H / modulo "Vigas") ----
+
+/** Módulo "Vigas" (Viga H): último borrador del formulario. Sin
+ *  `loadedSaveId`/`loadedSaveName` a propósito: el auto-persist no debe
+ *  auto-promover a modo "editando guardado" (ver design.md §11 de
+ *  viga-continua-persistencia-nombrada). */
+export interface ConcreteLastFormState {
+  spans: number[];
+  supportTypes: SupportType[];
+  concreteLoads: Array<{
+    id?: string;
+    type: "point" | "distributed";
+    D: number;
+    L: number;
+    position?: number;
+    start?: number;
+    end?: number;
+    note?: string;
+  }>;
+  bw: number;
+  h: number;
+  cover: number;
+  fc: number;
+  fy: number;
+  includeSelfWeight?: boolean;
+  supportWidths?: number[];
+  directSupport?: boolean;
+}
+
+export function saveLastConcreteFormState(state: ConcreteLastFormState): void {
+  try {
+    localStorage.setItem(
+      key("concrete", LAST_CONCRETE_FORM_KEY),
+      JSON.stringify(state),
+    );
+  } catch {
+    /* quota exceeded, ignore */
+  }
+}
+
+export function loadLastConcreteFormState(): ConcreteLastFormState | null {
+  try {
+    const raw = localStorage.getItem(key("concrete", LAST_CONCRETE_FORM_KEY));
+    if (!raw) return null;
+    return JSON.parse(raw) as ConcreteLastFormState;
   } catch {
     return null;
   }

@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import ScreenHeader from "../components/ScreenHeader";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
@@ -10,6 +10,8 @@ import {
   loadSlab,
   getSavedBeams,
   deleteSave,
+  saveLastConcreteFormState,
+  loadLastConcreteFormState,
 } from "../lib/storage";
 import { pickObraIfNeeded } from "../components/ObraPicker";
 import { DecimalInput } from "@mascalculador/shared";
@@ -88,14 +90,27 @@ export default function ConcreteForm() {
     | null;
 
   // Luz inicial: se usa para ubicar la carga importada (0 → luz total),
-  // igual que la versión original
-  const initialSpanLengths = state?.spans ?? [6];
+  // igual que la versión original.
+  // Init hierarchy: state > lastForm (borrador auto-persistido) > defaults.
+  // Sin esto, cualquier remount sin router-state (Volver, nav, otra módulo y
+  // vuelta) reinicializa el form y el desplegable "Cantidad de tramos" vuelve
+  // a 1 — el único form del monorepo sin borrador (paridad con SlabForm).
+  const lastForm = !state ? loadLastConcreteFormState() : null;
+  const initialSpanLengths =
+    state?.spans ??
+    (Array.isArray(lastForm?.spans) && lastForm.spans.length > 0
+      ? lastForm.spans
+      : [6]);
   const initialTotalLength = initialSpanLengths.reduce((a, b) => a + b, 0);
 
   const [spanCount, setSpanCount] = useState(initialSpanLengths.length);
   const [spanLengths, setSpanLengths] = useState<number[]>(initialSpanLengths);
   const [supportTypes, setSupportTypes] = useState<SupportType[]>(
-    state?.supportTypes ?? ["simple", "simple"],
+    state?.supportTypes ??
+      ((lastForm?.supportTypes ?? null) as SupportType[] | null) ?? [
+        "simple",
+        "simple",
+      ],
   );
   // slabImport tiene prioridad sobre cualquier estado restaurado (criterio original)
   const [concreteLoads, setConcreteLoads] = useState<ConcreteLoad[]>(() => {
@@ -132,13 +147,17 @@ export default function ConcreteForm() {
         },
       ];
     }
-    return state?.concreteLoads ?? [];
+    return (
+      state?.concreteLoads ??
+      ((lastForm?.concreteLoads ?? null) as ConcreteLoad[] | null) ??
+      []
+    );
   });
-  const [bw, setBw] = useState(state?.bw ?? 200);
-  const [h, setH] = useState(state?.h ?? 500);
-  const [cover, setCover] = useState(state?.cover ?? 30);
-  const [fc, setFc] = useState(state?.fc ?? 25);
-  const [fy, setFy] = useState(state?.fy ?? 420);
+  const [bw, setBw] = useState(state?.bw ?? lastForm?.bw ?? 200);
+  const [h, setH] = useState(state?.h ?? lastForm?.h ?? 500);
+  const [cover, setCover] = useState(state?.cover ?? lastForm?.cover ?? 30);
+  const [fc, setFc] = useState(state?.fc ?? lastForm?.fc ?? 25);
+  const [fy, setFy] = useState(state?.fy ?? lastForm?.fy ?? 420);
 
   const [loadedSaveId, setLoadedSaveId] = useState<string | null>(
     state?.loadedSaveId ?? null,
@@ -147,21 +166,58 @@ export default function ConcreteForm() {
     state?.loadedSaveName ?? null,
   );
   const [includeSelfWeight, setIncludeSelfWeight] = useState(
-    state?.includeSelfWeight ?? true,
+    state?.includeSelfWeight ?? lastForm?.includeSelfWeight ?? true,
   );
   const [supportWidths, setSupportWidths] = useState<number[]>(() =>
     state?.supportWidths?.length
       ? state.supportWidths
-      : Array(supportTypes.length).fill(300),
+      : lastForm?.supportWidths?.length
+        ? lastForm.supportWidths
+        : Array(supportTypes.length).fill(300),
   );
   const [directSupport, setDirectSupport] = useState(
-    state?.directSupport ?? true,
+    state?.directSupport ?? lastForm?.directSupport ?? true,
   );
 
   // Armaduras elegidas en resultados (se pasan de vuelta al calcular)
   const savedReinf = useRef<Record<string, unknown>>({});
 
   const totalLength = spanLengths.reduce((a, b) => a + b, 0);
+
+  // Auto-persist del borrador (patrón SlabForm): en cada cambio, salteando el
+  // primer montaje para no pisar el draft recién restaurado con los defaults.
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    saveLastConcreteFormState({
+      spans: spanLengths,
+      supportTypes,
+      concreteLoads,
+      bw,
+      h,
+      cover,
+      fc,
+      fy,
+      includeSelfWeight,
+      supportWidths,
+      directSupport,
+    });
+  }, [
+    spanLengths,
+    supportTypes,
+    concreteLoads,
+    bw,
+    h,
+    cover,
+    fc,
+    fy,
+    includeSelfWeight,
+    supportWidths,
+    directSupport,
+  ]);
 
   // Peso propio auto-calculado: (bw·h / 1e6) × γ_hormigón [kN/m], en mm
   const selfWeightD = useMemo(
