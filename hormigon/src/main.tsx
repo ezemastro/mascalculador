@@ -28,6 +28,8 @@ import CompatList from "./screens/CompatList.tsx";
 import BasesForm from "./screens/BasesForm.tsx";
 import BasesResults from "./screens/BasesResults.tsx";
 import CabezalForm from "./screens/CabezalForm.tsx";
+import PileCapForm from "./screens/PileCapForm.tsx";
+import PileCapResults from "./screens/PileCapResults.tsx";
 import RCColumnForm from "./screens/RCColumnForm.tsx";
 import RCColumnResults from "./screens/RCColumnResults.tsx";
 import ComputosObraScreen from "./screens/ComputosObraScreen.tsx";
@@ -133,6 +135,14 @@ function NavBar({
           className="text-sm text-text-muted hover:text-text"
         >
           Cabezales
+        </Link>
+      )}
+      {admin && (
+        <Link
+          to="/cabezal-pilotes"
+          className="text-sm text-text-muted hover:text-text"
+        >
+          Cabezal pilotes
         </Link>
       )}
       {admin && (
@@ -259,6 +269,14 @@ function buildRouter(
         {
           path: "/cabezales-results",
           Component: admin ? CabezalResults : HomeRedirect,
+        },
+        {
+          path: "/cabezal-pilotes",
+          Component: admin ? PileCapForm : HomeRedirect,
+        },
+        {
+          path: "/cabezal-pilotes-results",
+          Component: admin ? PileCapResults : HomeRedirect,
         },
         { path: "/computos", Component: ComputosObraScreen },
         { path: "/rc-column", Component: RCColumnForm },

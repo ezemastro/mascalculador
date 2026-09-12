@@ -16,7 +16,8 @@ interface Props {
     | "cartel"
     | "losa"
     | "rc-columna"
-    | "cabezal";
+    | "cabezal"
+    | "pilecap";
   onLoad: (data: Record<string, unknown>, save: SavedBeam) => void;
   onDelete?: (id: string) => void;
   label?: string;

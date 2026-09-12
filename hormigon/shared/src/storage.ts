@@ -33,6 +33,7 @@ const LAST_COLUMN_FORM_KEY = "last_column_form";
 const LAST_CARTEL_FORM_KEY = "last_cartel_form";
 const LAST_BASES_FORM_KEY = "last_bases_form";
 const LAST_CABEZAL_FORM_KEY = "last_cabezal_form";
+const LAST_PILECAP_FORM_KEY = "last_pilecap_form";
 const LAST_CONCRETE_FORM_KEY = "last_concrete_form";
 const LAST_RC_COLUMN_FORM_KEY = "last_rc_column_form";
 const LAST_SLAB_FORM_KEY = "last_slab_form";
@@ -50,7 +51,8 @@ export type SaveType =
   | "cartel"
   | "losa"
   | "rc-columna"
-  | "cabezal";
+  | "cabezal"
+  | "pilecap";
 
 export interface SavedBeam {
   id: string;
@@ -373,6 +375,62 @@ export function loadLastCabezalFormState(): CabezalFormState | null {
     const raw = localStorage.getItem(key("concrete", LAST_CABEZAL_FORM_KEY));
     if (!raw) return null;
     return JSON.parse(raw) as CabezalFormState;
+  } catch {
+    return null;
+  }
+}
+
+// ---- Especificas de hormigon (cabezal sobre pilotes) ----
+
+/** Módulo "Cabezal sobre pilotes" (bielas y tirantes): cargas de columna,
+ *  pilotes, geometría del cabezal y materiales. */
+export interface PileCapFormState {
+  PD: number;
+  PL: number;
+  /** kN — capacidad del pilote (carga de servicio del estudio geotécnico). */
+  Qp: number;
+  /** Cantidad de pilotes: 2 (rectangular) o 3 (en línea o triángulo). */
+  nPilotes: 2 | 3;
+  /** "rect2" = cabezal rectangular con 2 pilotes, "linea3" = rectangular con
+   *  3 pilotes en línea, "triangulo" = triangular con 3 pilotes. */
+  tipo: "rect2" | "linea3" | "triangulo";
+  /** cm — dimensiones de la columna. */
+  cx: number;
+  cy: number;
+  /** cm — diámetro del pilote. */
+  Dp: number;
+  /** cm — separación entre ejes de pilotes. */
+  s: number;
+  /** cm — cabezal rectangular: largo (dirección de los pilotes) y ancho. */
+  Lx?: number;
+  Ly?: number;
+  /** cm — cabezal triangular: lado del triángulo equilátero. */
+  lado?: number;
+  /** cm — altura del cabezal. */
+  h?: number;
+  fc: number;
+  fy: number;
+  cover?: number;
+  columnId?: string;
+  columnName?: string;
+}
+
+export function saveLastPileCapFormState(state: PileCapFormState): void {
+  try {
+    localStorage.setItem(
+      key("concrete", LAST_PILECAP_FORM_KEY),
+      JSON.stringify(state),
+    );
+  } catch {
+    /* quota exceeded, ignore */
+  }
+}
+
+export function loadLastPileCapFormState(): PileCapFormState | null {
+  try {
+    const raw = localStorage.getItem(key("concrete", LAST_PILECAP_FORM_KEY));
+    if (!raw) return null;
+    return JSON.parse(raw) as PileCapFormState;
   } catch {
     return null;
   }

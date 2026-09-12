@@ -19,6 +19,7 @@ export type {
   CartelFormState,
   BasesFormState,
   CabezalFormState,
+  PileCapFormState,
   ConcreteLastFormState,
   RCColumnFormState,
   SlabLastFormState,
@@ -47,6 +48,8 @@ export const saveLastBasesFormState = shared.saveLastBasesFormState;
 export const loadLastBasesFormState = shared.loadLastBasesFormState;
 export const saveLastCabezalFormState = shared.saveLastCabezalFormState;
 export const loadLastCabezalFormState = shared.loadLastCabezalFormState;
+export const saveLastPileCapFormState = shared.saveLastPileCapFormState;
+export const loadLastPileCapFormState = shared.loadLastPileCapFormState;
 export const saveLastConcreteFormState = shared.saveLastConcreteFormState;
 export const loadLastConcreteFormState = shared.loadLastConcreteFormState;
 export const saveLastRCColumnFormState = shared.saveLastRCColumnFormState;
