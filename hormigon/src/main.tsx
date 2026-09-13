@@ -228,7 +228,7 @@ function Layout({
         onObraChange={handleObraChange}
       />
       <ObraPickerHost onObraCreated={handleObraChange} />
-      <AssistantWidget />
+      <AssistantWidget onObraChange={handleObraChange} />
       <div className="pt-10">
         <Outlet key={obraId} />
       </div>

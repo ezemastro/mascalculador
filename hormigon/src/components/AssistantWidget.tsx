@@ -24,7 +24,9 @@ type TranscriptItem =
 
 const MAX_TOOL_ROUNDS = 6;
 
-export default function AssistantWidget() {
+export default function AssistantWidget(props: {
+  onObraChange: (id: string) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [input, setInput] = useState("");
@@ -32,6 +34,7 @@ export default function AssistantWidget() {
   const [error, setError] = useState<string | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
+  const { onObraChange } = props;
   const messagesRef = useRef<ChatMessage[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -136,7 +139,7 @@ export default function AssistantWidget() {
           const toolResult = await executeAssistantTool(
             call.name,
             call.arguments,
-            (path) => navigate(path),
+            { navigate: (path) => navigate(path), onObraChange },
           );
           messagesRef.current.push({
             role: "tool",

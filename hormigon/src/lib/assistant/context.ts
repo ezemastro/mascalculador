@@ -55,6 +55,26 @@ export function buildAssistantContext(pathname: string): string {
   const obra = getObras().find((o) => o.id === getCurrentObraId());
   lines.push(`Obra activa: ${obra ? `"${obra.name}"` : "(desconocida)"}`);
 
+  const obras = getObras();
+  if (obras.length > 0) {
+    lines.push(
+      "",
+      "## Obras disponibles",
+      ...obras
+        .slice(0, 20)
+        .map(
+          (o) =>
+            `- "${o.name}" ${o.id === getCurrentObraId() ? "(activa)" : ""}`,
+        ),
+    );
+  } else {
+    lines.push(
+      "",
+      "## Obras disponibles",
+      "- (ninguna; puedo crear una nueva)",
+    );
+  }
+
   const form = getAssistantForm(pathname);
   if (form) {
     lines.push(

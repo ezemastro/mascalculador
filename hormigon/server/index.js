@@ -631,6 +631,8 @@ Al mapear un término del glosario, cargá el valor directamente y en tu respues
 
 Guardar: para guardar los datos del formulario activo usá save_form (equivale al botón Guardar). NUNCA navegues a otra pantalla para guardar: navigate solo cambia de pantalla. /computos es la pantalla de cómputos de obra y NO tiene relación con guardar. Si el formulario ya tiene un guardado cargado, save_form lo actualiza con el mismo nombre.
 
+Obra: usá la herramienta obra para crear una obra nueva (action "create" con name) o cambiar la obra activa (action "select" con name o id). El contexto lista las obras disponibles. Recién después de crear/seleccionar la obra correcta cargá y guardá datos: cada obra tiene sus propios elementos guardados.
+
 Explicaciones: cuando cargues valores, resumí en una línea qué dejaste cargado (campo = valor). Si piden una explicación técnica, respondé con la hipótesis que aplica la app (CIRSOC 201-05, método de coeficientes) y los valores reales del contexto, sin rodeos.
 
 El contexto "Estado actual de la app" se regenera en cada mensaje: es tu fuente de verdad sobre la pantalla, el formulario y la obra.`;
@@ -694,6 +696,34 @@ const ASSISTANT_TOOLS = [
           },
         },
         required: ["path"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "obra",
+      description:
+        "Crea una obra nueva o cambia la obra activa. Cada obra tiene sus propios elementos guardados.",
+      parameters: {
+        type: "object",
+        properties: {
+          action: {
+            type: "string",
+            enum: ["create", "select"],
+            description: "create = obra nueva; select = cambiar a una existente",
+          },
+          name: {
+            type: "string",
+            description:
+              "Nombre de la obra. Obligatorio en create; en select se usa para encontrar la obra por nombre (no distinguir mayúsculas).",
+          },
+          id: {
+            type: "string",
+            description: "Id de la obra (solo select). Alternativo a name.",
+          },
+        },
+        required: ["action"],
       },
     },
   },
