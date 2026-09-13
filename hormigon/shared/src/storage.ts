@@ -408,6 +408,11 @@ export interface PileCapFormState {
   lado?: number;
   /** cm — altura del cabezal. */
   h?: number;
+  /** mm — Ø del tirante elegido por el usuario en resultados (opcional:
+   *  si falta, el motor propone automáticamente). */
+  tieBarD?: number;
+  /** cantidad de barras por tirante elegida por el usuario (opcional). */
+  tieBarN?: number;
   fc: number;
   fy: number;
   cover?: number;

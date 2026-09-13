@@ -12,6 +12,8 @@ import PileCapDiagram from "../components/PileCapDiagram";
 const f1 = (n: number) => n.toFixed(1);
 const f2 = (n: number) => n.toFixed(2);
 
+const TIE_DIAMS = [10, 12, 16, 20, 25];
+
 function CheckCard({
   title,
   ok,
@@ -79,7 +81,9 @@ export default function PileCapResults() {
     loadedSaveName?: string;
   } | null;
 
-  const input = locationState?.input;
+  const [input, setInput] = useState<PileCapInput | null>(
+    locationState?.input ?? null,
+  );
   const [savedId, setSavedId] = useState<string | null>(
     locationState?.loadedSaveId ?? null,
   );
@@ -268,6 +272,85 @@ export default function PileCapResults() {
           </div>
         </section>
 
+        {/* ── Armado inferior ────────────────────────────────────── */}
+        <section className="bg-surface rounded-xl border border-border p-5">
+          <h2 className="section-title mb-4">
+            Armado inferior (tirantes entre pilotes)
+          </h2>
+          <div className="flex flex-wrap items-end gap-4">
+            <label className="flex min-w-0 flex-col gap-1.5">
+              <span className="text-xs font-medium text-text-muted">
+                Diámetro
+              </span>
+              <select
+                value={result.barD}
+                onChange={(e) =>
+                  setInput((p) =>
+                    p
+                      ? {
+                          ...p,
+                          tieBarD: Number(e.target.value),
+                          tieBarN: p.tieBarN ?? result.barN,
+                        }
+                      : p,
+                  )
+                }
+              >
+                {TIE_DIAMS.map((d) => (
+                  <option key={d} value={d}>
+                    Ø{d}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex min-w-0 flex-col gap-1.5">
+              <span className="text-xs font-medium text-text-muted">
+                Cantidad por tirante
+              </span>
+              <select
+                value={result.barN}
+                onChange={(e) =>
+                  setInput((p) =>
+                    p ? { ...p, tieBarN: Number(e.target.value) } : p,
+                  )
+                }
+              >
+                {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+                  <option key={n} value={n}>
+                    {n} barras
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="bg-surface-alt rounded-lg px-4 py-2.5 text-xs text-text">
+              As prov{" "}
+              <b className="tabular-nums">{f2(result.AsProv)}</b> vs As nec{" "}
+              <b className="tabular-nums">{f2(result.AsNec)}</b> cm²{" "}
+              <span
+                className={`ml-1 font-bold ${result.tieOK ? "text-success" : "text-danger"}`}
+              >
+                {result.tieOK ? "✓ cumple" : "✗ insuficiente"}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setInput((p) =>
+                  p ? { ...p, tieBarD: undefined, tieBarN: undefined } : p,
+                )
+              }
+              className="rounded-lg border border-border bg-surface px-3 py-2 text-xs font-semibold text-text-muted transition-colors hover:bg-surface-alt hover:text-text"
+            >
+              ↺ Propuesta automática
+            </button>
+          </div>
+          <p className="mt-3 text-[11px] leading-snug text-text-muted">
+            El resto del cabezal (reparto inferior completo en ambas
+            direcciones y malla superior de retracción) se adopta como malla
+            Fi 8 c/15.
+          </p>
+        </section>
+
         {/* ── Verificaciones ─────────────────────────────────────── */}
         <section className="bg-surface rounded-xl border border-border p-5">
           <h2 className="section-title mb-4">Verificaciones</h2>
@@ -426,9 +509,10 @@ export default function PileCapResults() {
               (rectas o con gancho estándar 90° según la verificación).
             </li>
             <li>
-              Completar la malla inferior en ambas direcciones (armadura de
-              reparto) con separación ≤ 2h, y una malla superior de retracción
-              (~Ø10 c/20) en cabezales de altura mayor a 90 cm.
+              Armadura de reparto y de retracción: malla Fi 8 c/15 — malla
+              inferior completa en ambas direcciones y malla superior de
+              retracción. Los tirantes elegidos entre pilotes se colocan por
+              encima de la malla inferior.
             </li>
             <li>
               El cabezal debe quedar en contacto pleno con la cabeza del pilote:

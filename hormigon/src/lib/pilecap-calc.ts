@@ -32,6 +32,11 @@ export interface PileCapInput {
   fc: number;
   fy: number;
   cover?: number;
+  /** mm — Ø del tirante elegido por el usuario (opcional: si falta, el
+   *  motor propone automáticamente). */
+  tieBarD?: number;
+  /** barras por tirante elegidas por el usuario (opcional). */
+  tieBarN?: number;
 }
 
 export interface PileCapCheck {
@@ -318,7 +323,20 @@ export function designPileCap(input: PileCapInput): PileCapResult {
   const bTie = tipo === "triangulo" ? L1 / (2 * Math.sqrt(3)) : L2;
   const AsMin = 0.0018 * bTie * h;
   const AsNec = Math.max(AsTie, AsMin);
-  const { barD, barN, AsProv } = elegirBarras(AsNec);
+  const userBars =
+    typeof input.tieBarD === "number" &&
+    typeof input.tieBarN === "number" &&
+    input.tieBarN > 0 &&
+    BAR_AREA_MM2[input.tieBarD] > 0;
+  const { barD, barN, AsProv } = userBars
+    ? {
+        barD: input.tieBarD as number,
+        barN: input.tieBarN as number,
+        AsProv:
+          ((input.tieBarN as number) * BAR_AREA_MM2[input.tieBarD as number]) /
+          100,
+      }
+    : elegirBarras(AsNec);
   const armadura = `${barN} Ø${barD}`;
   const tieOK = AsProv >= AsNec - 1e-9;
 
@@ -336,7 +354,10 @@ export function designPileCap(input: PileCapInput): PileCapResult {
     `   As mín (retracción) = 0.0018·${f1(bTie)}·${f1(h)} = ${f2(AsMin)} cm² ${tipo === "triangulo" ? "(ancho tributario = apotema lado/(2√3))" : ""}`,
   );
   st.push(
-    `   As nec = ${f2(AsNec)} cm² → ${armadura} por tirante (As prov = ${f2(AsProv)} cm²) ${tieOK ? "✓" : "✗"}`,
+    `   As nec = ${f2(AsNec)} cm² → ${armadura} por tirante (As prov = ${f2(AsProv)} cm²) ${tieOK ? "✓" : "✗"} ${userBars ? "(armado elegido en resultados)" : "(propuesta automática)"}`,
+  );
+  st.push(
+    "   Resto del armado (reparto inferior completo y retracción superior): malla Fi 8 c/15",
   );
 
   // ── Paso 7: anclaje de los tirantes ─────────────────────────────────────

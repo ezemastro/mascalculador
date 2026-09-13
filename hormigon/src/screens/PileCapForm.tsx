@@ -242,6 +242,8 @@ export default function PileCapForm() {
         "fc",
         "fy",
         "cover",
+        "tieBarD",
+        "tieBarN",
       ] as const;
       for (const k of nums) {
         if (typeof f[k] === "number") next[k] = f[k] as never;
