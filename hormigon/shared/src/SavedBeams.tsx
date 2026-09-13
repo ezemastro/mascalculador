@@ -4,20 +4,12 @@ import {
   deleteSave as deleteSaveShared,
   type SavedBeam,
   type App,
+  type SaveType,
 } from "./storage";
 
 interface Props {
   app: App;
-  type:
-    | "acero"
-    | "hormigon"
-    | "bases"
-    | "columna"
-    | "cartel"
-    | "losa"
-    | "rc-columna"
-    | "cabezal"
-    | "pilecap";
+  type: SaveType;
   onLoad: (data: Record<string, unknown>, save: SavedBeam) => void;
   onDelete?: (id: string) => void;
   label?: string;

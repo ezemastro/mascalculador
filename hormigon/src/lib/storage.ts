@@ -23,6 +23,7 @@ export type {
   ConcreteLastFormState,
   RCColumnFormState,
   SlabLastFormState,
+  MuroFormState,
   SavedSlabData,
   SavedCompatData,
   SavedSupportData,
@@ -50,6 +51,8 @@ export const saveLastCabezalFormState = shared.saveLastCabezalFormState;
 export const loadLastCabezalFormState = shared.loadLastCabezalFormState;
 export const saveLastPileCapFormState = shared.saveLastPileCapFormState;
 export const loadLastPileCapFormState = shared.loadLastPileCapFormState;
+export const saveLastMuroFormState = shared.saveLastMuroFormState;
+export const loadLastMuroFormState = shared.loadLastMuroFormState;
 export const saveLastConcreteFormState = shared.saveLastConcreteFormState;
 export const loadLastConcreteFormState = shared.loadLastConcreteFormState;
 export const saveLastRCColumnFormState = shared.saveLastRCColumnFormState;
@@ -242,7 +245,9 @@ export async function bootstrapStorage(): Promise<{
 
 // ---- Vigas (por obra) ----
 
-function getElementSaves(obraId: string = getCurrentObraId()): shared.SavedBeam[] {
+function getElementSaves(
+  obraId: string = getCurrentObraId(),
+): shared.SavedBeam[] {
   try {
     const raw = localStorage.getItem(obraKeyFor(obraId, "beam_saves"));
     if (!raw) return [];
@@ -331,9 +336,7 @@ export function updateSave(
 }
 
 export function deleteSave(id: string): void {
-  writeElementSaves(
-    getElementSaves().filter((s) => s.id !== id),
-  );
+  writeElementSaves(getElementSaves().filter((s) => s.id !== id));
 }
 
 export function getSavedBeams(type: shared.SaveType): shared.SavedBeam[] {
@@ -376,7 +379,12 @@ export function saveSlabInput(
   obraId?: string,
 ): shared.SavedBeam {
   const data = { input };
-  return saveBeam(name, "losa", data as unknown as Record<string, unknown>, obraId);
+  return saveBeam(
+    name,
+    "losa",
+    data as unknown as Record<string, unknown>,
+    obraId,
+  );
 }
 
 export function updateSlabInput(
@@ -503,10 +511,7 @@ export function saveCompatReinf(
   } else {
     saved.push({ compatName, diam, sep });
   }
-  localStorage.setItem(
-    obraKey("compat-reinf"),
-    JSON.stringify(saved),
-  );
+  localStorage.setItem(obraKey("compat-reinf"), JSON.stringify(saved));
 }
 
 export function removeCompatReinf(compatName: string): void {

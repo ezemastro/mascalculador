@@ -32,6 +32,8 @@ import PileCapForm from "./screens/PileCapForm.tsx";
 import PileCapResults from "./screens/PileCapResults.tsx";
 import RCColumnForm from "./screens/RCColumnForm.tsx";
 import RCColumnResults from "./screens/RCColumnResults.tsx";
+import MuroForm from "./screens/MuroForm.tsx";
+import MuroResults from "./screens/MuroResults.tsx";
 import ComputosObraScreen from "./screens/ComputosObraScreen.tsx";
 import { ObraPickerHost } from "./components/ObraPicker.tsx";
 import ObraMenu from "./components/ObraMenu.tsx";
@@ -126,6 +128,9 @@ function NavBar({
       </Link>
       <Link to="/bases" className="text-sm text-text-muted hover:text-text">
         Bases
+      </Link>
+      <Link to="/muro" className="text-sm text-text-muted hover:text-text">
+        Muro de Contención
       </Link>
       <Link to="/computos" className="text-sm text-text-muted hover:text-text">
         Cómputos
@@ -258,6 +263,9 @@ function buildRouter(
         { path: "/slab-compats", Component: CompatList },
         { path: "/bases", Component: BasesForm },
         { path: "/bases-results", Component: BasesResults },
+        // Módulo de muro de contención: visible y operable para todos.
+        { path: "/muro", Component: MuroForm },
+        { path: "/muro-results", Component: MuroResults },
         // Módulos de cabezales: visibles y operables para todos los usuarios.
         { path: "/cabezales", Component: CabezalForm },
         { path: "/cabezales-results", Component: CabezalResults },

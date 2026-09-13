@@ -276,3 +276,57 @@ export function computoBase(p: {
   acc.bar(p.diamY, p.qtyY, p.lyCm / 100);
   return acc.finish();
 }
+
+/** Grupo de barras adoptado: Ø (mm), separación (cm) y —para las longitudinales
+ *  de la zapata— cantidad por metro. */
+interface MuroBarGroup {
+  diam: number;
+  sep: number;
+  count?: number;
+}
+
+/** Cómputo de un muro de contención: analizado por metro lineal (corrida).
+ *  Hormigón = prisma del tabique + prisma de la zapata; acero = barras por
+ *  grupo desplegadas a la longitud de colocación (sin traslapos ni recortes). */
+export function computoMuro(p: {
+  H: number; // m — altura libre
+  e_muro: number; // m — espesor del tabique
+  B_zap: number; // m — ancho de la zapata (transversal al muro)
+  H_zap: number; // m — altura de la zapata
+  vertInt: MuroBarGroup;
+  vertExt: MuroBarGroup;
+  horiz: MuroBarGroup;
+  trans: MuroBarGroup;
+  long: MuroBarGroup;
+}): Computo {
+  const acc = new ComputoAcc();
+  // Hormigón por metro lineal
+  acc.concrete(p.e_muro * p.H);
+  acc.concrete(p.B_zap * p.H_zap);
+
+  // Tabique — verticales (corren en la altura H, separadas en la longitud del
+  // muro): por metro, n = 100 cm / sep + 1 barras.
+  const nVert = (g: MuroBarGroup) =>
+    g.sep > 0 ? Math.floor(100 / g.sep) + 1 : 0;
+  acc.bar(p.vertExt.diam, nVert(p.vertExt), p.H);
+  acc.bar(p.vertInt.diam, nVert(p.vertInt), p.H);
+
+  // Tabique — horizontales (corren en la longitud 1 m, separadas en la altura):
+  // n = H_cm / sep + 1, cada una de 1 m.
+  const nHoriz = (g: MuroBarGroup) =>
+    g.sep > 0 ? Math.floor((p.H * 100) / g.sep) + 1 : 0;
+  acc.bar(p.horiz.diam, nHoriz(p.horiz), 1);
+
+  // Zapata — barras transversales (span B_zap, separadas en la longitud del
+  // muro): n = 100 / sep + 1, cada una de B_zap.
+  acc.bar(p.trans.diam, nVert(p.trans), p.B_zap);
+
+  // Zapata — barras longitudinales (corren en la longitud 1 m, separadas en
+  // B_zap): cantidad por metro del grupo (o 100/sep+1 sobre B_zap).
+  const nLongZap =
+    p.long.count ??
+    (p.long.sep > 0 ? Math.floor((p.B_zap * 100) / p.long.sep) + 1 : 0);
+  acc.bar(p.long.diam, nLongZap, 1);
+
+  return acc.finish();
+}

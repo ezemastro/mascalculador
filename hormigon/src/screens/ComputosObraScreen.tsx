@@ -13,6 +13,8 @@ const NOTAS: Record<FamiliaComputo["key"], string> = {
   columnas: "Estribos con recubrimiento supuesto 2.5 cm.",
   bases:
     "Hormigón incluye viga de fundación / vigas de equilibrio. Armadura según la propuesta del diseño (la adopción manual de la pantalla no se guarda).",
+  muros:
+    "Por metro lineal. Hormigón = tabique + zapata. Armadura según la propuesta del diseño (verticales y horizontales del tabique; transversales y longitudinales de la zapata).",
   apoyos:
     "Solo acero: el hormigón ya computa en las losas. Largo = 1/3 de la luz de cada losa que apoya (borde compartido: 1/3 de luz por losa); cantidad según la menor luz perpendicular entre las losas del apoyo, una barra más por borde.",
 };

@@ -17,6 +17,7 @@ import {
   computoViga,
   computoColumna,
   computoBase,
+  computoMuro,
   ComputoAcc,
   BAR_AREA_MM2,
   sumComputos,
@@ -26,6 +27,7 @@ import { calculateBeamEnvelope } from "./beam-envelope";
 import { designRCColumn } from "./rc-column-calc";
 import { CONCRETE_DENSITY } from "./constants";
 import type { BaseInput, BaseResult } from "./bases-calc";
+import type { MuroInput, MuroResult } from "./muro-calc";
 import {
   getSavedBeams,
   getSavedSlabs,
@@ -282,6 +284,31 @@ export function computoBaseFromSave(save: SavedBeam): Computo | null {
   });
 }
 
+// ---- Muros desde guardado ----
+
+export function computoMuroFromSave(save: SavedBeam): Computo | null {
+  const data = save.data as {
+    input?: Partial<MuroInput>;
+    result?: Partial<MuroResult>;
+  };
+  const input = data.input;
+  const result = data.result;
+  if (!input || !result) return null;
+  const bar = (b?: { diam: number; sep: number; count?: number }) =>
+    b ?? { diam: 0, sep: 0, count: 0 };
+  return computoMuro({
+    H: input.H ?? 0,
+    e_muro: input.e_muro ?? 0,
+    B_zap: input.B_zap ?? 0,
+    H_zap: input.H_zap ?? 0,
+    vertInt: bar(result.vertInt),
+    vertExt: bar(result.vertExt),
+    horiz: bar(result.horiz),
+    trans: bar(result.trans),
+    long: bar(result.long),
+  });
+}
+
 // ---- Apoyos de losas (solo acero) ----
 
 interface SlabDims {
@@ -384,7 +411,7 @@ export function computoApoyosObra(): ApoyosComputo {
 // ---- Agregado por obra ----
 
 export interface FamiliaComputo {
-  key: "losas" | "vigas" | "columnas" | "bases" | "apoyos";
+  key: "losas" | "vigas" | "columnas" | "bases" | "muros" | "apoyos";
   label: string;
   computo: Computo;
   /** Elementos guardados que no se pudieron computar. */
@@ -429,6 +456,7 @@ export function computoObraActiva(): ComputoObraResult {
       computoColumnaFromSave,
     ),
     familia("bases", "Bases", getSavedBeams("bases"), computoBaseFromSave),
+    familia("muros", "Muros", getSavedBeams("muro"), computoMuroFromSave),
   ];
   const ap = computoApoyosObra();
   familias.push({

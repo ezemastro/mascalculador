@@ -37,6 +37,7 @@ const LAST_PILECAP_FORM_KEY = "last_pilecap_form";
 const LAST_CONCRETE_FORM_KEY = "last_concrete_form";
 const LAST_RC_COLUMN_FORM_KEY = "last_rc_column_form";
 const LAST_SLAB_FORM_KEY = "last_slab_form";
+const LAST_MURO_FORM_KEY = "last_muro_form";
 const COMPAT_KEY = "saved-compats";
 const SUPPORT_KEY = "saved-supports";
 const COMPAT_REINF_KEY = "compat-reinf";
@@ -52,7 +53,8 @@ export type SaveType =
   | "losa"
   | "rc-columna"
   | "cabezal"
-  | "pilecap";
+  | "pilecap"
+  | "muro";
 
 export interface SavedBeam {
   id: string;
@@ -436,6 +438,58 @@ export function loadLastPileCapFormState(): PileCapFormState | null {
     const raw = localStorage.getItem(key("concrete", LAST_PILECAP_FORM_KEY));
     if (!raw) return null;
     return JSON.parse(raw) as PileCapFormState;
+  } catch {
+    return null;
+  }
+}
+
+// ---- Especificas de hormigon (muro de contencion) ----
+
+/** Módulo "Muro de Contención": geometría, geotecnia, hormigón/cargas y
+ *  zapata. Unidades del formulario: metros para geometría (salvo recubrimientos
+ *  en mm), kN/m³ y kN/m² para el suelo, MPa para fc/fy. */
+export interface MuroFormState {
+  H: number; // m — altura total libre
+  e_muro: number; // m — espesor del tabique
+  rec_muro: number; // mm — recubrimiento del tabique (def 25)
+  H_puntal: number; // m — nivel de apuntalamiento desde la base (def H/2)
+  gamma: number; // kN/m³
+  gamma_sat: number; // kN/m³ (def gamma+2)
+  phi: number; // °
+  c: number; // kN/m²
+  FS_c: number; // factor de seguridad al corte (def 2.5)
+  h_napa: number; // m — altura de napa desde la base (0 = sin napa)
+  q_lindero: number; // kN/m²
+  sigma_adm_suelo: number; // MPa (o kg/cm² si sigma_adm_unit = "kg/cm2")
+  sigma_adm_unit: "MPa" | "kg/cm2";
+  fc: number; // MPa
+  fy: number; // MPa
+  e_losa: number; // m
+  ancho_inf: number; // m
+  CM_losa: number; // kN/m²
+  L_losa: number; // kN/m²
+  B_zap: number; // m
+  H_zap: number; // m
+  rec_zap: number; // mm — recubrimiento de la zapata (def 50)
+  tipo_zapata: "centrada" | "excentrica";
+}
+
+export function saveLastMuroFormState(state: MuroFormState): void {
+  try {
+    localStorage.setItem(
+      key("concrete", LAST_MURO_FORM_KEY),
+      JSON.stringify(state),
+    );
+  } catch {
+    /* quota exceeded, ignore */
+  }
+}
+
+export function loadLastMuroFormState(): MuroFormState | null {
+  try {
+    const raw = localStorage.getItem(key("concrete", LAST_MURO_FORM_KEY));
+    if (!raw) return null;
+    return JSON.parse(raw) as MuroFormState;
   } catch {
     return null;
   }
