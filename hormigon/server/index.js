@@ -585,7 +585,21 @@ app.post("/api/storage/sync", authRequired, (req, res) => {
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY || "";
 const OPENROUTER_MODEL =
-  process.env.OPENROUTER_MODEL || "nvidia/nemotron-3-super-120b-a12b:free";
+  process.env.OPENROUTER_MODEL || "nvidia/nemotron-3.5-lightning:free";
+
+// Cadena de modelos con fallback: el endpoint prueba cada modelo en orden
+// hasta que uno emite su primer byte dentro del plazo; así la cola variable
+// de un modelo free no deja al usuario sin respuesta.
+const OPENROUTER_MODELS = (
+  process.env.OPENROUTER_MODELS ||
+  `${OPENROUTER_MODEL},nex-agi/nex-n2.5-pro:free,inclusionai/ling-3.0-flash-vl:free`
+)
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+const ASSISTANT_FIRST_TOKEN_MS = Number(
+  process.env.ASSISTANT_FIRST_TOKEN_MS || 15_000,
+);
 
 // Límite propio del asistente (independiente del de auth): una sola pregunta
 // del usuario puede disparar varias pasadas del bucle de tools.
@@ -711,7 +725,8 @@ const ASSISTANT_TOOLS = [
           action: {
             type: "string",
             enum: ["create", "select"],
-            description: "create = obra nueva; select = cambiar a una existente",
+            description:
+              "create = obra nueva; select = cambiar a una existente",
           },
           name: {
             type: "string",
@@ -792,75 +807,142 @@ app.post("/api/assistant/chat", authRequired, async (req, res) => {
       (context ? `\n\n## Estado actual de la app\n${context}` : ""),
   };
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 120_000);
-  // Ojo: req "close" dispara al terminar el body del request (Node moderno),
-  // no al cortarse la conexión. El cancel real se detecta en res "close"
-  // verificando que la respuesta no haya terminado normalmente.
+  // Recorre la cadena de modelos hasta que uno arranque a emitir dentro del
+  // plazo; si todos fallan, responde 502 con el último motivo.
+  let lastError = "sin respuesta del proveedor";
+  let started = false;
+  const controllers = new Set();
+
+  // El cancel real del cliente se detecta en res "close" verificando que la
+  // respuesta no haya terminado normalmente (req "close" dispara al terminar
+  // el body del request, no al cortarse la conexión).
   res.on("close", () => {
-    if (!res.writableEnded) controller.abort();
+    if (!res.writableEnded) {
+      for (const c of controllers) c.abort();
+    }
   });
 
-  let upstream;
-  try {
-    upstream = await fetch(OPENROUTER_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENROUTER_KEY}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": BASE_URL || "http://localhost:5174",
-        "X-Title": "MasCalculador - Hormigon",
-      },
-      body: JSON.stringify({
-        model: OPENROUTER_MODEL,
-        messages: [system, ...messages],
-        tools: ASSISTANT_TOOLS,
-        stream: true,
-      }),
-      signal: controller.signal,
-    });
-  } catch {
-    clearTimeout(timeout);
-    if (!res.headersSent) {
-      res.status(502).json({ error: "el asistente no está disponible ahora" });
-    }
-    return;
-  }
-
-  if (!upstream.ok || !upstream.body) {
-    clearTimeout(timeout);
-    const detail = await upstream.text().catch(() => "");
-    console.error(
-      `[asistente] OpenRouter ${upstream.status}: ${detail.slice(0, 300)}`,
+  for (const model of OPENROUTER_MODELS) {
+    if (started) break;
+    const controller = new AbortController();
+    controllers.add(controller);
+    const firstTokenTimer = setTimeout(
+      () => controller.abort(),
+      ASSISTANT_FIRST_TOKEN_MS,
     );
-    if (!res.headersSent) {
-      res.status(502).json({ error: "el asistente no está disponible ahora" });
-    }
-    return;
-  }
 
-  res.writeHead(200, {
-    "Content-Type": "text/event-stream; charset=utf-8",
-    "Cache-Control": "no-cache, no-transform",
-    Connection: "keep-alive",
-    "X-Accel-Buffering": "no",
-  });
-  try {
-    for await (const chunk of upstream.body) {
-      if (res.closed) break;
+    let upstream;
+    try {
+      upstream = await fetch(OPENROUTER_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${OPENROUTER_KEY}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": BASE_URL || "http://localhost:5174",
+          "X-Title": "MasCalculador - Hormigon",
+        },
+        body: JSON.stringify({
+          model,
+          messages: [system, ...messages],
+          tools: ASSISTANT_TOOLS,
+          stream: true,
+        }),
+        signal: controller.signal,
+      });
+    } catch (err) {
+      clearTimeout(firstTokenTimer);
+      lastError = `modelo ${model} no respondió (${err?.name || "error"})`;
+      console.error(`[asistente] ${lastError}`);
+      continue;
+    }
+
+    if (!upstream.ok || !upstream.body) {
+      clearTimeout(firstTokenTimer);
+      const detail = await upstream.text().catch(() => "");
+      lastError = `modelo ${model} HTTP ${upstream.status}: ${detail.slice(
+        0,
+        200,
+      )}`;
+      console.error(`[asistente] ${lastError}`);
+      continue;
+    }
+
+    // Espera la primera línea SSE real (data:). OpenRouter manda comentarios
+    // ": OPENROUTER PROCESSING" mientras el request está en cola: esos NO
+    // cuentan como arranque. Si el modelo no emite un data: dentro del plazo,
+    // el abort del timer corta el fetch y pasamos al siguiente de la cadena.
+    let firstChunk;
+    try {
+      const reader = upstream.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      const pending = [];
+      let realStart = false;
+      while (!realStart) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        pending.push(value);
+        buffer += decoder.decode(value, { stream: true });
+        let nl;
+        while ((nl = buffer.indexOf("\n")) !== -1) {
+          const line = buffer.slice(0, nl);
+          buffer = buffer.slice(nl + 1);
+          if (line.trimStart().startsWith("data:")) {
+            realStart = true;
+            break;
+          }
+        }
+      }
+      if (!realStart) {
+        lastError = `modelo ${model} cerró en cola sin emitir`;
+        continue;
+      }
+      firstChunk = { reader, pending };
+    } catch (err) {
+      clearTimeout(firstTokenTimer);
+      lastError = `modelo ${model} sin primer token (${err?.name || "error"})`;
+      console.error(`[asistente] ${lastError}`);
+      continue;
+    }
+    clearTimeout(firstTokenTimer);
+    started = true;
+    console.error(`[asistente] usando modelo ${model}`);
+
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    const { reader, pending } = firstChunk;
+    const writeChunk = async (chunk) => {
+      if (res.closed) return;
       if (!res.write(chunk)) {
         await new Promise((resolve) => res.once("drain", resolve));
       }
+    };
+    try {
+      for (const chunk of pending) await writeChunk(chunk);
+      for (;;) {
+        const { done, value: next } = await reader.read();
+        if (done) break;
+        await writeChunk(next);
+      }
+    } catch (err) {
+      if (!res.writableEnded) {
+        res.write(
+          `data: ${JSON.stringify({ error: "stream interrumpido" })}\n\n`,
+        );
+      }
+    } finally {
+      if (!res.writableEnded) res.end();
     }
-  } catch (err) {
-    if (!res.writableEnded) {
-      res.write(
-        `data: ${JSON.stringify({ error: "stream interrumpido" })}\n\n`,
-      );
-    }
-  } finally {
-    clearTimeout(timeout);
-    if (!res.writableEnded) res.end();
+  }
+
+  if (!started && !res.headersSent) {
+    res.status(502).json({
+      error: `el asistente no está disponible: ${lastError.slice(0, 160)}`,
+    });
   }
 });
 
