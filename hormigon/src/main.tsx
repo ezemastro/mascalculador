@@ -130,22 +130,15 @@ function NavBar({
       <Link to="/computos" className="text-sm text-text-muted hover:text-text">
         Cómputos
       </Link>
-      {admin && (
-        <Link
-          to="/cabezales"
-          className="text-sm text-text-muted hover:text-text"
-        >
-          Vigas de fundación para cabezales
-        </Link>
-      )}
-      {admin && (
-        <Link
-          to="/cabezal-pilotes"
-          className="text-sm text-text-muted hover:text-text"
-        >
-          Cabezales
-        </Link>
-      )}
+      <Link to="/cabezales" className="text-sm text-text-muted hover:text-text">
+        Vigas de fundación para cabezales
+      </Link>
+      <Link
+        to="/cabezal-pilotes"
+        className="text-sm text-text-muted hover:text-text"
+      >
+        Cabezales
+      </Link>
       {admin && (
         <Link to="/admin" className="text-sm text-text-muted hover:text-text">
           Admin
@@ -188,7 +181,7 @@ function HomeRedirect() {
   return <Navigate to="/slab" replace />;
 }
 
-/** Resultados del módulo admin de cabezales (reusa la pantalla de Bases). */
+/** Resultados del módulo de cabezales (reusa la pantalla de Bases). */
 function CabezalResults() {
   return <BasesResults variant="cabezal" />;
 }
@@ -265,21 +258,11 @@ function buildRouter(
         { path: "/slab-compats", Component: CompatList },
         { path: "/bases", Component: BasesForm },
         { path: "/bases-results", Component: BasesResults },
-        // Módulo admin: solo visible/operable para administradores. Para el
-        // resto redirige al inicio aunque escriba la URL a mano.
-        { path: "/cabezales", Component: admin ? CabezalForm : HomeRedirect },
-        {
-          path: "/cabezales-results",
-          Component: admin ? CabezalResults : HomeRedirect,
-        },
-        {
-          path: "/cabezal-pilotes",
-          Component: admin ? PileCapForm : HomeRedirect,
-        },
-        {
-          path: "/cabezal-pilotes-results",
-          Component: admin ? PileCapResults : HomeRedirect,
-        },
+        // Módulos de cabezales: visibles y operables para todos los usuarios.
+        { path: "/cabezales", Component: CabezalForm },
+        { path: "/cabezales-results", Component: CabezalResults },
+        { path: "/cabezal-pilotes", Component: PileCapForm },
+        { path: "/cabezal-pilotes-results", Component: PileCapResults },
         { path: "/computos", Component: ComputosObraScreen },
         { path: "/rc-column", Component: RCColumnForm },
         { path: "/rc-column-results", Component: RCColumnResults },
