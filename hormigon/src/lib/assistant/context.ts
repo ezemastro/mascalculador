@@ -26,10 +26,10 @@ const SCREEN_TITLES: Record<string, string> = {
   "/bases": "Bases (formulario)",
   "/bases-results": "Resultados de bases",
   "/computos": "Cómputos de obra",
-  "/cabezales": "Cabezales (formulario, admin)",
-  "/cabezales-results": "Resultados de cabezales (admin)",
-  "/cabezal-pilotes": "Cabezal de pilotes (formulario, admin)",
-  "/cabezal-pilotes-results": "Resultados de cabezal de pilotes (admin)",
+  "/cabezales": "Vigas de fundación para cabezales (formulario, admin)",
+  "/cabezales-results": "Resultados de viga de fundación para cabezales (admin)",
+  "/cabezal-pilotes": "Cabezales (formulario, admin)",
+  "/cabezal-pilotes-results": "Resultados de cabezales (admin)",
   "/admin": "Administración (admin)",
 };
 

@@ -135,7 +135,7 @@ function NavBar({
           to="/cabezales"
           className="text-sm text-text-muted hover:text-text"
         >
-          Cabezales
+          Vigas de fundación para cabezales
         </Link>
       )}
       {admin && (
@@ -143,7 +143,7 @@ function NavBar({
           to="/cabezal-pilotes"
           className="text-sm text-text-muted hover:text-text"
         >
-          Cabezal pilotes
+          Cabezales
         </Link>
       )}
       {admin && (

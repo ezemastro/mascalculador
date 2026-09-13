@@ -311,7 +311,7 @@ export default function PileCapForm() {
     <MainLayout>
       <div className="flex flex-col gap-6">
         <ScreenHeader
-          title="Cabezal sobre pilotes"
+          title="Cabezales"
           subtitle={
             <>
               <span>CIRSOC 201 · Bielas y tirantes</span>
