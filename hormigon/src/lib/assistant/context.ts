@@ -27,13 +27,32 @@ const SCREEN_TITLES: Record<string, string> = {
   "/bases-results": "Resultados de bases",
   "/computos": "Cómputos de obra",
   "/cabezales": "Vigas de fundación para cabezales (formulario, admin)",
-  "/cabezales-results": "Resultados de viga de fundación para cabezales (admin)",
+  "/cabezales-results":
+    "Resultados de viga de fundación para cabezales (admin)",
   "/cabezal-pilotes": "Cabezales (formulario, admin)",
   "/cabezal-pilotes-results": "Resultados de cabezales (admin)",
   "/admin": "Administración (admin)",
 };
 
 const MAX_NAMES = 15;
+
+// Guía de uso en lenguaje de obra para explicarle al usuario cada pantalla.
+// Es lo que el asistente debe usar cuando le preguntan cómo se usa el módulo
+// (nunca la tabla de campos internos).
+const SCREEN_GUIDES: Record<string, string> = {
+  "/slab":
+    "Losas: definís la luz en cada dirección (Lx y Ly, en metros), la condición de cada borde (articulado = apoyo simple, continuo = empotrado, libre = voladizo), el recubrimiento, el espesor (si dejás 0, la app predimensiona sola), las cargas muerta y viva, las resistencias del hormigón y del acero, el diámetro de barras y si incluye el peso propio. Al apretar Calcular la app dimensiona la losa y te da el armado y las verificaciones.",
+  "/slab-compats":
+    "Apoyos de losas: acá ves la lista de apoyos guardados y podés compatibilizar losas entre sí para transferir sus cargas a los módulos siguientes.",
+  "/concrete":
+    "Vigas: definís las luces de cada tramo en metros, el tipo de cada apoyo (articulado, empotrado, o libre en los extremos), las cargas puntuales y distribuidas (muerta y viva), el ancho y el alto de la viga, el recubrimiento, las resistencias y si incluye el peso propio. Al apretar Calcular se analiza la viga continua y obtenés envolventes de momentos y cortes y el armado por tramo.",
+  "/rc-column":
+    "Columnas: cargás las fuerzas axiales muerta y viva, la altura libre, los momentos en las dos direcciones (en cabeza y base), las dimensiones de la columna, el factor beta, las resistencias y si incluye el peso propio. También podés sumar las cargas que bajan de columnas y vigas guardadas. Al apretar Calcular se dimensiona la columna y se propone el armado.",
+  "/bases":
+    "Bases: definís la tensión admisible del terreno, la profundidad de fundación, las cargas que bajan de la columna, las dimensiones de la columna, el tipo de base (centrada, medianera, esquina), las resistencias y el recubrimiento. Al apretar Calcular se dimensiona la base y se verifica que las tensiones del terreno no se superen.",
+  "/computos":
+    "Cómputos: armás el cómputo métrico de la obra sumando los elementos guardados (losas, vigas, columnas, bases) y generás la planilla con cantidades.",
+};
 
 function safeNames(read: () => { name: string }[]): string[] {
   try {
@@ -86,6 +105,15 @@ export function buildAssistantContext(pathname: string): string {
     );
   } else {
     lines.push("", "No hay formulario editable registrado en esta pantalla.");
+  }
+
+  const guide = SCREEN_GUIDES[pathname];
+  if (guide) {
+    lines.push(
+      "",
+      "## Cómo se usa esta pantalla (para explicarle al usuario)",
+      guide,
+    );
   }
 
   const slabs = safeNames(() => getSavedSlabs());
