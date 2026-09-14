@@ -61,6 +61,31 @@ export interface MuroInput {
   H_zap: number; // m
   rec_zap: number; // mm — recubrimiento de la zapata
   tipo_zapata: MuroTipoZapata;
+  // E. Adopción manual de armaduras (override dentro del input del motor).
+  // Si un grupo está presente, el motor sobreescribe la selección automática
+  // con ese Ø/separación y recalcula As provisto, verificaciones y cómputo.
+  adopcion?: MuroAdopcion;
+}
+
+/** Grupo de armadura adoptado manualmente: Ø (mm), separación (cm) y,
+ *  para longitudinales de zapata, cantidad por metro; para estribos, ramas. */
+export interface MuroAdopcionGrupo {
+  diam: number; // mm
+  sep: number; // cm
+  count?: number; // barras por metro (longitudinales de zapata)
+  legs?: number; // ramas (estribos, default 2)
+}
+
+/** Adopción manual por grupo de armadura del muro. */
+export interface MuroAdopcion {
+  vertInt?: MuroAdopcionGrupo; // vertical interior (tabique)
+  vertExt?: MuroAdopcionGrupo; // vertical exterior (tabique)
+  horizInt?: MuroAdopcionGrupo; // horizontal interior (tabique)
+  horizExt?: MuroAdopcionGrupo; // horizontal exterior (tabique)
+  trans?: MuroAdopcionGrupo; // transversal (flexión del vuelo, zapata)
+  longInf?: MuroAdopcionGrupo; // longitudinal inferior (reparto, zapata)
+  longSup?: MuroAdopcionGrupo; // longitudinal superior (montaje/reparto, zapata)
+  estribo?: MuroAdopcionGrupo; // estribos de la zapata
 }
 
 export interface MuroVerification {
@@ -75,6 +100,8 @@ export interface MuroBarSelection {
   sep: number; // cm — separación (muros) o paso de barras
   asProv: number; // cm²/m — armadura provista
   count?: number; // barras por metro (zapata longitudinal de reparto)
+  legs?: number; // ramas (estribos)
+  ok?: boolean; // cumple As provisto ≥ As requerido (o regla de estribos)
 }
 
 export interface MuroResult {
@@ -127,7 +154,8 @@ export interface MuroResult {
   As_ext: number; // cm²/m — vertical exterior
   vertInt: MuroBarSelection;
   vertExt: MuroBarSelection;
-  horiz: MuroBarSelection;
+  horizInt: MuroBarSelection; // horizontal interior (cara del suelo)
+  horizExt: MuroBarSelection; // horizontal exterior (cara libre)
   // Corte del tabique
   Vu: number; // kN/m
   phiVc: number; // kN/m
@@ -150,8 +178,18 @@ export interface MuroResult {
   As_trans_min: number;
   As_trans_req: number;
   As_long: number;
+  As_longSup: number; // cm²/m — longitudinal superior (mínimo retracción)
   trans: MuroBarSelection;
-  long: MuroBarSelection;
+  longInf: MuroBarSelection; // longitudinal inferior (reparto actual)
+  longSup: MuroBarSelection; // longitudinal superior (montaje/reparto)
+  // Estribos de la zapata
+  Vu_zap: number; // kN/m — corte en la cara del muro
+  phiVc_zap: number; // kN/m — capacidad al corte de la zapata
+  avsReq: number; // cm²/cm — Av/s requerida por corte (0 si no rige)
+  avsMin: number; // cm²/cm — Av/s mínima (retracción, 0 si no aplica)
+  sMax: number; // cm — separación máxima de estribos
+  legs: number; // ramas adoptadas (default 2)
+  estribo: MuroBarSelection;
   // Compresión axial
   axialRatio: number;
   axialOK: boolean;
@@ -185,15 +223,98 @@ function aBarCm2(diamMm: number): number {
 }
 
 const DIAMS = [8, 10, 12, 16, 20, 25, 32];
+const DIAMS_ESTRIBO = [6, 8, 10, 12]; // Ø comerciales de estribos
 
-/** Elige Ø y separación (múltiplo de 5 cm) para un As requerido (cm²/m). */
+/**
+ * Aplica (si existe) la adopción manual de un grupo de flexión. Devuelve la
+ * selección final con As provisto recalculado desde el Ø/sep elegido y el flag
+ * `ok` (As prov ≥ As req). Sin override, devuelve la propuesta automática.
+ */
+function adoptSelection(
+  calc: MuroBarSelection,
+  asReq: number,
+  adopt?: MuroAdopcionGrupo,
+): MuroBarSelection {
+  if (adopt && BAR_AREA_MM2[adopt.diam] > 0 && adopt.sep > 0) {
+    const area = aBarCm2(adopt.diam); // cm²
+    const asProv = (area * 100) / adopt.sep; // cm²/m
+    return {
+      diam: adopt.diam,
+      sep: adopt.sep,
+      asProv,
+      count: adopt.count,
+      ok: asProv >= asReq - 1e-6,
+    };
+  }
+  return { ...calc, ok: calc.asProv >= asReq - 1e-6 };
+}
+
+/** Longitudinal de zapata (reparto/montaje): igual que adoptSelection pero
+ *  completa `count` (barras por metro) si no viene en la adopción. */
+function longitudinalSelection(
+  asReq: number,
+  smax: number,
+  adopt?: MuroAdopcionGrupo,
+): MuroBarSelection {
+  const sel = adoptSelection(selectBars(asReq, smax), asReq, adopt);
+  if (sel.count === undefined) {
+    const area = aBarCm2(sel.diam);
+    sel.count = Math.max(1, Math.ceil(asReq / area));
+  }
+  return sel;
+}
+
+/** Estribos de la zapata: elige Ø/sep (ramas = legs, default 2) para cubrir
+ *  Av/s requerida (cm²/cm → cm²/m ×100). Si avsReq = 0 (no rige corte) propone
+ *  una armadura mínima de montaje al separado máximo. */
+function selectStirrups(
+  avsReq: number,
+  sMax: number,
+  legs = 2,
+): MuroBarSelection {
+  const avsReqM2 = avsReq * 100; // cm²/m
+  for (const diam of DIAMS_ESTRIBO) {
+    const area = aBarCm2(diam); // cm²
+    if (avsReqM2 <= 0) {
+      // Sin corte que rija: montaje al separado máximo.
+      return {
+        diam,
+        sep: sMax,
+        asProv: (legs * area * 100) / sMax,
+        legs,
+        ok: true,
+      };
+    }
+    // Sep necesario (más económico) para cumplir Av/s prov ≥ Av/s req:
+    // Av/s prov = legs·area·100/sep ≥ avsReqM2 ⇒ sep ≤ legs·area·100/avsReqM2.
+    let sep = Math.floor((legs * area * 100) / avsReqM2 / 5) * 5;
+    if (sep < 5) sep = 5;
+    if (sep <= sMax && (legs * area * 100) / sep >= avsReqM2 - 1e-9) {
+      return { diam, sep, asProv: (legs * area * 100) / sep, legs, ok: true };
+    }
+  }
+  const diam = DIAMS_ESTRIBO[DIAMS_ESTRIBO.length - 1];
+  const area = aBarCm2(diam);
+  return {
+    diam,
+    sep: sMax,
+    asProv: (legs * area * 100) / sMax,
+    legs,
+    ok: false,
+  };
+}
+
+/** Elige Ø y separación (múltiplo de 5 cm) para un As requerido (cm²/m).
+ *  Devuelve el Ø menor que cumple y el separado MÁS ECONÓMICO (mayor) que
+ *  aún verifica As prov ≥ As req (sep ≤ area·100/As_req, redondeado hacia
+ *  abajo a múltiplo de 5, entre 5 y smax). */
 function selectBars(asReq: number, smax: number): MuroBarSelection {
   for (const diam of DIAMS) {
     const area = aBarCm2(diam); // cm²
-    const sepNeeded = (area * 100) / asReq; // cm (As por m = area/sep_m)
-    let sep = Math.ceil(sepNeeded / 5) * 5;
+    // As prov = area·100/sep ≥ asReq ⇒ sep ≤ area·100/asReq.
+    let sep = Math.floor((area * 100) / asReq / 5) * 5;
     if (sep < 5) sep = 5;
-    if (sep <= smax) {
+    if (sep <= smax && (area * 100) / sep >= asReq - 1e-9) {
       return { diam, sep, asProv: (area * 100) / sep };
     }
   }
@@ -598,28 +719,66 @@ export function designMuro(input: MuroInput): MuroResult {
   st.push(`   As_req (tabique interior) = ${f2(As_req)} cm²/m`);
 
   const smaxInt = Math.min(3 * e_muro * 100, 30);
-  const vertInt = selectBars(As_req, smaxInt);
+  const vertInt = adoptSelection(
+    selectBars(As_req, smaxInt),
+    As_req,
+    input.adopcion?.vertInt,
+  );
   st.push(
-    `   Vertical interior: Ø${vertInt.diam} c/ ${vertInt.sep} cm → As_prov = ${f2(vertInt.asProv)} cm²/m ${vertInt.asProv >= As_req ? "✓" : "✗ insuficiente"}`,
+    `   Vertical interior: Ø${vertInt.diam} c/ ${vertInt.sep} cm → As_prov = ${f2(vertInt.asProv)} cm²/m ${vertInt.ok ? "✓" : "✗ insuficiente"}`,
   );
   if (vertInt.asProv < As_req)
     warnings.push(
       "Armadura vertical interior insuficiente con el separado máximo: aumentá e_muro o fc.",
     );
+  if (input.adopcion?.vertInt && !vertInt.ok)
+    warnings.push(
+      "Vertical interior adoptada insuficiente respecto a As requerido.",
+    );
 
   const As_ext = Math.max(As_min, 0.5 * As_req);
-  const vertExt = selectBars(As_ext, smaxInt);
-  st.push(
-    `   Vertical exterior (cara libre): As = máx(As_mín, 0.5·As_int) = ${f2(As_ext)} cm²/m → Ø${vertExt.diam} c/ ${vertExt.sep} cm`,
+  const vertExt = adoptSelection(
+    selectBars(As_ext, smaxInt),
+    As_ext,
+    input.adopcion?.vertExt,
   );
+  st.push(
+    `   Vertical exterior (cara libre): As = máx(As_mín, 0.5·As_int) = ${f2(As_ext)} cm²/m → Ø${vertExt.diam} c/ ${vertExt.sep} cm ${vertExt.ok ? "✓" : "✗"}`,
+  );
+  if (input.adopcion?.vertExt && !vertExt.ok)
+    warnings.push(
+      "Vertical exterior adoptada insuficiente respecto a As requerido (mín 0.5·As_int).",
+    );
 
-  const As_h = 0.0018 * b * (e_muro * 100); // cm²/m
-  const horiz = selectBars(As_h, 45);
-  st.push(
-    `   Horizontal (ρ_mín tabique 0.0018): As = ${f2(As_h)} cm²/m → Ø${horiz.diam} c/ ${horiz.sep} cm (s ≤ 45 cm)`,
+  const As_h = 0.0018 * b * (e_muro * 100); // cm²/m — mínimo de retracción POR CARA
+  // Malla horizontal por cara: cada cara lleva su propia armadura de retracción
+  // ρ = 0.0018·b·e (cm²/m), separación máxima 45 cm.
+  const horizInt = adoptSelection(
+    selectBars(As_h, 45),
+    As_h,
+    input.adopcion?.horizInt,
   );
-  if (horiz.sep > 45)
+  const horizExt = adoptSelection(
+    selectBars(As_h, 45),
+    As_h,
+    input.adopcion?.horizExt,
+  );
+  st.push(
+    `   Horizontal interior (cara suelo, ρ_mín 0.0018 por cara): As = ${f2(As_h)} cm²/m → Ø${horizInt.diam} c/ ${horizInt.sep} cm (s ≤ 45 cm) ${horizInt.ok ? "✓" : "✗"}`,
+  );
+  st.push(
+    `   Horizontal exterior (cara libre, ρ_mín 0.0018 por cara): As = ${f2(As_h)} cm²/m → Ø${horizExt.diam} c/ ${horizExt.sep} cm (s ≤ 45 cm) ${horizExt.ok ? "✓" : "✗"}`,
+  );
+  if (horizInt.sep > 45 || horizExt.sep > 45)
     warnings.push("Separación horizontal supera los 45 cm recomendados.");
+  if (input.adopcion?.horizInt && !horizInt.ok)
+    warnings.push(
+      "Horizontal interior adoptada insuficiente respecto al mínimo de retracción (0.18%).",
+    );
+  if (input.adopcion?.horizExt && !horizExt.ok)
+    warnings.push(
+      "Horizontal exterior adoptada insuficiente respecto al mínimo de retracción (0.18%).",
+    );
 
   // ── 7. Corte del tabique ──
   st.push("");
@@ -722,7 +881,11 @@ export function designMuro(input: MuroInput): MuroResult {
   const As_trans_min = Math.max(As_trans_min_flex, As_trans_min_rho);
   const As_trans_req = Math.max(As_trans_cal, As_trans_min);
   const smaxTrans = Math.min(3 * H_z * 100, 45);
-  const trans = selectBars(As_trans_req, smaxTrans);
+  const trans = adoptSelection(
+    selectBars(As_trans_req, smaxTrans),
+    As_trans_req,
+    input.adopcion?.trans,
+  );
   st.push(
     `   M_u,zap = q_u·v²/2 = ${f2(M_u_zap)} kN·m/m · m_n,zap = ${f4(mn_zap)}`,
   );
@@ -734,20 +897,83 @@ export function designMuro(input: MuroInput): MuroResult {
   );
   if (trans.asProv < As_trans_req)
     warnings.push("Armadura transversal de la zapata insuficiente.");
+  if (input.adopcion?.trans && !trans.ok)
+    warnings.push(
+      "Transversal de zapata adoptada insuficiente respecto a As requerido.",
+    );
 
   const As_long = Math.max(0.2 * As_trans_req, 0.0018 * b * (H_z * 100));
-  const longSel = selectBars(As_long, 45);
-  const longArea = aBarCm2(longSel.diam);
-  const longCount = Math.max(1, Math.ceil(As_long / longArea));
-  const long: MuroBarSelection = {
-    diam: longSel.diam,
-    sep: longSel.sep,
-    asProv: longSel.asProv,
-    count: longCount,
-  };
-  st.push(
-    `   Longitudinal reparto: As = máx(0.2·As_trans, 0.0018·100·${f2(H_z * 100)}) = ${f2(As_long)} cm²/m → Ø${long.diam} (${longCount} barras/m, c/ ${long.sep} cm)`,
+  const longInf = longitudinalSelection(As_long, 45, input.adopcion?.longInf);
+  // Longitudinal superior de la zapata: armadura de montaje/reparto, mínimo de
+  // retracción ρ = 0.0018·b·H_zap (cm²/m), separación máxima 45 cm.
+  const As_longSup = 0.0018 * b * (H_z * 100);
+  const longSup = longitudinalSelection(
+    As_longSup,
+    45,
+    input.adopcion?.longSup,
   );
+  st.push(
+    `   Longitudinal inferior (reparto): As = máx(0.2·As_trans, 0.0018·100·${f2(H_z * 100)}) = ${f2(As_long)} cm²/m → Ø${longInf.diam} (${longInf.count} barras/m, c/ ${longInf.sep} cm) ${longInf.ok ? "✓" : "✗"}`,
+  );
+  st.push(
+    `   Longitudinal superior (montaje/reparto, ρ_mín 0.0018): As = ${f2(As_longSup)} cm²/m → Ø${longSup.diam} (${longSup.count} barras/m, c/ ${longSup.sep} cm) ${longSup.ok ? "✓" : "✗"}`,
+  );
+  if (input.adopcion?.longInf && !longInf.ok)
+    warnings.push(
+      "Longitudinal inferior adoptada insuficiente respecto a As requerido.",
+    );
+  if (input.adopcion?.longSup && !longSup.ok)
+    warnings.push(
+      "Longitudinal superior adoptada insuficiente respecto al mínimo de retracción (0.18%).",
+    );
+
+  // ── 8b. Estribos de la zapata ──
+  st.push("");
+  st.push("8b. Estribos de la zapata (corte en la cara del muro)");
+  // Corte mayorado en la cara del muro: Vu = q_u · vuelo (kN/m).
+  const Vu_zap = q_u * vuelo;
+  // φVc de la zapata con la MISMA forma métrica que el corte del tabique
+  // (0.75·b·d·√f'c/60, kN/m; b,d en cm; f'c en MPa):
+  const phiVc_zap = (PHI_V * b * d_zap_cm * Math.sqrt(fcMPa)) / 60;
+  // Separación máxima de estribos: min(0.5·d, 60) cm.
+  const sMaxEstribo = Math.min(0.5 * d_zap_cm, 60);
+  // Av/s mínima por retracción: en zapatas rige la Armadura transversal de
+  // flexión; no se modela un mínimo de estribos separado (avsMin = 0).
+  const avsMin = 0;
+  // Av/s requerida por corte (cm²/cm): 0 si Vu ≤ φVc (estribos solo montaje).
+  const avsReq =
+    Vu_zap > phiVc_zap + 1e-9
+      ? (Vu_zap - phiVc_zap) / (PHI_V * fyKNcm2 * d_zap_cm)
+      : 0;
+  const estribo = (() => {
+    const adopt = input.adopcion?.estribo;
+    if (adopt && BAR_AREA_MM2[adopt.diam] > 0 && adopt.sep > 0) {
+      const area = aBarCm2(adopt.diam);
+      const legs = adopt.legs ?? 2;
+      const avsProv = (legs * area * 100) / adopt.sep; // cm²/m
+      const ok =
+        avsProv >= Math.max(avsReq, avsMin) * 100 - 1e-6 &&
+        adopt.sep <= sMaxEstribo;
+      return { diam: adopt.diam, sep: adopt.sep, asProv: avsProv, legs, ok };
+    }
+    return selectStirrups(avsReq, sMaxEstribo, adopt?.legs ?? 2);
+  })();
+  st.push(
+    `   Vu_zap = q_u·vuelo = ${f2(q_u)}·${f2(vuelo)} = ${f2(Vu_zap)} kN/m`,
+  );
+  st.push(
+    `   φVc_zap = 0.75·b·d·√f'c/60 = 0.75·${b}·${f2(d_zap_cm)}·√${fcMPa}/60 = ${f2(phiVc_zap)} kN/m`,
+  );
+  st.push(
+    `   Av/s req = ${f4(avsReq)} cm²/cm ${avsReq === 0 ? "(no rige corte — estribos solo de montaje)" : ""} · s_max = ${f2(sMaxEstribo)} cm · ramas = ${estribo.legs}`,
+  );
+  st.push(
+    `   Estribos: Ø${estribo.diam} c/ ${estribo.sep} cm → Av/s prov = ${f2(estribo.asProv)} cm²/m ${estribo.ok ? "✓" : "✗"}`,
+  );
+  if (input.adopcion?.estribo && !estribo.ok)
+    warnings.push(
+      "Estribos de zapata adoptados insuficientes (Av/s prov < req o sep > s_max).",
+    );
 
   // ── 9. Compresión axial ──
   st.push("");
@@ -849,7 +1075,8 @@ export function designMuro(input: MuroInput): MuroResult {
     As_ext,
     vertInt,
     vertExt,
-    horiz,
+    horizInt,
+    horizExt,
     Vu,
     phiVc: phiVcMetric,
     shearRatio,
@@ -870,8 +1097,17 @@ export function designMuro(input: MuroInput): MuroResult {
     As_trans_min,
     As_trans_req,
     As_long,
+    As_longSup,
     trans,
-    long,
+    longInf,
+    longSup,
+    Vu_zap,
+    phiVc_zap,
+    avsReq,
+    avsMin,
+    sMax: sMaxEstribo,
+    legs: estribo.legs ?? 2,
+    estribo,
     axialRatio,
     axialOK,
     verifications,
@@ -932,7 +1168,8 @@ function emptyResult(
     As_ext: 0,
     vertInt: zero(),
     vertExt: zero(),
-    horiz: zero(),
+    horizInt: zero(),
+    horizExt: zero(),
     Vu: 0,
     phiVc: 0,
     shearRatio: 0,
@@ -953,8 +1190,17 @@ function emptyResult(
     As_trans_min: 0,
     As_trans_req: 0,
     As_long: 0,
+    As_longSup: 0,
     trans: zero(),
-    long: { ...zero() },
+    longInf: { ...zero() },
+    longSup: { ...zero() },
+    Vu_zap: 0,
+    phiVc_zap: 0,
+    avsReq: 0,
+    avsMin: 0,
+    sMax: 0,
+    legs: 2,
+    estribo: { ...zero() },
     axialRatio: 0,
     axialOK: true,
     verifications: [],

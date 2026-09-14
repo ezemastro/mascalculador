@@ -294,18 +294,33 @@ export function computoMuroFromSave(save: SavedBeam): Computo | null {
   const input = data.input;
   const result = data.result;
   if (!input || !result) return null;
-  const bar = (b?: { diam: number; sep: number; count?: number }) =>
-    b ?? { diam: 0, sep: 0, count: 0 };
+  const bar = (b?: {
+    diam: number;
+    sep: number;
+    count?: number;
+    legs?: number;
+  }) => b ?? { diam: 0, sep: 0, count: 0 };
+  // Cast a un registro suelto para leer campos de saves antiguos
+  // (horiz/long) que ya no existen en el tipo MuroResult.
+  const r = result as Record<
+    string,
+    { diam: number; sep: number; count?: number; legs?: number } | undefined
+  >;
   return computoMuro({
     H: input.H ?? 0,
     e_muro: input.e_muro ?? 0,
     B_zap: input.B_zap ?? 0,
     H_zap: input.H_zap ?? 0,
-    vertInt: bar(result.vertInt),
-    vertExt: bar(result.vertExt),
-    horiz: bar(result.horiz),
-    trans: bar(result.trans),
-    long: bar(result.long),
+    rec_zap: input.rec_zap ?? 0,
+    vertInt: bar(r.vertInt),
+    vertExt: bar(r.vertExt),
+    // Compatibilidad con saves antiguos: horiz/long se leen con fallback.
+    horizInt: bar(r.horizInt ?? r.horiz),
+    horizExt: bar(r.horizExt ?? r.horiz),
+    trans: bar(r.trans),
+    longInf: bar(r.longInf ?? r.long),
+    longSup: bar(r.longSup),
+    estribo: bar(r.estribo),
   });
 }
 

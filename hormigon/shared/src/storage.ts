@@ -448,6 +448,25 @@ export function loadLastPileCapFormState(): PileCapFormState | null {
 /** Módulo "Muro de Contención": geometría, geotecnia, hormigón/cargas y
  *  zapata. Unidades del formulario: metros para geometría (salvo recubrimientos
  *  en mm), kN/m³ y kN/m² para el suelo, MPa para fc/fy. */
+export interface MuroAdopcionGrupo {
+  diam: number; // mm
+  sep: number; // cm
+  count?: number; // barras por metro (longitudinales de zapata)
+  legs?: number; // ramas (estribos, default 2)
+}
+
+/** Adopción manual de armaduras por grupo del muro (override del motor). */
+export interface MuroAdopcion {
+  vertInt?: MuroAdopcionGrupo;
+  vertExt?: MuroAdopcionGrupo;
+  horizInt?: MuroAdopcionGrupo;
+  horizExt?: MuroAdopcionGrupo;
+  trans?: MuroAdopcionGrupo;
+  longInf?: MuroAdopcionGrupo;
+  longSup?: MuroAdopcionGrupo;
+  estribo?: MuroAdopcionGrupo;
+}
+
 export interface MuroFormState {
   H: number; // m — altura total libre
   e_muro: number; // m — espesor del tabique
@@ -472,6 +491,7 @@ export interface MuroFormState {
   H_zap: number; // m
   rec_zap: number; // mm — recubrimiento de la zapata (def 50)
   tipo_zapata: "centrada" | "excentrica";
+  adopcion?: MuroAdopcion; // override manual de armaduras (persistido en el save)
 }
 
 export function saveLastMuroFormState(state: MuroFormState): void {

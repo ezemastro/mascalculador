@@ -6,7 +6,13 @@ import ScreenHeader from "../components/ScreenHeader";
 import { useLocation, useNavigate, Link } from "react-router";
 import { MainLayout, PrintButton } from "@mascalculador/shared";
 import { designMuro } from "../lib/muro-calc";
-import type { MuroInput, MuroResult, MuroBarSelection } from "../lib/muro-calc";
+import type {
+  MuroInput,
+  MuroResult,
+  MuroBarSelection,
+  MuroAdopcion,
+  MuroAdopcionGrupo,
+} from "../lib/muro-calc";
 import { saveBeam, updateSave } from "../lib/storage";
 import { pickObraIfNeeded } from "../components/ObraPicker";
 import { computoMuro } from "../lib/computo";
@@ -60,33 +66,234 @@ function fmt(n: number, d = 2): string {
   return n.toFixed(d);
 }
 
-/** Tarjeta de un grupo de barras propuesto (Ø, separación, As prov vs req). */
-function BarGroupCard({
+/** Ø comerciales de barras (tabique/zapata) y de estribos. */
+const DIAMS_BAR = [8, 10, 12, 16, 20, 25, 32];
+const DIAMS_ESTRIBO = [6, 8, 10, 12];
+
+/** Escribe/borra la adopción manual de un grupo en el input del motor. */
+function applyAdopcion(
+  setInput: React.Dispatch<React.SetStateAction<MuroInput | null>>,
+  grupo: keyof MuroAdopcion,
+  val?: MuroAdopcionGrupo,
+) {
+  setInput((p) => {
+    if (!p) return p;
+    const a = { ...(p.adopcion ?? {}) };
+    if (val) a[grupo] = val;
+    else delete a[grupo];
+    return { ...p, adopcion: a };
+  });
+}
+
+/** Separaciones múltiplo de 5 entre 5 y smax (inclusive). */
+function sepOptions(smax: number): number[] {
+  const n = Math.max(1, Math.floor(smax / 5));
+  return Array.from({ length: n }, (_, i) => (i + 1) * 5);
+}
+
+/** Editor de un grupo de flexión: desplegables Ø/sep, As provisto y Badge. */
+function BarEditor({
   title,
-  g,
+  grupo,
+  result,
   asReq,
+  smax,
+  input,
+  setInput,
 }: {
   title: string;
-  g: MuroBarSelection;
+  grupo: keyof MuroAdopcion;
+  result: MuroBarSelection;
   asReq?: number;
+  smax: number;
+  input: MuroInput;
+  setInput: React.Dispatch<React.SetStateAction<MuroInput | null>>;
 }) {
-  const ok = asReq === undefined ? true : g.asProv >= asReq - 1e-6;
+  const adopt = input.adopcion?.[grupo];
+  const diam = adopt?.diam ?? result.diam;
+  const sep = adopt?.sep ?? result.sep;
   return (
     <div className="bg-surface-alt rounded-lg p-3">
-      <span className="text-xs font-semibold text-text">{title}</span>
-      <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
-        <span className="font-bold text-primary">
-          Ø{g.diam}
-          {g.count ? ` × ${g.count}/m` : ""}
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-text">{title}</span>
+        <Badge ok={result.ok ?? true} />
+      </div>
+      <div className="mt-2 flex flex-wrap items-end gap-3">
+        <label className="flex min-w-0 flex-col gap-1">
+          <span className="text-[11px] font-medium text-text-muted">
+            Ø (mm)
+          </span>
+          <select
+            className="w-24"
+            value={diam}
+            onChange={(e) =>
+              applyAdopcion(setInput, grupo, {
+                diam: Number(e.target.value),
+                sep,
+                ...(adopt?.count !== undefined ? { count: adopt.count } : {}),
+                ...(adopt?.legs !== undefined ? { legs: adopt.legs } : {}),
+              })
+            }
+          >
+            {DIAMS_BAR.map((d) => (
+              <option key={d} value={d}>
+                Ø{d}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex min-w-0 flex-col gap-1">
+          <span className="text-[11px] font-medium text-text-muted">
+            Separación (cm)
+          </span>
+          <select
+            className="w-24"
+            value={sep}
+            onChange={(e) =>
+              applyAdopcion(setInput, grupo, {
+                diam,
+                sep: Number(e.target.value),
+                ...(adopt?.count !== undefined ? { count: adopt.count } : {}),
+                ...(adopt?.legs !== undefined ? { legs: adopt.legs } : {}),
+              })
+            }
+          >
+            {sepOptions(smax).map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span className="text-xs text-text-muted">
+          As prov{" "}
+          <b className="tabular-nums text-text">{fmt(result.asProv, 2)}</b>{" "}
+          cm²/m
+          {asReq !== undefined && <span> (req {fmt(asReq, 2)})</span>}
         </span>
-        <span className="text-text-muted">separación {fmt(g.sep, 0)} cm</span>
-        <span className="text-text-muted">
-          As prov {fmt(g.asProv, 2)} cm²/m
+        <button
+          type="button"
+          onClick={() => applyAdopcion(setInput, grupo, undefined)}
+          className="rounded-lg border border-border bg-surface px-3 py-2 text-xs font-semibold text-text-muted transition-colors hover:bg-surface-alt hover:text-text"
+        >
+          ↺ Propuesta automática
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Editor de estribos: Ø/sep/ramas, Av/s provisto vs requerido y Badge. */
+function StirrupEditor({
+  title,
+  input,
+  setInput,
+  result,
+  avsReq,
+  avsMin,
+  sMax,
+}: {
+  title: string;
+  input: MuroInput;
+  setInput: React.Dispatch<React.SetStateAction<MuroInput | null>>;
+  result: MuroBarSelection;
+  avsReq: number; // cm²/cm
+  avsMin: number; // cm²/cm
+  sMax: number; // cm
+}) {
+  const adopt = input.adopcion?.estribo;
+  const diam = adopt?.diam ?? result.diam;
+  const sep = adopt?.sep ?? result.sep;
+  const legs = adopt?.legs ?? result.legs ?? 2;
+  const avsProv = result.asProv; // cm²/m
+  const avsReqM2 = Math.max(avsReq, avsMin) * 100; // cm²/m
+  return (
+    <div className="bg-surface-alt rounded-lg p-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-text">{title}</span>
+        <Badge ok={result.ok ?? true} />
+      </div>
+      <div className="mt-2 flex flex-wrap items-end gap-3">
+        <label className="flex min-w-0 flex-col gap-1">
+          <span className="text-[11px] font-medium text-text-muted">
+            Ø (mm)
+          </span>
+          <select
+            className="w-24"
+            value={diam}
+            onChange={(e) =>
+              applyAdopcion(setInput, "estribo", {
+                diam: Number(e.target.value),
+                sep,
+                legs,
+              })
+            }
+          >
+            {DIAMS_ESTRIBO.map((d) => (
+              <option key={d} value={d}>
+                Ø{d}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex min-w-0 flex-col gap-1">
+          <span className="text-[11px] font-medium text-text-muted">
+            Separación (cm)
+          </span>
+          <select
+            className="w-24"
+            value={sep}
+            onChange={(e) =>
+              applyAdopcion(setInput, "estribo", {
+                diam,
+                sep: Number(e.target.value),
+                legs,
+              })
+            }
+          >
+            {sepOptions(sMax).map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex min-w-0 flex-col gap-1">
+          <span className="text-[11px] font-medium text-text-muted">Ramas</span>
+          <select
+            className="w-20"
+            value={legs}
+            onChange={(e) =>
+              applyAdopcion(setInput, "estribo", {
+                diam,
+                sep,
+                legs: Number(e.target.value),
+              })
+            }
+          >
+            {[1, 2, 3, 4].map((l) => (
+              <option key={l} value={l}>
+                {l}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span className="text-xs text-text-muted">
+          Av/s prov <b className="tabular-nums text-text">{fmt(avsProv, 2)}</b>{" "}
+          cm²/m{" "}
+          {avsReq > 0 ? (
+            <span>(req {fmt(avsReqM2, 2)})</span>
+          ) : (
+            <span className="italic">(solo montaje)</span>
+          )}
         </span>
-        {asReq !== undefined && (
-          <span className="text-text-muted">(req {fmt(asReq, 2)} cm²/m)</span>
-        )}
-        <Badge ok={ok} />
+        <button
+          type="button"
+          onClick={() => applyAdopcion(setInput, "estribo", undefined)}
+          className="rounded-lg border border-border bg-surface px-3 py-2 text-xs font-semibold text-text-muted transition-colors hover:bg-surface-alt hover:text-text"
+        >
+          ↺ Propuesta automática
+        </button>
       </div>
     </div>
   );
@@ -197,7 +404,7 @@ export default function MuroResults() {
   const location = useLocation();
   const navigate = useNavigate();
   const locState = location.state as LocationState | null;
-  const input = locState?.input;
+  const [input, setInput] = useState<MuroInput | null>(locState?.input ?? null);
 
   const [savedId, setSavedId] = useState<string | null>(
     locState?.loadedSaveId ?? null,
@@ -262,6 +469,12 @@ export default function MuroResults() {
       ? "Definitivo (biapoyado)"
       : "Provisorio (apuntalado)";
 
+  // Separaciones máximas por grupo (para los desplegables de edición).
+  const smaxVert = Math.min(3 * input.e_muro * 100, 30);
+  const smaxHoriz = 45;
+  const smaxTrans = Math.min(3 * input.H_zap * 100, 45);
+  const smaxLong = 45;
+
   function handleSave() {
     const data = { input, result } as Record<string, unknown>;
     if (savedId) {
@@ -288,11 +501,15 @@ export default function MuroResults() {
     e_muro: r.e_muro,
     B_zap: input.B_zap,
     H_zap: input.H_zap,
+    rec_zap: input.rec_zap,
     vertInt: r.vertInt,
     vertExt: r.vertExt,
-    horiz: r.horiz,
+    horizInt: r.horizInt,
+    horizExt: r.horizExt,
     trans: r.trans,
-    long: r.long,
+    longInf: r.longInf,
+    longSup: r.longSup,
+    estribo: r.estribo,
   });
 
   return (
@@ -511,23 +728,49 @@ export default function MuroResults() {
       {/* Armadura del tabique */}
       <section className="bg-surface rounded-xl border border-border p-5">
         <SectionHeading>Armadura del tabique</SectionHeading>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <BarGroupCard
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <BarEditor
             title="Vertical interior"
-            g={r.vertInt}
+            grupo="vertInt"
+            result={r.vertInt}
             asReq={r.As_req}
+            smax={smaxVert}
+            input={input}
+            setInput={setInput}
           />
-          <BarGroupCard
-            title="Vertical exterior"
-            g={r.vertExt}
+          <BarEditor
+            title="Vertical exterior (cara libre)"
+            grupo="vertExt"
+            result={r.vertExt}
             asReq={r.As_ext}
+            smax={smaxVert}
+            input={input}
+            setInput={setInput}
           />
-          <BarGroupCard title="Horizontal (ρ=0.18%)" g={r.horiz} />
+          <BarEditor
+            title="Horizontal interior (cara suelo)"
+            grupo="horizInt"
+            result={r.horizInt}
+            asReq={0.0018 * 100 * (input.e_muro * 100)}
+            smax={smaxHoriz}
+            input={input}
+            setInput={setInput}
+          />
+          <BarEditor
+            title="Horizontal exterior (cara libre)"
+            grupo="horizExt"
+            result={r.horizExt}
+            asReq={0.0018 * 100 * (input.e_muro * 100)}
+            smax={smaxHoriz}
+            input={input}
+            setInput={setInput}
+          />
         </div>
         <p className="text-xs text-text-muted mt-3">
           Tabique: d = {fmt(r.e_muro * 100, 1)} − {fmt(input.rec_muro / 10, 1)}{" "}
           ={fmt(r.d_cm, 1)} cm. Vertical exterior = máx(As<sub>mín</sub>, 0.5·As
-          <sub>int</sub>). Horizontal mínima 0.18%.
+          <sub>int</sub>). Horizontales por cara: mínimo de retracción 0.18% (ρ
+          = 0.0018·b·e) por cara, s ≤ 45 cm.
         </p>
       </section>
 
@@ -620,22 +863,51 @@ export default function MuroResults() {
           />
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-          <BarGroupCard
-            title="Transversal zapata"
-            g={r.trans}
+          <BarEditor
+            title="Transversal zapata (flexión del vuelo)"
+            grupo="trans"
+            result={r.trans}
             asReq={r.As_trans_req}
+            smax={smaxTrans}
+            input={input}
+            setInput={setInput}
           />
-          <BarGroupCard
-            title="Longitudinal zapata (reparto)"
-            g={r.long}
+          <BarEditor
+            title="Longitudinal inferior (reparto)"
+            grupo="longInf"
+            result={r.longInf}
             asReq={r.As_long}
+            smax={smaxLong}
+            input={input}
+            setInput={setInput}
+          />
+          <BarEditor
+            title="Longitudinal superior (montaje/reparto)"
+            grupo="longSup"
+            result={r.longSup}
+            asReq={0.0018 * 100 * (input.H_zap * 100)}
+            smax={smaxLong}
+            input={input}
+            setInput={setInput}
+          />
+          <StirrupEditor
+            title="Estribos de la zapata"
+            input={input}
+            setInput={setInput}
+            result={r.estribo}
+            avsReq={r.avsReq}
+            avsMin={r.avsMin}
+            sMax={r.sMax}
           />
         </div>
         <p className="text-xs text-text-muted mt-3">
           Zapata: d = {fmt(input.H_zap * 100, 1)} − {fmt(input.rec_zap / 10, 1)}{" "}
           ={fmt(r.d_zap_cm, 1)} cm. M<sub>u,zap</sub> = q<sub>u</sub>·v²/2.
-          Longitudinal de reparto = máx(0.2·As<sub>trans</sub>, 0.18%·100·H
-          <sub>zap</sub>).
+          Longitudinal inferior = máx(0.2·As<sub>trans</sub>, 0.18%·100·H
+          <sub>zap</sub>); la superior es armadura de montaje/reparto (mínimo
+          0.18%). Estribos: corte en la cara del muro Vu = q<sub>u</sub>·vuelo,
+          φVc = 0.75·b·d·√f'c/60; Av/s = (Vu−φVc)/(φ·fy·d), s<sub>max</sub> =
+          mín(0.5·d, 60) cm.
         </p>
       </section>
 

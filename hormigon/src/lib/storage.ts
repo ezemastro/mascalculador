@@ -24,6 +24,7 @@ export type {
   RCColumnFormState,
   SlabLastFormState,
   MuroFormState,
+  MuroAdopcion,
   SavedSlabData,
   SavedCompatData,
   SavedSupportData,

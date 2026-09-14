@@ -277,12 +277,13 @@ export function computoBase(p: {
   return acc.finish();
 }
 
-/** Grupo de barras adoptado: Ø (mm), separación (cm) y —para las longitudinales
- *  de la zapata— cantidad por metro. */
+/** Grupo de barras adoptado: Ø (mm), separación (cm), cantidad por metro
+ *  (longitudinales de zapata) y ramas (estribos). */
 interface MuroBarGroup {
   diam: number;
   sep: number;
   count?: number;
+  legs?: number;
 }
 
 /** Cómputo de un muro de contención: analizado por metro lineal (corrida).
@@ -293,11 +294,15 @@ export function computoMuro(p: {
   e_muro: number; // m — espesor del tabique
   B_zap: number; // m — ancho de la zapata (transversal al muro)
   H_zap: number; // m — altura de la zapata
+  rec_zap: number; // mm — recubrimiento de la zapata
   vertInt: MuroBarGroup;
   vertExt: MuroBarGroup;
-  horiz: MuroBarGroup;
+  horizInt: MuroBarGroup;
+  horizExt: MuroBarGroup;
   trans: MuroBarGroup;
-  long: MuroBarGroup;
+  longInf: MuroBarGroup;
+  longSup: MuroBarGroup;
+  estribo: MuroBarGroup;
 }): Computo {
   const acc = new ComputoAcc();
   // Hormigón por metro lineal
@@ -311,22 +316,36 @@ export function computoMuro(p: {
   acc.bar(p.vertExt.diam, nVert(p.vertExt), p.H);
   acc.bar(p.vertInt.diam, nVert(p.vertInt), p.H);
 
-  // Tabique — horizontales (corren en la longitud 1 m, separadas en la altura):
-  // n = H_cm / sep + 1, cada una de 1 m.
+  // Tabique — horizontales por cara (corren en la longitud 1 m, separadas en
+  // la altura): n = H_cm / sep + 1, cada una de 1 m.
   const nHoriz = (g: MuroBarGroup) =>
     g.sep > 0 ? Math.floor((p.H * 100) / g.sep) + 1 : 0;
-  acc.bar(p.horiz.diam, nHoriz(p.horiz), 1);
+  acc.bar(p.horizInt.diam, nHoriz(p.horizInt), 1);
+  acc.bar(p.horizExt.diam, nHoriz(p.horizExt), 1);
 
   // Zapata — barras transversales (span B_zap, separadas en la longitud del
   // muro): n = 100 / sep + 1, cada una de B_zap.
   acc.bar(p.trans.diam, nVert(p.trans), p.B_zap);
 
-  // Zapata — barras longitudinales (corren en la longitud 1 m, separadas en
-  // B_zap): cantidad por metro del grupo (o 100/sep+1 sobre B_zap).
-  const nLongZap =
-    p.long.count ??
-    (p.long.sep > 0 ? Math.floor((p.B_zap * 100) / p.long.sep) + 1 : 0);
-  acc.bar(p.long.diam, nLongZap, 1);
+  // Zapata — longitudinales inferior y superior (corren en la longitud 1 m,
+  // separadas en B_zap): cantidad por metro del grupo (o 100/sep+1 sobre B_zap).
+  const nLongZap = (g: MuroBarGroup) =>
+    g.count ?? (g.sep > 0 ? Math.floor((p.B_zap * 100) / g.sep) + 1 : 0);
+  acc.bar(p.longInf.diam, nLongZap(p.longInf), 1);
+  acc.bar(p.longSup.diam, nLongZap(p.longSup), 1);
+
+  // Zapata — estribos: cerco cerrado de perímetro 2·(B−2rec)+2·(H−2rec) por
+  // cada rama vertical, + ganchos (~10·Ø por extremo). Largo total por estribo
+  // ≈ legs·(H_zap−2·rec) + 2·(B_zap−2·rec) + 2·10·Ø. Cantidad por metro =
+  // 100/sep. Peso = área(mm²)·7850 kg/m³·largo.
+  const recZapCm = p.rec_zap / 10;
+  const legs = p.estribo.legs ?? 2;
+  const perimetroCm =
+    legs * (p.H_zap * 100 - 2 * recZapCm) + 2 * (p.B_zap * 100 - 2 * recZapCm);
+  const ganchosCm = 2 * 10 * (p.estribo.diam / 10); // 2 ganchos de ~10·Ø
+  const largoEstriboCm = perimetroCm + ganchosCm;
+  const nEstribo = p.estribo.sep > 0 ? Math.floor(100 / p.estribo.sep) + 1 : 0;
+  acc.bar(p.estribo.diam, nEstribo, largoEstriboCm / 100);
 
   return acc.finish();
 }

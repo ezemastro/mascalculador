@@ -13,6 +13,7 @@ import {
   loadLastMuroFormState,
   saveLastMuroFormState,
   type MuroFormState,
+  type MuroAdopcion,
 } from "../lib/storage";
 import { pickObraIfNeeded } from "../components/ObraPicker";
 import ScreenHeader from "../components/ScreenHeader";
@@ -206,6 +207,13 @@ export default function MuroForm() {
       }
       if (f.tipo_zapata === "centrada" || f.tipo_zapata === "excentrica") {
         next.tipo_zapata = f.tipo_zapata;
+      }
+      // Adopción manual de armaduras: debe copiarse o el override se pierde al
+      // recargar un save desde el formulario.
+      if (f.adopcion && typeof f.adopcion === "object") {
+        next.adopcion = f.adopcion as MuroAdopcion;
+      } else {
+        next.adopcion = undefined;
       }
       return next;
     });
