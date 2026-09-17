@@ -46,13 +46,6 @@ const ICONS = {
       <path d="M5 20h14" />
     </>
   ),
-  columnaH: (
-    <>
-      <path d="M9 3h6v18H9z" />
-      <path d="M9 8h6M9 13h6" />
-      <path d="M6 3h12M6 21h12" />
-    </>
-  ),
   imprimir: (
     <path d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4H7v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
   ),
@@ -82,12 +75,6 @@ const CALC_MODULES: ModuleDef[] = [
     name: "Carteles",
     description: "Carteles publicitarios según CIRSOC 102",
     icon: ICONS.cartel,
-  },
-  {
-    to: "/rc-column",
-    name: "Columna H°",
-    description: "Columnas de hormigón armado",
-    icon: ICONS.columnaH,
   },
 ];
 

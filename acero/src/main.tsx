@@ -31,8 +31,6 @@ import CartelResults from "./screens/CartelResults.tsx";
 import CartelPrintPage from "./screens/CartelPrintPage.tsx";
 import BasesForm from "./screens/BasesForm.tsx";
 import BasesResults from "./screens/BasesResults.tsx";
-import RCColumnForm from "./screens/RCColumnForm.tsx";
-import RCColumnResults from "./screens/RCColumnResults.tsx";
 import { ObraPickerHost } from "./components/ObraPicker.tsx";
 import ObraMenu from "./components/ObraMenu.tsx";
 
@@ -134,12 +132,6 @@ function NavBar({
           >
             Carteles
           </Link>
-          <Link
-            to="/rc-column"
-            className="text-sm text-text-muted hover:text-text"
-          >
-            Columna H°
-          </Link>
         </>
       )}
       <div className="ml-auto flex items-center gap-3">
@@ -217,8 +209,6 @@ function buildRouter(username: string, onLogout: () => void) {
         { path: "/cartel-print", Component: CartelPrintPage },
         { path: "/bases", Component: BasesForm },
         { path: "/bases-results", Component: BasesResults },
-        { path: "/rc-column", Component: RCColumnForm },
-        { path: "/rc-column-results", Component: RCColumnResults },
         { path: "*", Component: () => <Navigate to="/" replace /> },
       ],
     },
