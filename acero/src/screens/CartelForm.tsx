@@ -7,6 +7,8 @@ import { IPN_PROFILES } from "../lib/profiles";
 import {
   saveBeam,
   updateSave,
+  getSavedBeams,
+  deleteSave,
   saveLastCartelFormState,
   loadLastCartelFormState,
 } from "../lib/storage";
@@ -88,12 +90,8 @@ export default function CartelForm() {
   const [exposicion, setExposicion] = useState(
     state?.exposicion ?? lastForm?.exposicion ?? "B",
   );
-  const [hCol, setHCol] = useState(
-    state?.hCol ?? lastForm?.hCol ?? 0.5,
-  );
-  const [aCol, setACol] = useState(
-    state?.aCol ?? lastForm?.aCol ?? 0.6,
-  );
+  const [hCol, setHCol] = useState(state?.hCol ?? lastForm?.hCol ?? 0.5);
+  const [aCol, setACol] = useState(state?.aCol ?? lastForm?.aCol ?? 0.6);
   const [perfilCordon, setPerfilCordon] = useState(
     state?.perfilCordon ?? lastForm?.perfilCordon ?? 'L 2 1/2" x 1/4"',
   );
@@ -232,7 +230,10 @@ export default function CartelForm() {
     }
   }
 
-  function handleLoad(data: Record<string, unknown>, save: { id: string; name: string }) {
+  function handleLoad(
+    data: Record<string, unknown>,
+    save: { id: string; name: string },
+  ) {
     setLoadedSaveId(save.id);
     setLoadedSaveName(save.name);
     const d = data as Record<string, unknown>;
@@ -247,21 +248,26 @@ export default function CartelForm() {
     if (typeof d.tienePuntal === "boolean") setTienePuntal(d.tienePuntal);
     if (typeof d.hPuntal === "number") setHPuntal(d.hPuntal);
     if (typeof d.dPuntal === "number") setDPuntal(d.dPuntal);
-    if (typeof d.velocidadViento === "number") setVelocidadViento(d.velocidadViento);
+    if (typeof d.velocidadViento === "number")
+      setVelocidadViento(d.velocidadViento);
     if (typeof d.categoria === "string") setCategoria(d.categoria);
     if (typeof d.exposicion === "string") setExposicion(d.exposicion);
     if (typeof d.hCol === "number") setHCol(d.hCol);
     if (typeof d.aCol === "number") setACol(d.aCol);
     if (typeof d.perfilCordon === "string") setPerfilCordon(d.perfilCordon);
-    if (typeof d.perfilDiagonal === "string") setPerfilDiagonal(d.perfilDiagonal);
-    if (typeof d.perfilMontante === "string") setPerfilMontante(d.perfilMontante);
+    if (typeof d.perfilDiagonal === "string")
+      setPerfilDiagonal(d.perfilDiagonal);
+    if (typeof d.perfilMontante === "string")
+      setPerfilMontante(d.perfilMontante);
     if (typeof d.Fy === "number") setFy(d.Fy);
     if (typeof d.perfilIPN === "string") setPerfilIPN(d.perfilIPN);
     if (typeof d.separacionCol === "number") setSeparacionCol(d.separacionCol);
     if (typeof d.cantColumnas === "number") setCantColumnas(d.cantColumnas);
     if (typeof d.vueloLateral === "number") setVueloLateral(d.vueloLateral);
-    if (typeof d.KGlobal === "number") setKGlobal(d.KGlobal); else setKGlobal(1.0);
-    if (typeof d.tipoPuntal === "number") setTipoPuntal(d.tipoPuntal); else setTipoPuntal(1);
+    if (typeof d.KGlobal === "number") setKGlobal(d.KGlobal);
+    else setKGlobal(1.0);
+    if (typeof d.tipoPuntal === "number") setTipoPuntal(d.tipoPuntal);
+    else setTipoPuntal(1);
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -318,7 +324,9 @@ export default function CartelForm() {
             Cálculo de Carteles
           </h1>
           <p className="text-sm text-text-muted">
-            {loadedSaveName ? `Editando: ${loadedSaveName}` : "CIRSOC 102 — Viento y reticulado de columnas"}
+            {loadedSaveName
+              ? `Editando: ${loadedSaveName}`
+              : "CIRSOC 102 — Viento y reticulado de columnas"}
           </p>
         </div>
       </header>
@@ -326,6 +334,8 @@ export default function CartelForm() {
       <SavedBeams
         app="steel"
         type="cartel"
+        listSaves={() => getSavedBeams("cartel")}
+        deleteSave={(id) => deleteSave(id)}
         onLoad={handleLoad}
         label="Carteles guardados"
       />
@@ -338,9 +348,7 @@ export default function CartelForm() {
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">
-                Ancho cartel (m)
-              </span>
+              <span className="text-xs text-text-muted">Ancho cartel (m)</span>
               <DecimalInput value={anchoCartel} onChange={setAnchoCartel} />
             </label>
             <label className="flex flex-col gap-1">
@@ -350,9 +358,7 @@ export default function CartelForm() {
               <DecimalInput value={altoCartel} onChange={setAltoCartel} />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">
-                Despegue (m)
-              </span>
+              <span className="text-xs text-text-muted">Despegue (m)</span>
               <DecimalInput value={despegue} onChange={setDespegue} />
             </label>
           </div>
@@ -365,7 +371,9 @@ export default function CartelForm() {
                 onChange={(e) => setTienePuntal(e.target.checked)}
                 className="rounded"
               />
-              <span className="text-sm font-semibold text-text">Incluir puntal</span>
+              <span className="text-sm font-semibold text-text">
+                Incluir puntal
+              </span>
             </label>
 
             {tienePuntal && (
@@ -374,13 +382,13 @@ export default function CartelForm() {
                   <span className="text-xs text-text-muted">
                     h<sub>puntal</sub> — Altura anclaje (m)
                   </span>
-                      <DecimalInput value={hPuntal} onChange={setHPuntal} />
+                  <DecimalInput value={hPuntal} onChange={setHPuntal} />
                 </label>
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-text-muted">
                     d<sub>puntal</sub> — Distancia horiz. (m)
                   </span>
-                      <DecimalInput value={dPuntal} onChange={setDPuntal} />
+                  <DecimalInput value={dPuntal} onChange={setDPuntal} />
                 </label>
               </div>
             )}
@@ -401,15 +409,38 @@ export default function CartelForm() {
                         : "bg-surface-alt ring-1 ring-transparent hover:bg-surface hover:ring-border"
                     }`}
                   >
-                    <svg width="60" height="40" viewBox="0 0 60 40" className="pointer-events-none">
-                      <line x1="10" y1="10" x2="50" y2="30" stroke="#fbbf24" strokeWidth="2.5" />
-                      <line x1="50" y1="10" x2="10" y2="30" stroke="#fbbf24" strokeWidth="2.5" />
+                    <svg
+                      width="60"
+                      height="40"
+                      viewBox="0 0 60 40"
+                      className="pointer-events-none"
+                    >
+                      <line
+                        x1="10"
+                        y1="10"
+                        x2="50"
+                        y2="30"
+                        stroke="#fbbf24"
+                        strokeWidth="2.5"
+                      />
+                      <line
+                        x1="50"
+                        y1="10"
+                        x2="10"
+                        y2="30"
+                        stroke="#fbbf24"
+                        strokeWidth="2.5"
+                      />
                     </svg>
                     <div className="text-center">
-                      <p className={`text-[11px] font-semibold ${tipoPuntal === 1 ? "text-primary" : "text-text"}`}>
+                      <p
+                        className={`text-[11px] font-semibold ${tipoPuntal === 1 ? "text-primary" : "text-text"}`}
+                      >
                         Tipo 1 — Cruz
                       </p>
-                      <p className="text-[9px] text-text-muted">2× L 2″×3/16″</p>
+                      <p className="text-[9px] text-text-muted">
+                        2× L 2″×3/16″
+                      </p>
                     </div>
                   </button>
 
@@ -423,18 +454,62 @@ export default function CartelForm() {
                         : "bg-surface-alt ring-1 ring-transparent hover:bg-surface hover:ring-border"
                     }`}
                   >
-                    <svg width="60" height="40" viewBox="0 0 60 40" className="pointer-events-none">
-                      <line x1="15" y1="5" x2="15" y2="35" stroke="#fbbf24" strokeWidth="2" />
-                      <line x1="45" y1="5" x2="45" y2="35" stroke="#fbbf24" strokeWidth="2" />
-                      <line x1="15" y1="5" x2="45" y2="20" stroke="#f87171" strokeWidth="1" />
-                      <line x1="45" y1="20" x2="15" y2="35" stroke="#f87171" strokeWidth="1" />
-                      <line x1="15" y1="20" x2="45" y2="20" stroke="#4ade80" strokeWidth="1" />
+                    <svg
+                      width="60"
+                      height="40"
+                      viewBox="0 0 60 40"
+                      className="pointer-events-none"
+                    >
+                      <line
+                        x1="15"
+                        y1="5"
+                        x2="15"
+                        y2="35"
+                        stroke="#fbbf24"
+                        strokeWidth="2"
+                      />
+                      <line
+                        x1="45"
+                        y1="5"
+                        x2="45"
+                        y2="35"
+                        stroke="#fbbf24"
+                        strokeWidth="2"
+                      />
+                      <line
+                        x1="15"
+                        y1="5"
+                        x2="45"
+                        y2="20"
+                        stroke="#f87171"
+                        strokeWidth="1"
+                      />
+                      <line
+                        x1="45"
+                        y1="20"
+                        x2="15"
+                        y2="35"
+                        stroke="#f87171"
+                        strokeWidth="1"
+                      />
+                      <line
+                        x1="15"
+                        y1="20"
+                        x2="45"
+                        y2="20"
+                        stroke="#4ade80"
+                        strokeWidth="1"
+                      />
                     </svg>
                     <div className="text-center">
-                      <p className={`text-[11px] font-semibold ${tipoPuntal === 2 ? "text-primary" : "text-text"}`}>
+                      <p
+                        className={`text-[11px] font-semibold ${tipoPuntal === 2 ? "text-primary" : "text-text"}`}
+                      >
                         Tipo 2 — Plano
                       </p>
-                      <p className="text-[9px] text-text-muted">25 cm — reticulado</p>
+                      <p className="text-[9px] text-text-muted">
+                        25 cm — reticulado
+                      </p>
                     </div>
                   </button>
 
@@ -448,21 +523,67 @@ export default function CartelForm() {
                         : "bg-surface-alt ring-1 ring-transparent hover:bg-surface hover:ring-border"
                     }`}
                   >
-                    <svg width="60" height="40" viewBox="0 0 60 40" className="pointer-events-none">
-                      <rect x="10" y="8" width="40" height="24" rx="1" fill="none" stroke="#9090b0" strokeWidth="1" />
+                    <svg
+                      width="60"
+                      height="40"
+                      viewBox="0 0 60 40"
+                      className="pointer-events-none"
+                    >
+                      <rect
+                        x="10"
+                        y="8"
+                        width="40"
+                        height="24"
+                        rx="1"
+                        fill="none"
+                        stroke="#9090b0"
+                        strokeWidth="1"
+                      />
                       <circle cx="14" cy="20" r="1.5" fill="#fbbf24" />
                       <circle cx="30" cy="20" r="1.5" fill="#fbbf24" />
                       <circle cx="46" cy="20" r="1.5" fill="#fbbf24" />
-                      <line x1="14" y1="12" x2="30" y2="20" stroke="#f87171" strokeWidth="0.8" />
-                      <line x1="46" y1="12" x2="30" y2="20" stroke="#f87171" strokeWidth="0.8" />
-                      <line x1="14" y1="28" x2="30" y2="20" stroke="#f87171" strokeWidth="0.8" />
-                      <line x1="46" y1="28" x2="30" y2="20" stroke="#f87171" strokeWidth="0.8" />
+                      <line
+                        x1="14"
+                        y1="12"
+                        x2="30"
+                        y2="20"
+                        stroke="#f87171"
+                        strokeWidth="0.8"
+                      />
+                      <line
+                        x1="46"
+                        y1="12"
+                        x2="30"
+                        y2="20"
+                        stroke="#f87171"
+                        strokeWidth="0.8"
+                      />
+                      <line
+                        x1="14"
+                        y1="28"
+                        x2="30"
+                        y2="20"
+                        stroke="#f87171"
+                        strokeWidth="0.8"
+                      />
+                      <line
+                        x1="46"
+                        y1="28"
+                        x2="30"
+                        y2="20"
+                        stroke="#f87171"
+                        strokeWidth="0.8"
+                      />
                     </svg>
                     <div className="text-center">
-                      <p className={`text-[11px] font-semibold ${tipoPuntal === 3 ? "text-primary" : "text-text"}`}>
+                      <p
+                        className={`text-[11px] font-semibold ${tipoPuntal === 3 ? "text-primary" : "text-text"}`}
+                      >
                         Tipo 3 — Cuadrado
                       </p>
-                      <p className="text-[9px] text-text-muted">20×20 cm — cajón</p>
+                      <p className="text-[9px] text-text-muted">
+                        20×20 cm — cajón
+                      </p>
                     </div>
                   </button>
                 </div>
@@ -487,17 +608,61 @@ export default function CartelForm() {
                   : "bg-surface-alt ring-1 ring-transparent hover:bg-surface hover:ring-border"
               }`}
             >
-              <svg width="80" height="80" viewBox="0 0 80 80" className="pointer-events-none">
-                <rect x="25" y="6" width="30" height="8" rx="1" fill="none" stroke="#fbbf24" strokeWidth="2.5" />
-                <rect x="34" y="14" width="12" height="52" rx="1" fill="none" stroke="#fbbf24" strokeWidth="2" />
-                <rect x="25" y="66" width="30" height="8" rx="1" fill="none" stroke="#fbbf24" strokeWidth="2.5" />
-                <text x="40" y="40" fill="#9090b0" fontSize="8" textAnchor="middle">IPN</text>
+              <svg
+                width="80"
+                height="80"
+                viewBox="0 0 80 80"
+                className="pointer-events-none"
+              >
+                <rect
+                  x="25"
+                  y="6"
+                  width="30"
+                  height="8"
+                  rx="1"
+                  fill="none"
+                  stroke="#fbbf24"
+                  strokeWidth="2.5"
+                />
+                <rect
+                  x="34"
+                  y="14"
+                  width="12"
+                  height="52"
+                  rx="1"
+                  fill="none"
+                  stroke="#fbbf24"
+                  strokeWidth="2"
+                />
+                <rect
+                  x="25"
+                  y="66"
+                  width="30"
+                  height="8"
+                  rx="1"
+                  fill="none"
+                  stroke="#fbbf24"
+                  strokeWidth="2.5"
+                />
+                <text
+                  x="40"
+                  y="40"
+                  fill="#9090b0"
+                  fontSize="8"
+                  textAnchor="middle"
+                >
+                  IPN
+                </text>
               </svg>
               <div className="text-center">
-                <p className={`text-xs font-semibold ${tipoColumna === 1 ? "text-primary" : "text-text"}`}>
+                <p
+                  className={`text-xs font-semibold ${tipoColumna === 1 ? "text-primary" : "text-text"}`}
+                >
                   Tipo 1 — Simple
                 </p>
-                <p className="text-[10px] text-text-muted">Perfil IPN / doble T</p>
+                <p className="text-[10px] text-text-muted">
+                  Perfil IPN / doble T
+                </p>
               </div>
             </button>
 
@@ -511,21 +676,86 @@ export default function CartelForm() {
                   : "bg-surface-alt ring-1 ring-transparent hover:bg-surface hover:ring-border"
               }`}
             >
-              <svg width="80" height="80" viewBox="0 0 80 80" className="pointer-events-none">
-                <line x1="20" y1="8" x2="20" y2="72" stroke="#fbbf24" strokeWidth="3" />
-                <line x1="60" y1="8" x2="60" y2="72" stroke="#fbbf24" strokeWidth="3" />
-                <line x1="20" y1="8" x2="60" y2="28" stroke="#f87171" strokeWidth="1.5" />
-                <line x1="60" y1="28" x2="20" y2="48" stroke="#f87171" strokeWidth="1.5" />
-                <line x1="20" y1="48" x2="60" y2="68" stroke="#f87171" strokeWidth="1.5" />
-                <line x1="20" y1="72" x2="60" y2="72" stroke="#f87171" strokeWidth="1.5" />
-                <line x1="20" y1="28" x2="60" y2="28" stroke="#4ade80" strokeWidth="1" />
-                <line x1="20" y1="48" x2="60" y2="48" stroke="#4ade80" strokeWidth="1" />
+              <svg
+                width="80"
+                height="80"
+                viewBox="0 0 80 80"
+                className="pointer-events-none"
+              >
+                <line
+                  x1="20"
+                  y1="8"
+                  x2="20"
+                  y2="72"
+                  stroke="#fbbf24"
+                  strokeWidth="3"
+                />
+                <line
+                  x1="60"
+                  y1="8"
+                  x2="60"
+                  y2="72"
+                  stroke="#fbbf24"
+                  strokeWidth="3"
+                />
+                <line
+                  x1="20"
+                  y1="8"
+                  x2="60"
+                  y2="28"
+                  stroke="#f87171"
+                  strokeWidth="1.5"
+                />
+                <line
+                  x1="60"
+                  y1="28"
+                  x2="20"
+                  y2="48"
+                  stroke="#f87171"
+                  strokeWidth="1.5"
+                />
+                <line
+                  x1="20"
+                  y1="48"
+                  x2="60"
+                  y2="68"
+                  stroke="#f87171"
+                  strokeWidth="1.5"
+                />
+                <line
+                  x1="20"
+                  y1="72"
+                  x2="60"
+                  y2="72"
+                  stroke="#f87171"
+                  strokeWidth="1.5"
+                />
+                <line
+                  x1="20"
+                  y1="28"
+                  x2="60"
+                  y2="28"
+                  stroke="#4ade80"
+                  strokeWidth="1"
+                />
+                <line
+                  x1="20"
+                  y1="48"
+                  x2="60"
+                  y2="48"
+                  stroke="#4ade80"
+                  strokeWidth="1"
+                />
               </svg>
               <div className="text-center">
-                <p className={`text-xs font-semibold ${tipoColumna === 2 ? "text-primary" : "text-text"}`}>
+                <p
+                  className={`text-xs font-semibold ${tipoColumna === 2 ? "text-primary" : "text-text"}`}
+                >
                   Tipo 2 — Celosía
                 </p>
-                <p className="text-[10px] text-text-muted">Dos cordones c/diagonales</p>
+                <p className="text-[10px] text-text-muted">
+                  Dos cordones c/diagonales
+                </p>
               </div>
             </button>
 
@@ -541,32 +771,127 @@ export default function CartelForm() {
                   : "bg-surface-alt ring-1 ring-transparent hover:bg-surface hover:ring-border"
               }`}
             >
-              <svg width="80" height="80" viewBox="0 0 80 80" className="pointer-events-none">
+              <svg
+                width="80"
+                height="80"
+                viewBox="0 0 80 80"
+                className="pointer-events-none"
+              >
                 {/* Plan view: 4 chords in a square */}
-                <rect x="20" y="4" width="40" height="14" rx="1" fill="none" stroke="#9090b0" strokeWidth="1" />
+                <rect
+                  x="20"
+                  y="4"
+                  width="40"
+                  height="14"
+                  rx="1"
+                  fill="none"
+                  stroke="#9090b0"
+                  strokeWidth="1"
+                />
                 <circle cx="26" cy="11" r="2" fill="#fbbf24" />
                 <circle cx="40" cy="11" r="2" fill="#fbbf24" />
                 <circle cx="54" cy="11" r="2" fill="#fbbf24" />
                 {/* Front elevation: 3 visible chords */}
-                <line x1="26" y1="20" x2="26" y2="72" stroke="#fbbf24" strokeWidth="2" />
-                <line x1="40" y1="20" x2="40" y2="72" stroke="#fbbf24" strokeWidth="2" />
-                <line x1="54" y1="20" x2="54" y2="72" stroke="#fbbf24" strokeWidth="2" />
+                <line
+                  x1="26"
+                  y1="20"
+                  x2="26"
+                  y2="72"
+                  stroke="#fbbf24"
+                  strokeWidth="2"
+                />
+                <line
+                  x1="40"
+                  y1="20"
+                  x2="40"
+                  y2="72"
+                  stroke="#fbbf24"
+                  strokeWidth="2"
+                />
+                <line
+                  x1="54"
+                  y1="20"
+                  x2="54"
+                  y2="72"
+                  stroke="#fbbf24"
+                  strokeWidth="2"
+                />
                 {/* Diagonals */}
-                <line x1="26" y1="20" x2="40" y2="38" stroke="#f87171" strokeWidth="1" />
-                <line x1="40" y1="38" x2="26" y2="56" stroke="#f87171" strokeWidth="1" />
-                <line x1="26" y1="56" x2="40" y2="72" stroke="#f87171" strokeWidth="1" />
-                <line x1="40" y1="20" x2="54" y2="38" stroke="#f87171" strokeWidth="1" />
-                <line x1="54" y1="38" x2="40" y2="56" stroke="#f87171" strokeWidth="1" />
-                <line x1="40" y1="56" x2="54" y2="72" stroke="#f87171" strokeWidth="1" />
+                <line
+                  x1="26"
+                  y1="20"
+                  x2="40"
+                  y2="38"
+                  stroke="#f87171"
+                  strokeWidth="1"
+                />
+                <line
+                  x1="40"
+                  y1="38"
+                  x2="26"
+                  y2="56"
+                  stroke="#f87171"
+                  strokeWidth="1"
+                />
+                <line
+                  x1="26"
+                  y1="56"
+                  x2="40"
+                  y2="72"
+                  stroke="#f87171"
+                  strokeWidth="1"
+                />
+                <line
+                  x1="40"
+                  y1="20"
+                  x2="54"
+                  y2="38"
+                  stroke="#f87171"
+                  strokeWidth="1"
+                />
+                <line
+                  x1="54"
+                  y1="38"
+                  x2="40"
+                  y2="56"
+                  stroke="#f87171"
+                  strokeWidth="1"
+                />
+                <line
+                  x1="40"
+                  y1="56"
+                  x2="54"
+                  y2="72"
+                  stroke="#f87171"
+                  strokeWidth="1"
+                />
                 {/* Montantes */}
-                <line x1="26" y1="38" x2="54" y2="38" stroke="#4ade80" strokeWidth="1" />
-                <line x1="26" y1="56" x2="54" y2="56" stroke="#4ade80" strokeWidth="1" />
+                <line
+                  x1="26"
+                  y1="38"
+                  x2="54"
+                  y2="38"
+                  stroke="#4ade80"
+                  strokeWidth="1"
+                />
+                <line
+                  x1="26"
+                  y1="56"
+                  x2="54"
+                  y2="56"
+                  stroke="#4ade80"
+                  strokeWidth="1"
+                />
               </svg>
               <div className="text-center">
-                <p className={`text-xs font-semibold ${tipoColumna === 4 ? "text-primary" : "text-text"}`}>
+                <p
+                  className={`text-xs font-semibold ${tipoColumna === 4 ? "text-primary" : "text-text"}`}
+                >
                   Tipo 4 — Cel. completa
                 </p>
-                <p className="text-[10px] text-text-muted">4 cordones, reticulado 3D</p>
+                <p className="text-[10px] text-text-muted">
+                  4 cordones, reticulado 3D
+                </p>
               </div>
             </button>
           </div>
@@ -579,8 +904,13 @@ export default function CartelForm() {
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">Cantidad de columnas</span>
-              <DecimalInput value={cantColumnas} onChange={(v) => setCantColumnas(Math.round(v))} />
+              <span className="text-xs text-text-muted">
+                Cantidad de columnas
+              </span>
+              <DecimalInput
+                value={cantColumnas}
+                onChange={(v) => setCantColumnas(Math.round(v))}
+              />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">Vuelo lateral (m)</span>
@@ -594,7 +924,8 @@ export default function CartelForm() {
           {cantColumnas > 1 && (
             <p className="text-xs text-text-muted mt-3">
               Sep. columnas = {computedSepColumnas.toFixed(2)} m
-              {vueloLateral > 0 && ` (vuelo ${vueloLateral.toFixed(2)} m en cada extremo)`}
+              {vueloLateral > 0 &&
+                ` (vuelo ${vueloLateral.toFixed(2)} m en cada extremo)`}
             </p>
           )}
         </section>
@@ -645,7 +976,9 @@ export default function CartelForm() {
               <p className="text-xs text-text-muted">
                 El perfil IPN se verifica a flexocompresión con el momento de
                 vuelco M<sub>base</sub>. La longitud de pandeo fuerte se toma
-                {tienePuntal ? " desde el puntal (h_puntal)" : " como 2× altura (voladizo)"}
+                {tienePuntal
+                  ? " desde el puntal (h_puntal)"
+                  : " como 2× altura (voladizo)"}
                 ; la débil según separación de correas.
               </p>
             </>
@@ -681,7 +1014,9 @@ export default function CartelForm() {
                 </label>
                 {(tipoColumna === 2 || tipoColumna === 4) && (
                   <label className="flex flex-col gap-1">
-                    <span className="text-xs text-text-muted">K pandeo global</span>
+                    <span className="text-xs text-text-muted">
+                      K pandeo global
+                    </span>
                     <DecimalInput value={KGlobal} onChange={setKGlobal} />
                   </label>
                 )}
@@ -690,13 +1025,18 @@ export default function CartelForm() {
                     <span className="text-xs text-text-muted">
                       sep<sub>col</sub> — Profundidad (m)
                     </span>
-                    <DecimalInput value={separacionCol} onChange={setSeparacionCol} />
+                    <DecimalInput
+                      value={separacionCol}
+                      onChange={setSeparacionCol}
+                    />
                   </label>
                 )}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <label className="flex flex-col gap-1">
-                  <span className="text-xs text-text-muted">Perfil cordones</span>
+                  <span className="text-xs text-text-muted">
+                    Perfil cordones
+                  </span>
                   <select
                     value={perfilCordon}
                     onChange={(e) => setPerfilCordon(e.target.value)}
@@ -709,7 +1049,9 @@ export default function CartelForm() {
                   </select>
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className="text-xs text-text-muted">Perfil diagonales</span>
+                  <span className="text-xs text-text-muted">
+                    Perfil diagonales
+                  </span>
                   <select
                     value={perfilDiagonal}
                     onChange={(e) => setPerfilDiagonal(e.target.value)}
@@ -722,7 +1064,9 @@ export default function CartelForm() {
                   </select>
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className="text-xs text-text-muted">Perfil montantes</span>
+                  <span className="text-xs text-text-muted">
+                    Perfil montantes
+                  </span>
                   <select
                     value={perfilMontante}
                     onChange={(e) => setPerfilMontante(e.target.value)}
@@ -747,7 +1091,10 @@ export default function CartelForm() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">V (m/s)</span>
-              <DecimalInput value={velocidadViento} onChange={setVelocidadViento} />
+              <DecimalInput
+                value={velocidadViento}
+                onChange={setVelocidadViento}
+              />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">Categoría</span>

@@ -1,15 +1,24 @@
 /* eslint-disable react-refresh/only-export-components -- baseline: NavBar is a local helper; extraction to NavBar.tsx tracked in follow-up */
-import { StrictMode, Component, type ReactNode } from "react";
+import { StrictMode, Component, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
-import { flushCloudStorage, installCloudStorage } from "./lib/cloud-storage.ts";
+import { flushCloudStorage } from "./lib/cloud-storage.ts";
+import {
+  bootstrapStorage,
+  getCurrentObraId,
+  getObras,
+  setCurrentObraId,
+  type SavedObra,
+} from "./lib/storage";
 import {
   createBrowserRouter,
   RouterProvider,
   Link,
   Outlet,
+  useLocation,
 } from "react-router";
 import AuthScreen from "./screens/AuthScreen.tsx";
+import HomeScreen from "./screens/HomeScreen.tsx";
 import FormPage from "./screens/FormPage.tsx";
 import ResultsPage from "./screens/ResultsPage.tsx";
 import PrintPage from "./screens/PrintPage.tsx";
@@ -29,6 +38,8 @@ import ConcreteForm from "./screens/ConcreteForm.tsx";
 import ConcreteResults from "./screens/ConcreteResults.tsx";
 import RCColumnForm from "./screens/RCColumnForm.tsx";
 import RCColumnResults from "./screens/RCColumnResults.tsx";
+import { ObraPickerHost } from "./components/ObraPicker.tsx";
+import ObraMenu from "./components/ObraMenu.tsx";
 
 class ErrorBoundary extends Component<
   { children: ReactNode },
@@ -82,76 +93,146 @@ class ErrorBoundary extends Component<
 function NavBar({
   username,
   onLogout,
+  obraId,
+  obras,
+  onObraChange,
+}: {
+  username: string;
+  onLogout: () => void;
+  obraId: string;
+  obras: SavedObra[];
+  onObraChange: (id: string) => void;
+}) {
+  const { pathname } = useLocation();
+  // En la home los módulos ya se muestran como tarjetas: la barra queda solo
+  // con la obra y la sesión (usuario / salir).
+  const isHome = pathname === "/";
+
+  return (
+    <div className="no-print fixed top-0 left-0 right-0 z-50 bg-surface border-b border-border px-4 py-2 flex gap-4 items-center">
+      {!isHome && (
+        <ObraMenu obraId={obraId} obras={obras} onObraChange={onObraChange} />
+      )}
+      {!isHome && (
+        <>
+          <Link to="/" className="text-sm text-text-muted hover:text-text">
+            Inicio
+          </Link>
+          <Link
+            to="/viga-acero"
+            className="text-sm text-text-muted hover:text-text"
+          >
+            Viga Acero
+          </Link>
+          <Link
+            to="/columns"
+            className="text-sm text-text-muted hover:text-text"
+          >
+            Columnas
+          </Link>
+          <Link to="/bases" className="text-sm text-text-muted hover:text-text">
+            Bases
+          </Link>
+          <Link to="/slab" className="text-sm text-text-muted hover:text-text">
+            Losas H°
+          </Link>
+          <Link
+            to="/slab-compat"
+            className="text-sm text-text-muted hover:text-text"
+          >
+            Compat. Losas
+          </Link>
+          <Link
+            to="/slab-compats"
+            className="text-sm text-text-muted hover:text-text"
+          >
+            Apoyos
+          </Link>
+          <Link
+            to="/concrete"
+            className="text-sm text-text-muted hover:text-text"
+          >
+            Viga H°
+          </Link>
+          <Link
+            to="/cartel"
+            className="text-sm text-text-muted hover:text-text"
+          >
+            Carteles
+          </Link>
+          <Link
+            to="/rc-column"
+            className="text-sm text-text-muted hover:text-text"
+          >
+            Columna H°
+          </Link>
+        </>
+      )}
+      <div className="ml-auto flex items-center gap-3">
+        <span className="text-xs text-text-muted">{username}</span>
+        <button
+          type="button"
+          onClick={onLogout}
+          className="text-xs text-text-muted hover:text-danger"
+        >
+          Salir
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function VersionBadge() {
+  return (
+    <span className="no-print fixed bottom-1 right-2 z-50 select-none pointer-events-none text-[9px] text-text-muted/50">
+      build {__APP_BUILD__}
+    </span>
+  );
+}
+
+function Layout({
+  username,
+  onLogout,
 }: {
   username: string;
   onLogout: () => void;
 }) {
+  const [obraId, setObraId] = useState(getCurrentObraId);
+  const [obras, setObras] = useState<SavedObra[]>(() => getObras());
+
+  const handleObraChange = (id: string) => {
+    setCurrentObraId(id);
+    setObraId(id);
+    setObras(getObras());
+  };
+
   return (
-    <div className="min-h-screen bg-bg text-text">
-      <header className="fixed top-0 left-0 right-0 z-50 bg-surface border-b border-border px-4 py-2 flex gap-4 items-center">
-        <Link to="/" className="text-sm text-text-muted hover:text-text">
-          Viga Acero
-        </Link>
-        <Link to="/columns" className="text-sm text-text-muted hover:text-text">
-          Columnas
-        </Link>
-        <Link to="/bases" className="text-sm text-text-muted hover:text-text">
-          Bases
-        </Link>
-        <Link to="/slab" className="text-sm text-text-muted hover:text-text">
-          Losas H°
-        </Link>
-        <Link
-          to="/slab-compat"
-          className="text-sm text-text-muted hover:text-text"
-        >
-          Compat. Losas
-        </Link>
-        <Link
-          to="/slab-compats"
-          className="text-sm text-text-muted hover:text-text"
-        >
-          Apoyos
-        </Link>
-        <Link
-          to="/concrete"
-          className="text-sm text-text-muted hover:text-text"
-        >
-          Viga H°
-        </Link>
-        <Link to="/cartel" className="text-sm text-text-muted hover:text-text">
-          Carteles
-        </Link>
-        <Link
-          to="/rc-column"
-          className="text-sm text-text-muted hover:text-text"
-        >
-          Columna H°
-        </Link>
-        <div className="ml-auto flex items-center gap-3">
-          <span className="text-xs text-text-muted">{username}</span>
-          <button
-            type="button"
-            onClick={onLogout}
-            className="text-xs text-text-muted hover:text-danger"
-          >
-            Salir
-          </button>
-        </div>
-      </header>
-      <main className="pt-10">
-        <Outlet />
-      </main>
-    </div>
+    <>
+      <NavBar
+        username={username}
+        onLogout={onLogout}
+        obraId={obraId}
+        obras={obras}
+        onObraChange={handleObraChange}
+      />
+      <ObraPickerHost onObraCreated={handleObraChange} />
+      <div className="pt-10">
+        <Outlet
+          key={obraId}
+          context={{ obraId, obras, onObraChange: handleObraChange }}
+        />
+      </div>
+    </>
   );
 }
 
 function buildRouter(username: string, onLogout: () => void) {
   return createBrowserRouter([
     {
-      Component: () => <NavBar username={username} onLogout={onLogout} />,
+      Component: () => <Layout username={username} onLogout={onLogout} />,
       children: [
-        { path: "/", Component: FormPage },
+        { path: "/", Component: HomeScreen },
+        { path: "/viga-acero", Component: FormPage },
         { path: "/results", Component: ResultsPage },
         { path: "/print", Component: PrintPage },
         { path: "/columns", Component: ColumnForm },
@@ -190,15 +271,54 @@ async function fetchSession(): Promise<Session> {
   return null;
 }
 
+// Auto-recarga ante deploy nuevo: al recuperar el foco, compara el sello del
+// documento en ejecución contra el que sirve el server (fetch con no-cache,
+// inmune al cache del navegador) y se recarga si difiere. Límite de 2
+// recargas por sesión para nunca entrar en un bucle.
+function watchForNewBuild() {
+  const mine = document
+    .querySelector('meta[name="app-build"]')
+    ?.getAttribute("content");
+  if (!mine) return;
+  const RELOADS_KEY = "buildAutoReloads";
+  let lastCheck = 0;
+  async function check() {
+    const now = Date.now();
+    if (now - lastCheck < 30_000) return;
+    lastCheck = now;
+    try {
+      const res = await fetch("/", { cache: "no-cache" });
+      if (!res.ok) return;
+      const m = (await res.text()).match(
+        /<meta name="app-build" content="([^"]*)"/,
+      );
+      const latest = m?.[1];
+      if (!latest || latest === mine) return;
+      const reloads = Number(sessionStorage.getItem(RELOADS_KEY) || 0);
+      if (reloads >= 2) return;
+      sessionStorage.setItem(RELOADS_KEY, String(reloads + 1));
+      window.location.reload();
+    } catch {
+      // server inalcanzable: nada que hacer
+    }
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") void check();
+  });
+  window.addEventListener("focus", () => void check());
+}
+
 async function main() {
+  console.log(`[acero] build ${__APP_BUILD__}`);
   const root = createRoot(document.getElementById("root")!);
   const session = await fetchSession();
-  if (session) await installCloudStorage();
+  if (session) await bootstrapStorage();
 
   function render(s: Session) {
     root.render(
       <StrictMode>
         <ErrorBoundary>
+          <VersionBadge />
           {s ? (
             <RouterProvider
               router={buildRouter(s.username, () => {
@@ -208,7 +328,7 @@ async function main() {
           ) : (
             <AuthScreen
               onAuthenticated={async () => {
-                await installCloudStorage();
+                await bootstrapStorage();
                 render(await fetchSession());
               }}
             />
@@ -229,6 +349,7 @@ async function main() {
   }
 
   render(session);
+  watchForNewBuild();
 }
 
 main();

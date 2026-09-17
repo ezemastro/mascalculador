@@ -8,6 +8,8 @@ import { TUBE_PROFILES } from "../lib/tube-profiles";
 import {
   saveBeam,
   updateSave,
+  getSavedBeams,
+  deleteSave,
   saveLastColumnFormState,
   loadLastColumnFormState,
 } from "../lib/storage";
@@ -194,7 +196,10 @@ export default function ColumnForm() {
     }
   }
 
-  function handleLoad(data: Record<string, unknown>, save: { id: string; name: string }) {
+  function handleLoad(
+    data: Record<string, unknown>,
+    save: { id: string; name: string },
+  ) {
     setLoadedSaveId(save.id);
     setLoadedSaveName(save.name);
     const d = data as Record<string, unknown>;
@@ -270,7 +275,9 @@ export default function ColumnForm() {
             Calculadora de Columnas
           </h1>
           <p className="text-sm text-text-muted">
-            {loadedSaveName ? `Editando: ${loadedSaveName}` : "CIRSOC 301-05 — Capítulos E, F y H"}
+            {loadedSaveName
+              ? `Editando: ${loadedSaveName}`
+              : "CIRSOC 301-05 — Capítulos E, F y H"}
           </p>
         </div>
       </header>
@@ -278,6 +285,8 @@ export default function ColumnForm() {
       <SavedBeams
         app="steel"
         type="columna"
+        listSaves={() => getSavedBeams("columna")}
+        deleteSave={(id) => deleteSave(id)}
         onLoad={handleLoad}
         label="Columnas guardadas"
       />

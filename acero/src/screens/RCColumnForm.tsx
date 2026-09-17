@@ -5,6 +5,8 @@ import { SavedBeams } from "@mascalculador/shared";
 import {
   saveBeam,
   updateSave,
+  getSavedBeams,
+  deleteSave,
   loadLastRCColumnFormState,
   saveLastRCColumnFormState,
 } from "../lib/storage";
@@ -93,7 +95,7 @@ export function ArmadoLayoutSVG({
   const oy = (size - rectH) / 2;
 
   // Bar radii proportional to diameter
-  const barRadius = (d: number) => Math.max(3, d * scale / 20);
+  const barRadius = (d: number) => Math.max(3, (d * scale) / 20);
   const barREsq = barRadius(dbEsquinas);
   const barRX = barRadius(dbCarasX);
   const barRY = barRadius(dbCarasY);
@@ -109,33 +111,37 @@ export function ArmadoLayoutSVG({
 
   // X faces: left and right edges (perpendicular to X)
   // nCarasX intermediates per face + 2 corners per face
-  const xFaceLeft = nCarasX > 0
-    ? Array.from({ length: nCarasX }, (_, i) => ({
-        x: ox + cover,
-        y: oy + cover + ((rectH - 2 * cover) * (i + 1)) / (nCarasX + 1),
-      }))
-    : [];
-  const xFaceRight = nCarasX > 0
-    ? Array.from({ length: nCarasX }, (_, i) => ({
-        x: ox + rectW - cover,
-        y: oy + cover + ((rectH - 2 * cover) * (i + 1)) / (nCarasX + 1),
-      }))
-    : [];
+  const xFaceLeft =
+    nCarasX > 0
+      ? Array.from({ length: nCarasX }, (_, i) => ({
+          x: ox + cover,
+          y: oy + cover + ((rectH - 2 * cover) * (i + 1)) / (nCarasX + 1),
+        }))
+      : [];
+  const xFaceRight =
+    nCarasX > 0
+      ? Array.from({ length: nCarasX }, (_, i) => ({
+          x: ox + rectW - cover,
+          y: oy + cover + ((rectH - 2 * cover) * (i + 1)) / (nCarasX + 1),
+        }))
+      : [];
 
   // Y faces: top and bottom edges (perpendicular to Y)
   // nCarasY intermediates per face
-  const yFaceTop = nCarasY > 0
-    ? Array.from({ length: nCarasY }, (_, i) => ({
-        x: ox + cover + ((rectW - 2 * cover) * (i + 1)) / (nCarasY + 1),
-        y: oy + cover,
-      }))
-    : [];
-  const yFaceBottom = nCarasY > 0
-    ? Array.from({ length: nCarasY }, (_, i) => ({
-        x: ox + cover + ((rectW - 2 * cover) * (i + 1)) / (nCarasY + 1),
-        y: oy + rectH - cover,
-      }))
-    : [];
+  const yFaceTop =
+    nCarasY > 0
+      ? Array.from({ length: nCarasY }, (_, i) => ({
+          x: ox + cover + ((rectW - 2 * cover) * (i + 1)) / (nCarasY + 1),
+          y: oy + cover,
+        }))
+      : [];
+  const yFaceBottom =
+    nCarasY > 0
+      ? Array.from({ length: nCarasY }, (_, i) => ({
+          x: ox + cover + ((rectW - 2 * cover) * (i + 1)) / (nCarasY + 1),
+          y: oy + rectH - cover,
+        }))
+      : [];
 
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
@@ -175,28 +181,22 @@ export function ArmadoLayoutSVG({
 
       {/* X face bars (blue) */}
       {[...xFaceLeft, ...xFaceRight].map((p, i) => (
-        <circle
-          key={`xface-${i}`}
-          cx={p.x}
-          cy={p.y}
-          r={barRX}
-          fill="#3b82f6"
-        />
+        <circle key={`xface-${i}`} cx={p.x} cy={p.y} r={barRX} fill="#3b82f6" />
       ))}
 
       {/* Y face bars (green) */}
       {[...yFaceTop, ...yFaceBottom].map((p, i) => (
-        <circle
-          key={`yface-${i}`}
-          cx={p.x}
-          cy={p.y}
-          r={barRY}
-          fill="#22c55e"
-        />
+        <circle key={`yface-${i}`} cx={p.x} cy={p.y} r={barRY} fill="#22c55e" />
       ))}
 
       {/* Labels */}
-      <text x={size / 2} y={oy - 6} textAnchor="middle" fontSize="10" fill="var(--color-text-muted, #9ca3af)">
+      <text
+        x={size / 2}
+        y={oy - 6}
+        textAnchor="middle"
+        fontSize="10"
+        fill="var(--color-text-muted, #9ca3af)"
+      >
         Cx = {Cx} cm
       </text>
       <text
@@ -220,21 +220,15 @@ export default function RCColumnForm() {
 
   const lastForm = !state ? loadLastRCColumnFormState() : null;
 
-  const [fc, setFc] = useState<number>(
-    state?.fc ?? lastForm?.fc ?? 25,
-  );
-  const [fy, setFy] = useState<number>(
-    state?.fy ?? lastForm?.fy ?? 420,
-  );
+  const [fc, setFc] = useState<number>(state?.fc ?? lastForm?.fc ?? 25);
+  const [fy, setFy] = useState<number>(state?.fy ?? lastForm?.fy ?? 420);
   const [PD, setPD] = useState<number>(
     state?.PD_direct ?? state?.PD ?? lastForm?.PD ?? 500,
   );
   const [PL, setPL] = useState<number>(
     state?.PL_direct ?? state?.PL ?? lastForm?.PL ?? 300,
   );
-  const [lu, setLu] = useState<number>(
-    state?.lu ?? lastForm?.lu ?? 3.0,
-  );
+  const [lu, setLu] = useState<number>(state?.lu ?? lastForm?.lu ?? 3.0);
   const [MxSup, setMxSup] = useState<number>(
     state?.MxSup ?? lastForm?.MxSup ?? 10,
   );
@@ -258,8 +252,8 @@ export default function RCColumnForm() {
   );
   const [autoDim, setAutoDim] = useState<boolean>(
     (state?.Cx === undefined && state?.Cy === undefined) ??
-    (lastForm?.Cx === undefined && lastForm?.Cy === undefined) ??
-    true,
+      (lastForm?.Cx === undefined && lastForm?.Cy === undefined) ??
+      true,
   );
   const [includeSelfWeight, setIncludeSelfWeight] = useState<boolean>(
     state?.includeSelfWeight ?? lastForm?.includeSelfWeight ?? false,
@@ -314,7 +308,7 @@ export default function RCColumnForm() {
   const selfWeight = useMemo(() => {
     const bEff = Cx ?? (autoDim ? autoDims.Cx : undefined);
     const hEff = Cy ?? (autoDim ? autoDims.Cy : undefined);
-    return (bEff && hEff) ? (bEff * hEff / 10000) * lu * CONCRETE_DENSITY : 0;
+    return bEff && hEff ? ((bEff * hEff) / 10000) * lu * CONCRETE_DENSITY : 0;
   }, [Cx, Cy, autoDim, autoDims.Cx, autoDims.Cy, lu]);
 
   // Totals: direct loads + self-weight + contributed
@@ -436,25 +430,32 @@ export default function RCColumnForm() {
     if (typeof d.Cx === "number") setCx(d.Cx);
     if (typeof d.Cy === "number") setCy(d.Cy);
     if (typeof d.betaD === "number") setBetaD(d.betaD);
-    if (typeof d.includeSelfWeight === "boolean") setIncludeSelfWeight(d.includeSelfWeight);
+    if (typeof d.includeSelfWeight === "boolean")
+      setIncludeSelfWeight(d.includeSelfWeight);
     // Backward compat: load old b/h if present
     if (typeof d.Cx !== "number" && typeof d.b === "number") setCx(d.b);
     if (typeof d.Cy !== "number" && typeof d.h === "number") setCy(d.h);
     // Backward compat: load old M1u/M2u if present
-    if (typeof d.MxSup !== "number" && typeof d.M1u === "number") setMxSup(d.M1u as number);
-    if (typeof d.MxInf !== "number" && typeof d.M2u === "number") setMxInf(d.M2u as number);
+    if (typeof d.MxSup !== "number" && typeof d.M1u === "number")
+      setMxSup(d.M1u as number);
+    if (typeof d.MxInf !== "number" && typeof d.M2u === "number")
+      setMxInf(d.M2u as number);
     if (typeof d.PD_direct === "number") setPD(d.PD_direct);
     if (typeof d.PL_direct === "number") setPL(d.PL_direct);
-    if (d.Cx !== undefined || d.Cy !== undefined || d.b !== undefined || d.h !== undefined) setAutoDim(false);
+    if (
+      d.Cx !== undefined ||
+      d.Cy !== undefined ||
+      d.b !== undefined ||
+      d.h !== undefined
+    )
+      setAutoDim(false);
     if (Array.isArray(d.contributedColumns)) {
       setContributedColumns(
         d.contributedColumns as unknown as ContributedColumn[],
       );
     }
     if (Array.isArray(d.contributedBeams)) {
-      setContributedBeams(
-        d.contributedBeams as unknown as ContributedBeam[],
-      );
+      setContributedBeams(d.contributedBeams as unknown as ContributedBeam[]);
     }
   }
 
@@ -496,11 +497,7 @@ export default function RCColumnForm() {
   function handleSelectSupport(supportIdx: number) {
     if (!beamAddInfo) return;
     const reactions = getBeamReactions(beamAddInfo.id);
-    if (
-      !reactions ||
-      supportIdx < 0 ||
-      supportIdx >= reactions.supportCount
-    ) {
+    if (!reactions || supportIdx < 0 || supportIdx >= reactions.supportCount) {
       setBeamAddStep("hidden");
       setBeamAddInfo(null);
       return;
@@ -567,7 +564,9 @@ export default function RCColumnForm() {
             Columna de Hormigón Armado
           </h1>
           <p className="text-sm text-text-muted">
-            {loadedSaveName ? `Editando: ${loadedSaveName}` : "CIRSOC 201 — Compatibilidad de deformaciones"}
+            {loadedSaveName
+              ? `Editando: ${loadedSaveName}`
+              : "CIRSOC 201 — Compatibilidad de deformaciones"}
           </p>
         </div>
       </header>
@@ -575,6 +574,8 @@ export default function RCColumnForm() {
       <SavedBeams
         app="concrete"
         type="rc-columna"
+        listSaves={() => getSavedBeams("rc-columna")}
+        deleteSave={(id) => deleteSave(id)}
         onLoad={handleLoad}
         label="Columnas guardadas"
       />
@@ -674,7 +675,10 @@ export default function RCColumnForm() {
               checked={includeSelfWeight}
               onChange={(e) => setIncludeSelfWeight(e.target.checked)}
             />
-            <label htmlFor="includeSelfWeight" className="text-xs text-text-muted cursor-pointer">
+            <label
+              htmlFor="includeSelfWeight"
+              className="text-xs text-text-muted cursor-pointer"
+            >
               Incluir peso propio
               {selfWeight > 0 && (
                 <span className="ml-1 text-primary">
@@ -697,7 +701,10 @@ export default function RCColumnForm() {
               </span>
               <span className="text-xs text-text-muted">|</span>
               <span className="text-xs text-text-muted">
-                {autoDim ? `${autoDims.Cx}×${autoDims.Cy} cm` : `${Cx}×${Cy} cm`} × {lu} m × 25 kN/m³
+                {autoDim
+                  ? `${autoDims.Cx}×${autoDims.Cy} cm`
+                  : `${Cx}×${Cy} cm`}{" "}
+                × {lu} m × 25 kN/m³
               </span>
               <button
                 type="button"
@@ -711,7 +718,8 @@ export default function RCColumnForm() {
 
           <div className="mt-3 p-3 bg-primary/5 border border-primary/20 rounded-lg">
             <span className="text-xs text-text-muted">
-              P<sub>u</sub> = max(1.4·P<sub>D</sub>, 1.2·P<sub>D</sub> + 1.6·P<sub>L</sub>)
+              P<sub>u</sub> = max(1.4·P<sub>D</sub>, 1.2·P<sub>D</sub> + 1.6·P
+              <sub>L</sub>)
             </span>
             <p className="text-lg font-bold text-primary mt-1">
               {PuPreview.Pu.toFixed(1)} kN
@@ -754,7 +762,8 @@ export default function RCColumnForm() {
                 {availableColumns.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name} ({c.type === "acero-columna" ? "Acero" : "H°A°"}) —
-                    P<sub>D</sub>={c.PD.toFixed(1)}, P<sub>L</sub>={c.PL.toFixed(1)} kN
+                    P<sub>D</sub>={c.PD.toFixed(1)}, P<sub>L</sub>=
+                    {c.PL.toFixed(1)} kN
                   </option>
                 ))}
               </select>
@@ -769,9 +778,7 @@ export default function RCColumnForm() {
           )}
 
           {contributedColumns.length === 0 && !showColumnSelect && (
-            <p className="text-xs text-text-muted">
-              Sin columnas superiores.
-            </p>
+            <p className="text-xs text-text-muted">Sin columnas superiores.</p>
           )}
 
           <div className="flex flex-col gap-2">
@@ -782,8 +789,8 @@ export default function RCColumnForm() {
               >
                 <span className="text-sm flex-1">{col.name}</span>
                 <span className="text-xs text-text-muted">
-                  P<sub>D</sub>={col.PD.toFixed(1)} kN &nbsp;|&nbsp;
-                  P<sub>L</sub>={col.PL.toFixed(1)} kN
+                  P<sub>D</sub>={col.PD.toFixed(1)} kN &nbsp;|&nbsp; P
+                  <sub>L</sub>={col.PL.toFixed(1)} kN
                 </span>
                 <button
                   type="button"
@@ -799,14 +806,9 @@ export default function RCColumnForm() {
           {contributedColumns.length > 0 && (
             <div className="mt-2 text-xs text-text-muted">
               Total columnas: P<sub>D</sub>=
-              {contributedColumns
-                .reduce((s, c) => s + c.PD, 0)
-                .toFixed(1)}{" "}
-              kN, P<sub>L</sub>=
-              {contributedColumns
-                .reduce((s, c) => s + c.PL, 0)
-                .toFixed(1)}{" "}
-              kN
+              {contributedColumns.reduce((s, c) => s + c.PD, 0).toFixed(1)} kN,
+              P<sub>L</sub>=
+              {contributedColumns.reduce((s, c) => s + c.PL, 0).toFixed(1)} kN
             </div>
           )}
         </section>
@@ -868,14 +870,11 @@ export default function RCColumnForm() {
                 <option value="" disabled>
                   Seleccionar apoyo ({beamAddInfo.name})...
                 </option>
-                {Array.from(
-                  { length: beamAddInfo.supportCount },
-                  (_, i) => (
-                    <option key={i} value={i}>
-                      Apoyo {i + 1}
-                    </option>
-                  ),
-                )}
+                {Array.from({ length: beamAddInfo.supportCount }, (_, i) => (
+                  <option key={i} value={i}>
+                    Apoyo {i + 1}
+                  </option>
+                ))}
               </select>
               <button
                 type="button"
@@ -891,9 +890,7 @@ export default function RCColumnForm() {
           )}
 
           {contributedBeams.length === 0 && beamAddStep === "hidden" && (
-            <p className="text-xs text-text-muted">
-              Sin reacciones de vigas.
-            </p>
+            <p className="text-xs text-text-muted">Sin reacciones de vigas.</p>
           )}
 
           <div className="flex flex-col gap-2">
@@ -909,8 +906,8 @@ export default function RCColumnForm() {
                   </span>
                 </span>
                 <span className="text-xs text-text-muted">
-                  R<sub>D</sub>={beam.rD.toFixed(1)} kN &nbsp;|&nbsp;
-                  R<sub>L</sub>={beam.rL.toFixed(1)} kN
+                  R<sub>D</sub>={beam.rD.toFixed(1)} kN &nbsp;|&nbsp; R
+                  <sub>L</sub>={beam.rL.toFixed(1)} kN
                 </span>
                 <button
                   type="button"
@@ -926,14 +923,9 @@ export default function RCColumnForm() {
           {contributedBeams.length > 0 && (
             <div className="mt-2 text-xs text-text-muted">
               Total reacciones: R<sub>D</sub>=
-              {contributedBeams
-                .reduce((s, b) => s + b.rD, 0)
-                .toFixed(1)}{" "}
-              kN, R<sub>L</sub>=
-              {contributedBeams
-                .reduce((s, b) => s + b.rL, 0)
-                .toFixed(1)}{" "}
-              kN
+              {contributedBeams.reduce((s, b) => s + b.rD, 0).toFixed(1)} kN, R
+              <sub>L</sub>=
+              {contributedBeams.reduce((s, b) => s + b.rL, 0).toFixed(1)} kN
             </div>
           )}
         </section>
@@ -941,7 +933,8 @@ export default function RCColumnForm() {
         {/* Total combinado */}
         <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
           <span className="text-xs text-text-muted">
-            Carga total = carga directa + columnas superiores + reacciones de vigas
+            Carga total = carga directa + columnas superiores + reacciones de
+            vigas
           </span>
           <p className="text-lg font-bold text-primary mt-1">
             P<sub>D</sub>={totalPD.toFixed(1)} + P<sub>L</sub>=
@@ -972,7 +965,10 @@ export default function RCColumnForm() {
                   }
                 }}
               />
-              <label htmlFor="autoDim" className="text-xs text-text-muted cursor-pointer">
+              <label
+                htmlFor="autoDim"
+                className="text-xs text-text-muted cursor-pointer"
+              >
                 Predimensionar automáticamente
               </label>
             </div>
@@ -983,7 +979,7 @@ export default function RCColumnForm() {
                 </span>
                 <DecimalInput value={lu} onChange={setLu} />
               </label>
-               <label className="flex flex-col gap-1">
+              <label className="flex flex-col gap-1">
                 <span className="text-xs text-text-muted">
                   Cx (cm) {autoDim && "(auto)"}
                 </span>
@@ -992,10 +988,7 @@ export default function RCColumnForm() {
                     {autoDims.Cx}
                   </span>
                 ) : (
-                  <DecimalInput
-                    value={Cx ?? 20}
-                    onChange={(v) => setCx(v)}
-                  />
+                  <DecimalInput value={Cx ?? 20} onChange={(v) => setCx(v)} />
                 )}
               </label>
               <label className="flex flex-col gap-1">
@@ -1007,10 +1000,7 @@ export default function RCColumnForm() {
                     {autoDims.Cy}
                   </span>
                 ) : (
-                  <DecimalInput
-                    value={Cy ?? 20}
-                    onChange={(v) => setCy(v)}
-                  />
+                  <DecimalInput value={Cy ?? 20} onChange={(v) => setCy(v)} />
                 )}
               </label>
             </div>
@@ -1022,7 +1012,8 @@ export default function RCColumnForm() {
             </label>
             {!autoDim && (
               <p className="text-xs text-text-muted">
-                Si no se especifican Cx y Cy, se predimensionan automáticamente según las cargas.
+                Si no se especifican Cx y Cy, se predimensionan automáticamente
+                según las cargas.
               </p>
             )}
           </div>

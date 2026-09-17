@@ -5,6 +5,8 @@ import { SavedBeams } from "@mascalculador/shared";
 import {
   saveBeam,
   listSaves,
+  getSavedBeams,
+  deleteSave,
   loadLastBasesFormState,
   saveLastBasesFormState,
   type BasesFormState,
@@ -238,7 +240,13 @@ export default function BasesForm() {
       </header>
 
       {/* Load saved bases */}
-      <SavedBeams app="concrete" type="bases" onLoad={handleLoadBases} />
+      <SavedBeams
+        app="concrete"
+        type="bases"
+        listSaves={() => getSavedBeams("bases")}
+        deleteSave={(id) => deleteSave(id)}
+        onLoad={handleLoadBases}
+      />
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-6">
         {/* ── 1. Suelo ──────────────────────────────────────── */}

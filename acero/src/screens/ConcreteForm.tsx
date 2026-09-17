@@ -2,7 +2,12 @@ import { useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import { SavedBeams } from "@mascalculador/shared";
-import { saveBeam, updateSave } from "../lib/storage";
+import {
+  saveBeam,
+  updateSave,
+  getSavedBeams,
+  deleteSave,
+} from "../lib/storage";
 import { calculateBeam } from "../lib/beam-calculations";
 import { DecimalInput } from "@mascalculador/shared";
 
@@ -206,6 +211,8 @@ export default function ConcreteForm() {
       <SavedBeams
         app="concrete"
         type="hormigon"
+        listSaves={() => getSavedBeams("hormigon")}
+        deleteSave={(id) => deleteSave(id)}
         onLoad={(data, save) => {
           setLoadedSaveId(save.id);
           setLoadedSaveName(save.name);
@@ -256,9 +263,7 @@ export default function ConcreteForm() {
                   <DecimalInput
                     value={len}
                     onChange={(n) =>
-                      setSpanLengths((p) =>
-                        p.map((l, j) => (j === i ? n : l)),
-                      )
+                      setSpanLengths((p) => p.map((l, j) => (j === i ? n : l)))
                     }
                   />
                 </label>

@@ -2,7 +2,14 @@ import { useMemo, useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import { SavedBeams } from "@mascalculador/shared";
-import { saveBeam, updateSave, saveLastFormState, loadLastFormState } from "../lib/storage";
+import {
+  saveBeam,
+  updateSave,
+  getSavedBeams,
+  deleteSave,
+  saveLastFormState,
+  loadLastFormState,
+} from "../lib/storage";
 import { IPN_PROFILES } from "../lib/profiles";
 import { UPN_PROFILES } from "../lib/upn-profiles";
 import { calculateBeamDual, migrateLoads } from "../lib/beam-calculations";
@@ -38,11 +45,11 @@ export default function FormPage() {
     state?.designParams?.profileName ?? lastForm?.profileName ?? "IPN 200",
   );
   const [profileType, setProfileType] = useState<"IPN" | "UPN">(
-    state?.designParams?.profileType ?? (lastForm?.profileType as "IPN" | "UPN") ?? "IPN",
+    state?.designParams?.profileType ??
+      (lastForm?.profileType as "IPN" | "UPN") ??
+      "IPN",
   );
-  const [Fy, setFy] = useState(
-    state?.designParams?.Fy ?? lastForm?.Fy ?? 235,
-  );
+  const [Fy, setFy] = useState(state?.designParams?.Fy ?? lastForm?.Fy ?? 235);
   const totalLength = spanLengths.reduce((a, b) => a + b, 0);
 
   // L = luz total (auto-calculado), siempre en cm para el form
@@ -50,18 +57,24 @@ export default function FormPage() {
 
   const [Lb1, setLb1] = useState(
     // Navigation state comes in mm (×10 in handleSubmit); convert back to cm
-    state?.designParams?.Lb1 != null ? state.designParams.Lb1 / 10 : (lastForm?.Lb1 ?? Lb),
+    state?.designParams?.Lb1 != null
+      ? state.designParams.Lb1 / 10
+      : (lastForm?.Lb1 ?? Lb),
   );
   const [Lb2, setLb2] = useState(
-    state?.designParams?.Lb2 != null ? state.designParams.Lb2 / 10 : (lastForm?.Lb2 ?? Lb),
+    state?.designParams?.Lb2 != null
+      ? state.designParams.Lb2 / 10
+      : (lastForm?.Lb2 ?? Lb),
   );
   const [Cb, setCb] = useState(state?.designParams?.Cb ?? lastForm?.Cb ?? 1.0);
   const [deflectionLimit, setDeflectionLimit] = useState(
     state?.designParams?.deflectionLimit ?? lastForm?.deflectionLimit ?? 300,
   );
-  const [loadPosition, setLoadPosition] = useState<
-    "top" | "shear" | "bottom"
-  >(state?.designParams?.loadPosition ?? (lastForm?.loadPosition as "top" | "shear" | "bottom") ?? "top");
+  const [loadPosition, setLoadPosition] = useState<"top" | "shear" | "bottom">(
+    state?.designParams?.loadPosition ??
+      (lastForm?.loadPosition as "top" | "shear" | "bottom") ??
+      "top",
+  );
 
   // Id del elemento cargado (null = nuevo, sin guardar)
   const [loadedSaveId, setLoadedSaveId] = useState<string | null>(null);
@@ -86,8 +99,18 @@ export default function FormPage() {
       loadPosition,
     });
   }, [
-    spanCount, spanLengths, supportTypes, loads,
-    profileName, profileType, Fy, Lb1, Lb2, Cb, deflectionLimit, loadPosition,
+    spanCount,
+    spanLengths,
+    supportTypes,
+    loads,
+    profileName,
+    profileType,
+    Fy,
+    Lb1,
+    Lb2,
+    Cb,
+    deflectionLimit,
+    loadPosition,
   ]);
 
   const supportPositions = spanLengths.reduce(
@@ -218,16 +241,17 @@ export default function FormPage() {
     }
   }, [spanLengths, supportTypes, loads, Fy, valid]);
 
-  const selectedProfile = profileType === "UPN"
-    ? UPN_PROFILES.find((p) => p.name === profileName)
-    : IPN_PROFILES.find((p) => p.name === profileName);
+  const selectedProfile =
+    profileType === "UPN"
+      ? UPN_PROFILES.find((p) => p.name === profileName)
+      : IPN_PROFILES.find((p) => p.name === profileName);
   // For Zx comparison, get Zx from the appropriate profile
-  const selectedProfileZx = profileType === "UPN"
-    ? (UPN_PROFILES.find((p) => p.name === profileName)?.Zx ?? 0)
-    : (IPN_PROFILES.find((p) => p.name === profileName)?.Zx ?? 0);
+  const selectedProfileZx =
+    profileType === "UPN"
+      ? (UPN_PROFILES.find((p) => p.name === profileName)?.Zx ?? 0)
+      : (IPN_PROFILES.find((p) => p.name === profileName)?.Zx ?? 0);
   // Soft-warn when selected profile Zx < Zx_req (task 1.11)
-  const showZxWarning =
-    Zx_req !== null && selectedProfileZx < Zx_req;
+  const showZxWarning = Zx_req !== null && selectedProfileZx < Zx_req;
 
   return (
     <MainLayout>
@@ -252,7 +276,9 @@ export default function FormPage() {
             Calculadora de Vigas
           </h1>
           <p className="text-sm text-text-muted">
-            {loadedSaveName ? `Editando: ${loadedSaveName}` : "Definí la viga y sus cargas"}
+            {loadedSaveName
+              ? `Editando: ${loadedSaveName}`
+              : "Definí la viga y sus cargas"}
           </p>
         </div>
       </header>
@@ -260,6 +286,8 @@ export default function FormPage() {
       <SavedBeams
         app="steel"
         type="acero"
+        listSaves={() => getSavedBeams("acero")}
+        deleteSave={(id) => deleteSave(id)}
         onLoad={(data, save) => {
           setLoadedSaveId(save.id);
           setLoadedSaveName(save.name);
@@ -288,7 +316,8 @@ export default function FormPage() {
             setMigrated(false);
           }
           if (typeof d.profileName === "string") setProfileName(d.profileName);
-          if (typeof d.profileType === "string") setProfileType(d.profileType as "IPN" | "UPN");
+          if (typeof d.profileType === "string")
+            setProfileType(d.profileType as "IPN" | "UPN");
           if (typeof d.Fy === "number") setFy(d.Fy);
           if (typeof d.Lb1 === "number") setLb1(d.Lb1);
           else if (typeof d.Lb === "number") setLb1(d.Lb);
@@ -560,11 +589,13 @@ export default function FormPage() {
                 value={profileName}
                 onChange={(e) => setProfileName(e.target.value)}
               >
-                {(profileType === "UPN" ? UPN_PROFILES : IPN_PROFILES).map((p) => (
-                  <option key={p.name} value={p.name}>
-                    {p.name}
-                  </option>
-                ))}
+                {(profileType === "UPN" ? UPN_PROFILES : IPN_PROFILES).map(
+                  (p) => (
+                    <option key={p.name} value={p.name}>
+                      {p.name}
+                    </option>
+                  ),
+                )}
               </select>
             </label>
             <label className="flex flex-col gap-1">
@@ -608,16 +639,17 @@ export default function FormPage() {
               <span className="text-xs text-text-muted">
                 δ<sub>adm</sub> = L /
               </span>
-              <DecimalInput value={deflectionLimit} onChange={setDeflectionLimit} />
+              <DecimalInput
+                value={deflectionLimit}
+                onChange={setDeflectionLimit}
+              />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">Carga aplicada en</span>
               <select
                 value={loadPosition}
                 onChange={(e) =>
-                  setLoadPosition(
-                    e.target.value as "top" | "shear" | "bottom",
-                  )
+                  setLoadPosition(e.target.value as "top" | "shear" | "bottom")
                 }
               >
                 <option value="top">Ala superior</option>

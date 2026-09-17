@@ -2,12 +2,18 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import { SavedBeams } from "@mascalculador/shared";
-import { predimCoef, type EdgeCondition, type SlabInput } from "../lib/slab-calc";
+import {
+  predimCoef,
+  type EdgeCondition,
+  type SlabInput,
+} from "../lib/slab-calc";
 import {
   saveLastSlabFormState,
   loadLastSlabFormState,
   saveSlabInput,
   updateSlabInput,
+  getSavedBeams,
+  deleteSave,
 } from "../lib/storage";
 import { DecimalInput } from "@mascalculador/shared";
 
@@ -301,6 +307,8 @@ export default function SlabForm() {
       <SavedBeams
         app="concrete"
         type="losa"
+        listSaves={() => getSavedBeams("losa")}
+        deleteSave={(id) => deleteSave(id)}
         label="Losas guardadas"
         onLoad={(data, save) => {
           setLoadedSaveId(save.id);
