@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { MainLayout } from "@mascalculador/shared";
-import { SavedBeams } from "@mascalculador/shared";
+import { MainLayout, SavedBeams } from "@mascalculador/shared";
+import ScreenHeader from "../components/ScreenHeader";
 import {
   saveBeam,
   updateSave,
@@ -255,33 +255,15 @@ export default function FormPage() {
 
   return (
     <MainLayout>
-      <header className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
-          <svg
-            className="w-5 h-5 text-primary"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 7h6m-6 4h6m-6 4h6M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z"
-            />
-          </svg>
-        </div>
-        <div>
-          <h1 className="text-xl font-semibold text-text">
-            Calculadora de Vigas
-          </h1>
-          <p className="text-sm text-text-muted">
-            {loadedSaveName
-              ? `Editando: ${loadedSaveName}`
-              : "Definí la viga y sus cargas"}
-          </p>
-        </div>
-      </header>
+      <ScreenHeader
+        title="Viga de acero"
+        subtitle={loadedSaveName ? `Editando: ${loadedSaveName}` : "Definí la viga y sus cargas"}
+        badge={
+          loadedSaveName
+            ? { label: loadedSaveName, tone: "saved" }
+            : { label: "Sin guardar", tone: "unsaved" }
+        }
+      />
 
       <SavedBeams
         app="steel"

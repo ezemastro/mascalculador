@@ -1,5 +1,6 @@
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
+import ScreenHeader from "../components/ScreenHeader";
 import { IPN_PROFILES } from "../lib/profiles";
 import { UPN_PROFILES, getDoubleUPN } from "../lib/upn-profiles";
 import { TUBE_PROFILES } from "../lib/tube-profiles";
@@ -206,48 +207,27 @@ export default function ColumnResults() {
 
   return (
     <MainLayout>
-      <header className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
-            <svg
-              className="w-5 h-5 text-primary"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
+      <ScreenHeader
+        title={`Columna ${displayName}`}
+        subtitle={`L = ${L} mm · Kx = ${Kx} · Ky = ${Ky} · Fy = ${Fy} MPa`}
+        badge={{ label: "Resultado", tone: "neutral" }}
+        actions={
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate("/columns", { state })}
+              className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-4 py-1.5 rounded-lg"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
-              />
-            </svg>
+              ← Volver
+            </button>
+            <button
+              onClick={() => navigate("/column-print", { state })}
+              className="text-sm bg-primary text-white hover:bg-primary-hover px-4 py-1.5 rounded-lg"
+            >
+              🖨 Imprimir
+            </button>
           </div>
-          <div>
-            <h1 className="text-xl font-semibold text-text">
-              Columna {displayName}
-            </h1>
-            <p className="text-sm text-text-muted">
-              L = {L} mm &middot; K<sub>x</sub> = {Kx} &middot; K<sub>y</sub> ={" "}
-              {Ky} &middot; F<sub>y</sub> = {Fy} MPa
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => navigate("/columns", { state })}
-            className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-4 py-1.5 rounded-lg"
-          >
-            ← Volver
-          </button>
-          <button
-            onClick={() => navigate("/column-print", { state })}
-            className="text-sm bg-primary text-white hover:bg-primary-hover px-4 py-1.5 rounded-lg"
-          >
-            🖨 Imprimir
-          </button>
-        </div>
-      </header>
+        }
+      />
 
       {/* Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">

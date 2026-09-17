@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { MainLayout } from "@mascalculador/shared";
-import { SavedBeams } from "@mascalculador/shared";
+import { MainLayout, SavedBeams } from "@mascalculador/shared";
+import ScreenHeader from "../components/ScreenHeader";
 import { IPN_PROFILES } from "../lib/profiles";
 import { UPN_PROFILES } from "../lib/upn-profiles";
 import { TUBE_PROFILES } from "../lib/tube-profiles";
@@ -254,33 +254,15 @@ export default function ColumnForm() {
 
   return (
     <MainLayout>
-      <header className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
-          <svg
-            className="w-5 h-5 text-primary"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
-            />
-          </svg>
-        </div>
-        <div>
-          <h1 className="text-xl font-semibold text-text">
-            Calculadora de Columnas
-          </h1>
-          <p className="text-sm text-text-muted">
-            {loadedSaveName
-              ? `Editando: ${loadedSaveName}`
-              : "CIRSOC 301-05 — Capítulos E, F y H"}
-          </p>
-        </div>
-      </header>
+      <ScreenHeader
+        title="Columnas de acero"
+        subtitle={loadedSaveName ? `Editando: ${loadedSaveName}` : "CIRSOC 301-05 — Capítulos E, F y H"}
+        badge={
+          loadedSaveName
+            ? { label: loadedSaveName, tone: "saved" }
+            : { label: "Sin guardar", tone: "unsaved" }
+        }
+      />
 
       <SavedBeams
         app="steel"

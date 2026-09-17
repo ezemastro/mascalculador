@@ -1,5 +1,6 @@
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
+import ScreenHeader from "../components/ScreenHeader";
 import { calculateCartel } from "../lib/cartel-calc";
 import type { CartelState } from "./CartelForm";
 
@@ -28,47 +29,27 @@ export default function CartelResults() {
 
   return (
     <MainLayout>
-      <header className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
-            <svg
-              className="w-5 h-5 text-primary"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
+      <ScreenHeader
+        title={`Cartel ${result.nColumnas} col. × ${result.nCorreas} correas`}
+        subtitle={`${state.anchoCartel} × ${state.altoCartel} m · d = ${state.despegue} m · V = ${state.velocidadViento} m/s`}
+        badge={{ label: "Resultado", tone: "neutral" }}
+        actions={
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate("/cartel", { state })}
+              className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-4 py-1.5 rounded-lg"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"
-              />
-            </svg>
+              ← Volver
+            </button>
+            <button
+              onClick={() => navigate("/cartel-print", { state })}
+              className="text-sm bg-primary text-white hover:bg-primary-hover px-4 py-1.5 rounded-lg"
+            >
+              🖨 Imprimir
+            </button>
           </div>
-          <div>
-            <h1 className="text-xl font-semibold text-text">
-              Cartel {result.nColumnas} col. × {result.nCorreas} correas
-            </h1>
-            <p className="text-sm text-text-muted">
-              {state.anchoCartel} × {state.altoCartel} m &middot; d = {state.despegue} m &middot; V = {state.velocidadViento} m/s
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => navigate("/cartel", { state })}
-            className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-4 py-1.5 rounded-lg"
-          >
-            ← Volver
-          </button>
-          <button
-            onClick={() => navigate("/cartel-print", { state })}
-            className="text-sm bg-primary text-white hover:bg-primary-hover px-4 py-1.5 rounded-lg"
-          >
-            🖨 Imprimir
-          </button>
-        </div>
-      </header>
+        }
+      />
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">

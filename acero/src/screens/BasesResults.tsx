@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useLocation, useNavigate, Link } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
+import ScreenHeader from "../components/ScreenHeader";
 import { designBase } from "../lib/bases-calc";
 import type { BaseInput } from "../lib/bases-calc";
 import { saveBeam } from "../lib/storage";
@@ -146,45 +147,26 @@ export default function BasesResults() {
   return (
     <MainLayout>
       {/* ─── Header ─── */}
-      <header className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
-            <svg
-              className="w-5 h-5 text-primary"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
-              />
-            </svg>
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold text-text">
-              Base {isCentrada ? "Centrada" : "Medianera"} {result.B}×{result.L}
-              ×{result.h} cm
-            </h1>
-            <p className="text-sm text-text-muted">
-              {isCentrada
-                ? `f'c = ${input.fc} MPa · fy = ${input.fy} MPa`
-                : isViga
-                  ? `Viga de fundación · Lcol = ${input.Lcol} cm`
-                  : `Tensor · H = ${input.H} cm`}
-            </p>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => navigate("/bases")}
-          className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-4 py-1.5 rounded-lg"
-        >
-          ← Volver
-        </button>
-      </header>
+      <ScreenHeader
+        title={`Base ${isCentrada ? "Centrada" : "Medianera"} ${result.B}×${result.L}×${result.h} cm`}
+        subtitle={
+          isCentrada
+            ? `f'c = ${input.fc} MPa · fy = ${input.fy} MPa`
+            : isViga
+              ? `Viga de fundación · Lcol = ${input.Lcol} cm`
+              : `Tensor · H = ${input.H} cm`
+        }
+        badge={{ label: "Resultado", tone: "neutral" }}
+        actions={
+          <button
+            type="button"
+            onClick={() => navigate("/bases")}
+            className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-4 py-1.5 rounded-lg"
+          >
+            ← Volver
+          </button>
+        }
+      />
 
       {/* ─── Resumen ─── */}
       <section className="bg-surface rounded-xl border border-border p-5">

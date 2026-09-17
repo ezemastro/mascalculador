@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
+import ScreenHeader from "../components/ScreenHeader";
 import { SavedBeams } from "@mascalculador/shared";
 import {
   saveBeam,
@@ -211,33 +212,15 @@ export default function BasesForm() {
   // ------------------------------------------------------------------
   return (
     <MainLayout>
-      <header className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center">
-          <svg
-            className="w-5 h-5 text-primary"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
-            />
-          </svg>
-        </div>
-        <div>
-          <h1 className="text-xl font-semibold text-text">
-            Dimensionado de Bases
-          </h1>
-          <p className="text-sm text-text-muted">
-            {loadedSaveName
-              ? `Editando: ${loadedSaveName}`
-              : "CIRSOC 201 — Base de hormigón armado"}
-          </p>
-        </div>
-      </header>
+      <ScreenHeader
+        title="Dimensionado de Bases"
+        subtitle={loadedSaveName ? `Editando: ${loadedSaveName}` : "CIRSOC 201 — Base de hormigón armado"}
+        badge={
+          loadedSaveName
+            ? { label: loadedSaveName, tone: "saved" }
+            : { label: "Sin guardar", tone: "unsaved" }
+        }
+      />
 
       {/* Load saved bases */}
       <SavedBeams

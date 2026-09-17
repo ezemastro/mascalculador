@@ -33,6 +33,8 @@ import BasesForm from "./screens/BasesForm.tsx";
 import BasesResults from "./screens/BasesResults.tsx";
 import { ObraPickerHost } from "./components/ObraPicker.tsx";
 import ObraMenu from "./components/ObraMenu.tsx";
+import AssistantWidget from "./components/AssistantWidget.tsx";
+import AdminScreen from "./screens/AdminScreen.tsx";
 
 class ErrorBoundary extends Component<
   { children: ReactNode },
@@ -85,13 +87,19 @@ class ErrorBoundary extends Component<
 
 function NavBar({
   username,
+  admin,
+  impersonating,
   onLogout,
+  onExitImpersonate,
   obraId,
   obras,
   onObraChange,
 }: {
   username: string;
+  admin: boolean;
+  impersonating: boolean;
   onLogout: () => void;
+  onExitImpersonate: () => void;
   obraId: string;
   obras: SavedObra[];
   onObraChange: (id: string) => void;
@@ -135,7 +143,22 @@ function NavBar({
         </>
       )}
       <div className="ml-auto flex items-center gap-3">
+        {impersonating && (
+          <button
+            type="button"
+            onClick={onExitImpersonate}
+            title="Volver a tu sesión de administrador"
+            className="text-xs font-semibold text-warning bg-warning/10 border border-warning/30 px-2 py-0.5 rounded hover:bg-warning/20"
+          >
+            Viendo como {username} — Volver a admin
+          </button>
+        )}
         <span className="text-xs text-text-muted">{username}</span>
+        {admin && (
+          <Link to="/admin" className="text-xs text-text-muted hover:text-text">
+            Usuarios registrados
+          </Link>
+        )}
         <button
           type="button"
           onClick={onLogout}
@@ -158,10 +181,16 @@ function VersionBadge() {
 
 function Layout({
   username,
+  admin,
+  impersonating,
   onLogout,
+  onExitImpersonate,
 }: {
   username: string;
+  admin: boolean;
+  impersonating: boolean;
   onLogout: () => void;
+  onExitImpersonate: () => void;
 }) {
   const [obraId, setObraId] = useState(getCurrentObraId);
   const [obras, setObras] = useState<SavedObra[]>(() => getObras());
@@ -176,12 +205,16 @@ function Layout({
     <>
       <NavBar
         username={username}
+        admin={admin}
+        impersonating={impersonating}
         onLogout={onLogout}
+        onExitImpersonate={onExitImpersonate}
         obraId={obraId}
         obras={obras}
         onObraChange={handleObraChange}
       />
       <ObraPickerHost onObraCreated={handleObraChange} />
+      <AssistantWidget onObraChange={handleObraChange} />
       <div className="pt-10">
         <Outlet
           key={obraId}
@@ -192,10 +225,24 @@ function Layout({
   );
 }
 
-function buildRouter(username: string, onLogout: () => void) {
+function buildRouter(
+  username: string,
+  admin: boolean,
+  impersonating: boolean,
+  onLogout: () => void,
+  onExitImpersonate: () => void,
+) {
   return createBrowserRouter([
     {
-      Component: () => <Layout username={username} onLogout={onLogout} />,
+      Component: () => (
+        <Layout
+          username={username}
+          admin={admin}
+          impersonating={impersonating}
+          onLogout={onLogout}
+          onExitImpersonate={onExitImpersonate}
+        />
+      ),
       children: [
         { path: "/", Component: HomeScreen },
         { path: "/viga-acero", Component: FormPage },
@@ -209,20 +256,40 @@ function buildRouter(username: string, onLogout: () => void) {
         { path: "/cartel-print", Component: CartelPrintPage },
         { path: "/bases", Component: BasesForm },
         { path: "/bases-results", Component: BasesResults },
+        ...(admin
+          ? [
+              {
+                path: "/admin",
+                Component: () => <AdminScreen selfUsername={username} />,
+              },
+            ]
+          : []),
         { path: "*", Component: () => <Navigate to="/" replace /> },
       ],
     },
   ]);
 }
 
-type Session = { username: string } | null;
+type Session = {
+  username: string;
+  admin: boolean;
+  impersonating: boolean;
+} | null;
 
 async function fetchSession(): Promise<Session> {
   try {
     const me = await fetch("/api/auth/me");
     if (me.ok) {
-      const data = (await me.json()) as { username: string };
-      return { username: data.username };
+      const data = (await me.json()) as {
+        username: string;
+        admin?: boolean;
+        impersonating?: boolean;
+      };
+      return {
+        username: data.username,
+        admin: Boolean(data.admin),
+        impersonating: Boolean(data.impersonating),
+      };
     }
   } catch {
     // Server inalcanzable: sin sesión confirmada, queda la pantalla de login.
@@ -280,9 +347,17 @@ async function main() {
           <VersionBadge />
           {s ? (
             <RouterProvider
-              router={buildRouter(s.username, () => {
-                void handleLogout(render);
-              })}
+              router={buildRouter(
+                s.username,
+                s.admin,
+                s.impersonating,
+                () => {
+                  void handleLogout(render);
+                },
+                () => {
+                  void handleExitImpersonate();
+                },
+              )}
             />
           ) : (
             <AuthScreen
@@ -305,6 +380,21 @@ async function main() {
       // Igual volvemos a la pantalla de login.
     }
     doRender(null);
+  }
+
+  // Salir de la suplantación: sincroniza lo pendiente del usuario visto y
+  // recarga la app completa para que bootstrapStorage cargue los datos del
+  // admin. El server ya repuso la cookie de sesión de admin.
+  async function handleExitImpersonate() {
+    try {
+      await flushCloudStorage();
+    } catch {
+      // seguimos igual; el server repuso la sesión de admin de todos modos
+    }
+    await fetch("/api/admin/exit-impersonate", { method: "POST" }).catch(
+      () => {},
+    );
+    window.location.assign("/");
   }
 
   render(session);
