@@ -3,9 +3,12 @@ import { useEffect, useRef, useState } from "react";
 import PrintDialog from "./PrintDialog";
 import {
   buildBasesSheet,
+  buildCabezalVigaSheet,
   buildColumnaSheet,
   buildLosaSheet,
+  buildMuroSheet,
   buildApoyosSheet,
+  buildPileCapSheet,
   buildVigaSheet,
   type PlanillaSheet,
 } from "../lib/print-planilla";
@@ -16,7 +19,14 @@ import {
   getSavedCompats,
 } from "../lib/storage";
 
-export type PrintKind = "losas" | "vigas" | "columnas" | "bases";
+export type PrintKind =
+  | "losas"
+  | "vigas"
+  | "columnas"
+  | "bases"
+  | "vf-cabezales"
+  | "cabezales"
+  | "muros";
 
 export const PRINT_ITEMS: { kind: PrintKind; label: string; hint: string }[] = [
   {
@@ -27,6 +37,21 @@ export const PRINT_ITEMS: { kind: PrintKind; label: string; hint: string }[] = [
   { kind: "vigas", label: "Vigas", hint: "Planilla de vigas H° A°" },
   { kind: "columnas", label: "Columnas", hint: "Planilla de columnas" },
   { kind: "bases", label: "Bases", hint: "Planilla de bases" },
+  {
+    kind: "vf-cabezales",
+    label: "Vigas de fundación",
+    hint: "Planilla de vigas de fundación para cabezales",
+  },
+  {
+    kind: "cabezales",
+    label: "Cabezales",
+    hint: "Planilla de cabezales sobre pilotes",
+  },
+  {
+    kind: "muros",
+    label: "Muros de contención",
+    hint: "Planilla de muros de contención",
+  },
 ];
 
 export function buildSheets(kind: PrintKind): PlanillaSheet[] | null {
@@ -42,6 +67,12 @@ export function buildSheets(kind: PrintKind): PlanillaSheet[] | null {
       return [buildColumnaSheet(getSavedBeams("rc-columna"))];
     case "bases":
       return [buildBasesSheet(getSavedBeams("bases"))];
+    case "vf-cabezales":
+      return [buildCabezalVigaSheet(getSavedBeams("cabezal"))];
+    case "cabezales":
+      return [buildPileCapSheet(getSavedBeams("pilecap"))];
+    case "muros":
+      return [buildMuroSheet(getSavedBeams("muro"))];
   }
 }
 

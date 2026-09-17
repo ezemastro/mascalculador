@@ -11,8 +11,10 @@ import { designConcreteDetailed } from "./concrete-design";
 import { computeDeflections } from "./deflection";
 import { CONCRETE_DENSITY } from "./constants";
 import type { BaseInput, BaseResult } from "./bases-calc";
-import { designBase } from "./bases-calc";
+import { designBase, designVigaCabezal } from "./bases-calc";
 import { designRCColumn } from "./rc-column-calc";
+import type { MuroInput, MuroResult, MuroBarSelection } from "./muro-calc";
+import type { PileCapInput, PileCapResult } from "./pilecap-calc";
 
 export interface PlanillaColumn {
   key: string;
@@ -94,14 +96,17 @@ function stirrupText(
 const fmt1 = (x: number): string => x.toFixed(1);
 const fmt2 = (x: number): string => x.toFixed(2);
 
-function fmtLoad(l: {
-  type: "point" | "distributed";
-  D: number;
-  L: number;
-  position?: number;
-  start?: number;
-  end?: number;
-}, beamLength: number): string {
+function fmtLoad(
+  l: {
+    type: "point" | "distributed";
+    D: number;
+    L: number;
+    position?: number;
+    start?: number;
+    end?: number;
+  },
+  beamLength: number,
+): string {
   if (l.type === "point") {
     return `P ${fmt2(l.D ?? 0)}/${fmt2(l.L ?? 0)} kN @${fmt1(l.position ?? 0)} m`;
   }
@@ -303,7 +308,12 @@ function buildVigaRows(save: SavedBeam): string[][] {
   const loadText =
     loads.length > 0
       ? loads
-          .map((l) => fmtLoad(l, spans.reduce((a, b) => a + b, 0)))
+          .map((l) =>
+            fmtLoad(
+              l,
+              spans.reduce((a, b) => a + b, 0),
+            ),
+          )
           .join(" · ")
       : "—";
   const section = `${bw / 10}×${h / 10}`;
@@ -943,6 +953,222 @@ export function buildApoyosSheet(
     notes:
       failed.length > 0
         ? [`No se pudieron procesar: ${failed.join(", ")}`]
+        : undefined,
+  };
+}
+
+// ---- Muros de contención (tipo "muro": data = { input, result }) ----
+
+const MURO_COLUMNS: PlanillaColumn[] = [
+  { key: "elem", label: "Elemento", width: "13%" },
+  { key: "tab", label: "H×e (m)" },
+  { key: "zap", label: "B×Hzap (m)" },
+  { key: "mu", label: "M_u (kN·m/m)", align: "right" },
+  { key: "vu", label: "Vu/φVc (kN/m)", align: "right" },
+  { key: "arm", label: "Armadura vertical int.", width: "17%" },
+  { key: "sigma", label: "σmax/σadm (kPa)", align: "right" },
+  { key: "ok", label: "Verifica", align: "center" },
+];
+
+/** Armadura de un grupo del muro: Ø, separación y As provista. */
+function muroRebar(sel?: MuroBarSelection): string {
+  if (!sel || !sel.diam) return "—";
+  return `Ø${sel.diam} c/${Math.round(sel.sep)} · ${fmt2(sel.asProv)} cm²/m`;
+}
+
+function buildMuroRow(save: SavedBeam): string[] {
+  const data = save.data as unknown as {
+    input?: Partial<MuroInput>;
+    result?: Partial<MuroResult>;
+  };
+  if (!data?.input || !data?.result) throw new Error("Datos incompletos");
+  const input = data.input;
+  const r = data.result;
+  const ok =
+    r.sigmaOK !== false &&
+    r.shearOK !== false &&
+    r.axialOK !== false &&
+    r.rigidOK !== false;
+  return [
+    save.name,
+    `${fmt2(input.H ?? 0)}×${fmt2(input.e_muro ?? 0)}`,
+    `${fmt2(input.B_zap ?? 0)}×${fmt2(input.H_zap ?? 0)}`,
+    fmt1(r.M_u_gov ?? 0),
+    `${fmt1(r.Vu ?? 0)}/${fmt1(r.phiVc ?? 0)}`,
+    muroRebar(r.vertInt),
+    `${Math.round(r.sigma_max ?? 0)}/${Math.round(r.sigma_adm_kPa ?? 0)}`,
+    ok ? "✓" : "✗",
+  ];
+}
+
+/** Planilla de muros de contención (una fila por muro). */
+export function buildMuroSheet(sources: SavedBeam[]): PlanillaSheet {
+  const rows: string[][] = [];
+  const failed: string[] = [];
+  for (const save of sources) {
+    try {
+      rows.push(buildMuroRow(save));
+    } catch {
+      failed.push(save.name);
+    }
+  }
+  return {
+    title: "PLANILLA DE MUROS DE CONTENCIÓN — H° A°",
+    subtitle: "Memoria de cálculo",
+    columns: MURO_COLUMNS,
+    rows,
+    countLabel: `Cantidad de muros: ${rows.length}`,
+    notes:
+      failed.length > 0
+        ? [`No se pudieron procesar (datos incompletos): ${failed.join(", ")}`]
+        : undefined,
+  };
+}
+
+// ---- Cabezales sobre pilotes (tipo "pilecap": data = { input, result }) ----
+
+const PILECAP_COLUMNS: PlanillaColumn[] = [
+  { key: "elem", label: "Elemento", width: "12%" },
+  { key: "tipo", label: "Tipo", width: "11%" },
+  { key: "pilotes", label: "Pilotes" },
+  { key: "dims", label: "Planta×h (cm)" },
+  { key: "loads", label: "PD/PL (kN)", align: "right" },
+  { key: "pu", label: "Pu (kN)", align: "right" },
+  { key: "rp", label: "Rp (kN/pilote)", align: "right" },
+  { key: "arm", label: "Tirante", width: "15%" },
+  { key: "ok", label: "Verifica", align: "center" },
+];
+
+const PILECAP_TIPO_LABELS: Record<string, string> = {
+  rect2: "2 pilotes",
+  linea3: "3 en línea",
+  triangulo: "Triangular 3",
+};
+
+function buildPileCapRow(save: SavedBeam): string[] {
+  const data = save.data as unknown as {
+    input?: Partial<PileCapInput>;
+    result?: Partial<PileCapResult>;
+  };
+  if (!data?.input || !data?.result) throw new Error("Datos incompletos");
+  const input = data.input;
+  const r = data.result;
+  return [
+    save.name,
+    PILECAP_TIPO_LABELS[input.tipo ?? ""] ?? input.tipo ?? "—",
+    `${r.n ?? "—"} Ø${input.Dp ?? "—"} s ${input.s ?? "—"}`,
+    `${Math.round(r.L1 ?? 0)}×${Math.round(r.L2 ?? 0)}×${Math.round(
+      input.h ?? 0,
+    )}`,
+    `${fmt1(input.PD ?? 0)}/${fmt1(input.PL ?? 0)}`,
+    fmt1(r.Pu ?? 0),
+    fmt1(r.Rp ?? 0),
+    `${r.barN ?? "—"}Ø${r.barD ?? "—"} · ${fmt2(r.AsProv ?? 0)} cm²`,
+    r.allOK ? "✓" : "✗",
+  ];
+}
+
+/** Planilla de cabezales sobre pilotes (una fila por cabezal). */
+export function buildPileCapSheet(sources: SavedBeam[]): PlanillaSheet {
+  const rows: string[][] = [];
+  const failed: string[] = [];
+  for (const save of sources) {
+    try {
+      rows.push(buildPileCapRow(save));
+    } catch {
+      failed.push(save.name);
+    }
+  }
+  return {
+    title: "PLANILLA DE CABEZALES — H° A°",
+    subtitle: "Memoria de cálculo",
+    columns: PILECAP_COLUMNS,
+    rows,
+    countLabel: `Cantidad de cabezales: ${rows.length}`,
+    notes:
+      failed.length > 0
+        ? [`No se pudieron procesar (datos incompletos): ${failed.join(", ")}`]
+        : undefined,
+  };
+}
+
+// ---- Vigas de fundación para cabezales (tipo "cabezal") ----
+
+const CABEZAL_VIGA_COLUMNS: PlanillaColumn[] = [
+  { key: "elem", label: "Elemento", width: "13%" },
+  { key: "cab", label: "Cabezal Lx×Ly (cm)" },
+  { key: "viga", label: "Viga b×h (cm)" },
+  { key: "e", label: "e (cm)", align: "right" },
+  { key: "mu", label: "Mu viga (kN·m)", align: "right" },
+  { key: "ru", label: "Ru (kN)", align: "right" },
+  { key: "arm", label: "As sup/inf (cm²)", align: "right" },
+  { key: "corte", label: "Vu/φVc (kN)", align: "right" },
+  { key: "ok", label: "Verifica", align: "center" },
+];
+
+function buildCabezalVigaRow(save: SavedBeam): string[] {
+  const data = save.data as unknown as {
+    input?: Partial<BaseInput>;
+    result?: Partial<BaseResult>;
+  } & Partial<BaseInput>;
+  if (!data || typeof data !== "object") throw new Error("Sin datos");
+  // Los guardados desde resultados traen { input, result }; los hechos desde
+  // el formulario guardan los campos en el nivel raíz (sin resultado): se
+  // recalcula la viga para que también entren en la planilla.
+  const input = data.input ?? data;
+  const result =
+    data.result ??
+    designVigaCabezal({
+      PD: input.PD ?? 0,
+      PL: input.PL ?? 0,
+      cx: input.cx ?? 0,
+      cy: input.cy ?? 0,
+      fc: input.fc ?? 0,
+      fy: input.fy ?? 0,
+      Lx: input.Lx ?? 0,
+      Ly: input.Ly ?? 0,
+      dMed: input.dMed ?? 0,
+      Lcol: input.Lcol ?? 0,
+      bViga: input.bViga,
+      hViga: input.hViga,
+      cover: input.cover,
+    });
+  const corteOK =
+    (result.vigVuVol ?? 0) <= (result.vigPhiVc ?? 0) &&
+    (result.vigVuTramo ?? 0) <= (result.vigPhiVc ?? 0);
+  return [
+    save.name,
+    `${Math.round(input.Lx ?? 0)}×${Math.round(input.Ly ?? 0)}`,
+    `${fmt1(result.b_viga ?? 0)}×${fmt1(result.h_viga ?? 0)}`,
+    fmt1(result.e ?? 0),
+    fmt1((result.Mu ?? 0) / 100),
+    fmt1(result.Ru ?? 0),
+    `${fmt2(result.As_sup ?? 0)}/${fmt2(result.As_inf ?? 0)}`,
+    `${fmt1(result.vigVuVol ?? 0)}/${fmt1(result.vigPhiVc ?? 0)}`,
+    corteOK ? "✓" : "✗",
+  ];
+}
+
+/** Planilla de vigas de fundación para cabezales (una fila por elemento). */
+export function buildCabezalVigaSheet(sources: SavedBeam[]): PlanillaSheet {
+  const rows: string[][] = [];
+  const failed: string[] = [];
+  for (const save of sources) {
+    try {
+      rows.push(buildCabezalVigaRow(save));
+    } catch {
+      failed.push(save.name);
+    }
+  }
+  return {
+    title: "PLANILLA DE VIGAS DE FUNDACIÓN PARA CABEZALES — H° A°",
+    subtitle: "Memoria de cálculo",
+    columns: CABEZAL_VIGA_COLUMNS,
+    rows,
+    countLabel: `Cantidad de vigas de fundación: ${rows.length}`,
+    notes:
+      failed.length > 0
+        ? [`No se pudieron procesar (datos incompletos): ${failed.join(", ")}`]
         : undefined,
   };
 }
