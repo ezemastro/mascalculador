@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- el hook usePrintMenu, PRINT_ITEMS y buildSheets se comparten con HomeScreen */
 import { useEffect, useRef, useState } from "react";
 import PrintDialog from "./PrintDialog";
 import {
@@ -15,9 +16,9 @@ import {
   getSavedCompats,
 } from "../lib/storage";
 
-type PrintKind = "losas" | "vigas" | "columnas" | "bases";
+export type PrintKind = "losas" | "vigas" | "columnas" | "bases";
 
-const ITEMS: { kind: PrintKind; label: string; hint: string }[] = [
+export const PRINT_ITEMS: { kind: PrintKind; label: string; hint: string }[] = [
   {
     kind: "losas",
     label: "Losas",
@@ -28,7 +29,7 @@ const ITEMS: { kind: PrintKind; label: string; hint: string }[] = [
   { kind: "bases", label: "Bases", hint: "Planilla de bases" },
 ];
 
-function buildSheets(kind: PrintKind): PlanillaSheet[] | null {
+export function buildSheets(kind: PrintKind): PlanillaSheet[] | null {
   switch (kind) {
     case "losas":
       return [
@@ -44,9 +45,10 @@ function buildSheets(kind: PrintKind): PlanillaSheet[] | null {
   }
 }
 
-/** Botón Imprimir de la barra superior (junto a Salir): despliega las 4
- *  opciones de planilla y abre el diálogo de impresión correspondiente. */
-export default function GlobalPrintMenu() {
+/** Estado compartido del menú de impresión: abrir/cerrar el menú y el
+ *  diálogo de planilla. Lo usan el botón de la barra superior y la tarjeta
+ *  Imprimir de la página de inicio. */
+export function usePrintMenu() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [dialog, setDialog] = useState<{
     kind: PrintKind;
@@ -71,6 +73,47 @@ export default function GlobalPrintMenu() {
       document.removeEventListener("keydown", onKey);
     };
   }, [menuOpen]);
+
+  function openItem(kind: PrintKind) {
+    setMenuOpen(false);
+    const label =
+      PRINT_ITEMS.find((i) => i.kind === kind)?.label.toLowerCase() ?? kind;
+    setDialog({ kind, title: `Imprimir planilla de ${label}` });
+  }
+
+  return {
+    menuOpen,
+    setMenuOpen,
+    dialog,
+    openItem,
+    closeDialog: () => setDialog(null),
+    rootRef,
+  };
+}
+
+/** Diálogo de planilla conectado al estado de usePrintMenu. */
+export function PrintDialogHost({
+  dialog,
+  onClose,
+}: {
+  dialog: { kind: PrintKind; title: string } | null;
+  onClose: () => void;
+}) {
+  return (
+    <PrintDialog
+      open={dialog !== null}
+      onClose={onClose}
+      title={dialog?.title ?? ""}
+      buildSheets={() => (dialog ? buildSheets(dialog.kind) : null)}
+    />
+  );
+}
+
+/** Botón Imprimir de la barra superior (junto a Salir): despliega las 4
+ *  opciones de planilla y abre el diálogo de impresión correspondiente. */
+export default function GlobalPrintMenu() {
+  const { menuOpen, setMenuOpen, dialog, openItem, closeDialog, rootRef } =
+    usePrintMenu();
 
   return (
     <div ref={rootRef} className="relative">
@@ -105,18 +148,12 @@ export default function GlobalPrintMenu() {
           role="menu"
           className="absolute right-0 top-full mt-1 w-64 rounded-lg border border-border bg-surface shadow-lg z-[70] py-1"
         >
-          {ITEMS.map((item) => (
+          {PRINT_ITEMS.map((item) => (
             <button
               key={item.kind}
               type="button"
               role="menuitem"
-              onClick={() => {
-                setMenuOpen(false);
-                setDialog({
-                  kind: item.kind,
-                  title: `Imprimir planilla de ${item.label.toLowerCase()}`,
-                });
-              }}
+              onClick={() => openItem(item.kind)}
               className="w-full text-left px-3 py-2 hover:bg-surface-alt transition-colors"
             >
               <span className="block text-sm font-medium text-text">
@@ -128,12 +165,7 @@ export default function GlobalPrintMenu() {
         </div>
       )}
 
-      <PrintDialog
-        open={dialog !== null}
-        onClose={() => setDialog(null)}
-        title={dialog?.title ?? ""}
-        buildSheets={() => (dialog ? buildSheets(dialog.kind) : null)}
-      />
+      <PrintDialogHost dialog={dialog} onClose={closeDialog} />
     </div>
   );
 }

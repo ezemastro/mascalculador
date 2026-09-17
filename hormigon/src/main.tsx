@@ -15,7 +15,6 @@ import {
   RouterProvider,
   Link,
   Outlet,
-  Navigate,
 } from "react-router";
 import AuthScreen from "./screens/AuthScreen.tsx";
 import AdminScreen from "./screens/AdminScreen.tsx";
@@ -34,6 +33,7 @@ import RCColumnForm from "./screens/RCColumnForm.tsx";
 import RCColumnResults from "./screens/RCColumnResults.tsx";
 import MuroForm from "./screens/MuroForm.tsx";
 import MuroResults from "./screens/MuroResults.tsx";
+import HomeScreen from "./screens/HomeScreen.tsx";
 import ComputosObraScreen from "./screens/ComputosObraScreen.tsx";
 import { ObraPickerHost } from "./components/ObraPicker.tsx";
 import ObraMenu from "./components/ObraMenu.tsx";
@@ -111,6 +111,9 @@ function NavBar({
   return (
     <div className="no-print fixed top-0 left-0 right-0 z-50 bg-surface border-b border-border px-4 py-2 flex gap-4 items-center">
       <ObraMenu obraId={obraId} obras={obras} onObraChange={onObraChange} />
+      <Link to="/" className="text-sm text-text-muted hover:text-text">
+        Inicio
+      </Link>
       <Link to="/slab" className="text-sm text-text-muted hover:text-text">
         Losas
       </Link>
@@ -182,10 +185,6 @@ function VersionBadge() {
   );
 }
 
-function HomeRedirect() {
-  return <Navigate to="/slab" replace />;
-}
-
 /** Resultados del módulo de cabezales (reusa la pantalla de Bases). */
 function CabezalResults() {
   return <BasesResults variant="cabezal" />;
@@ -228,7 +227,10 @@ function Layout({
       <ObraPickerHost onObraCreated={handleObraChange} />
       <AssistantWidget onObraChange={handleObraChange} />
       <div className="pt-10">
-        <Outlet key={obraId} />
+        <Outlet
+          key={obraId}
+          context={{ obraId, obras, onObraChange: handleObraChange, admin }}
+        />
       </div>
     </>
   );
@@ -253,7 +255,7 @@ function buildRouter(
         />
       ),
       children: [
-        { path: "/", Component: HomeRedirect },
+        { path: "/", Component: HomeScreen },
         { path: "/results", Component: ConcreteResults },
         { path: "/concrete", Component: ConcreteForm },
         { path: "/concrete-results", Component: ConcreteResults },
