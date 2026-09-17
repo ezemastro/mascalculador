@@ -15,6 +15,7 @@ import {
   RouterProvider,
   Link,
   Outlet,
+  Navigate,
   useLocation,
 } from "react-router";
 import AuthScreen from "./screens/AuthScreen.tsx";
@@ -218,6 +219,7 @@ function buildRouter(username: string, onLogout: () => void) {
         { path: "/bases-results", Component: BasesResults },
         { path: "/rc-column", Component: RCColumnForm },
         { path: "/rc-column-results", Component: RCColumnResults },
+        { path: "*", Component: () => <Navigate to="/" replace /> },
       ],
     },
   ]);
