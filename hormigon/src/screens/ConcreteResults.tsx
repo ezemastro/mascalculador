@@ -1181,7 +1181,7 @@ export default function ConcreteResults() {
         <section className="bg-surface rounded-xl border border-border overflow-hidden">
           <div className="px-4 py-2 border-b border-border">
             <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider">
-              Cortante (envolvente)
+              Cortante (envolvente) (kN)
             </h3>
           </div>
           <div className="p-1">
@@ -1260,7 +1260,7 @@ export default function ConcreteResults() {
         <section className="bg-surface rounded-xl border border-border overflow-hidden">
           <div className="px-4 py-2 border-b border-border">
             <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider">
-              Momento (envolvente)
+              Momento (envolvente) (kN·m)
             </h3>
           </div>
           <div className="p-1">
