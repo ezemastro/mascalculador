@@ -18,6 +18,17 @@ interface LocationState {
   /** Id del guardado cargado, si viene de uno existente */
   loadedSaveId?: string | null;
   loadedSaveName?: string | null;
+  /** Adopción de armadura de la viga de fundación (plana en el state). */
+  vigaSupQty?: number;
+  vigaSupDiam?: number;
+  vigaInfQty?: number;
+  vigaInfDiam?: number;
+  estVolLegs?: number;
+  estVolDiam?: number;
+  estVolSep?: number;
+  estTramoLegs?: number;
+  estTramoDiam?: number;
+  estTramoSep?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -498,16 +509,20 @@ export default function BasesResults({
   const [qtyY, setQtyY] = useState(8);
 
   // Armadura y estribos adoptados para la viga de fundación
-  const [vigaSupQty, setVigaSupQty] = useState(4);
-  const [vigaSupDiam, setVigaSupDiam] = useState(12);
-  const [vigaInfQty, setVigaInfQty] = useState(3);
-  const [vigaInfDiam, setVigaInfDiam] = useState(12);
-  const [estVolLegs, setEstVolLegs] = useState(2);
-  const [estVolDiam, setEstVolDiam] = useState(8);
-  const [estVolSep, setEstVolSep] = useState(10);
-  const [estTramoLegs, setEstTramoLegs] = useState(2);
-  const [estTramoDiam, setEstTramoDiam] = useState(8);
-  const [estTramoSep, setEstTramoSep] = useState(15);
+  const [vigaSupQty, setVigaSupQty] = useState(locState?.vigaSupQty ?? 4);
+  const [vigaSupDiam, setVigaSupDiam] = useState(locState?.vigaSupDiam ?? 12);
+  const [vigaInfQty, setVigaInfQty] = useState(locState?.vigaInfQty ?? 3);
+  const [vigaInfDiam, setVigaInfDiam] = useState(locState?.vigaInfDiam ?? 12);
+  const [estVolLegs, setEstVolLegs] = useState(locState?.estVolLegs ?? 2);
+  const [estVolDiam, setEstVolDiam] = useState(locState?.estVolDiam ?? 8);
+  const [estVolSep, setEstVolSep] = useState(locState?.estVolSep ?? 10);
+  const [estTramoLegs, setEstTramoLegs] = useState(
+    locState?.estTramoLegs ?? 2,
+  );
+  const [estTramoDiam, setEstTramoDiam] = useState(
+    locState?.estTramoDiam ?? 8,
+  );
+  const [estTramoSep, setEstTramoSep] = useState(locState?.estTramoSep ?? 15);
 
   // Datos del tensor (se completan acá si se eligió tensor)
   const [tensorH, setTensorH] = useState<number | undefined>(
@@ -641,7 +656,21 @@ export default function BasesResults({
 
   // ─── Save handler ───
   async function handleSave() {
-    const data = { input: fullInput, result } as Record<string, unknown>;
+    const data: Record<string, unknown> = {
+      input: fullInput,
+      result,
+      // Adopción de armadura de la viga de fundación elegida en pantalla
+      vigaSupQty,
+      vigaSupDiam,
+      vigaInfQty,
+      vigaInfDiam,
+      estVolLegs,
+      estVolDiam,
+      estVolSep,
+      estTramoLegs,
+      estTramoDiam,
+      estTramoSep,
+    };
     // Si venimos de una base guardada, actualizamos la misma (mismo id/nombre)
     if (savedId) {
       updateSave(savedId, data);
@@ -672,7 +701,8 @@ export default function BasesResults({
         title={
           isCabezal ? (
             <>
-              Cabezal — {result.Lx} × {result.Ly} cm
+              Viga de fundación — {fmt(result.b_viga, 1)} ×{" "}
+              {fmt(result.h_viga, 1)} cm
             </>
           ) : (
             <>
@@ -725,6 +755,16 @@ export default function BasesResults({
                 navigate(formPath, {
                   state: {
                     ...(fullInput as unknown as Record<string, unknown>),
+                    vigaSupQty,
+                    vigaSupDiam,
+                    vigaInfQty,
+                    vigaInfDiam,
+                    estVolLegs,
+                    estVolDiam,
+                    estVolSep,
+                    estTramoLegs,
+                    estTramoDiam,
+                    estTramoSep,
                     loadedSaveId: savedId,
                     loadedSaveName: savedName,
                   },

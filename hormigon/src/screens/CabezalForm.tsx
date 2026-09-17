@@ -367,7 +367,7 @@ export default function CabezalForm() {
       updateSave(loadedSaveId, data);
       return;
     }
-    const name = prompt("Nombre del cabezal:");
+    const name = prompt("Nombre de la viga de fundación:");
     if (!name) return;
     const target = await pickObraIfNeeded();
     if (target === null) return;
@@ -414,6 +414,25 @@ export default function CabezalForm() {
       if (typeof f.cover === "number") next.cover = f.cover;
       if (typeof f.columnId === "string") setColumnId(f.columnId);
       if (typeof f.columnName === "string") setColumnName(f.columnName);
+      // Adopción de armadura de la viga: vive en el guardado (raíz `d`) o
+      // dentro de `input` (`f`) si vino aplanada desde el formulario.
+      const adopFields = [
+        "vigaSupQty",
+        "vigaSupDiam",
+        "vigaInfQty",
+        "vigaInfDiam",
+        "estVolLegs",
+        "estVolDiam",
+        "estVolSep",
+        "estTramoLegs",
+        "estTramoDiam",
+        "estTramoSep",
+      ] as const;
+      const nextRec = next as Record<string, unknown>;
+      for (const k of adopFields) {
+        const v = f[k] ?? d[k];
+        if (typeof v === "number") nextRec[k] = v;
+      }
       return next;
     });
   }
@@ -442,6 +461,16 @@ export default function CabezalForm() {
           subType: "viga-de-fundacion",
           includeSelfWeight: true,
         },
+        vigaSupQty: state.vigaSupQty,
+        vigaSupDiam: state.vigaSupDiam,
+        vigaInfQty: state.vigaInfQty,
+        vigaInfDiam: state.vigaInfDiam,
+        estVolLegs: state.estVolLegs,
+        estVolDiam: state.estVolDiam,
+        estVolSep: state.estVolSep,
+        estTramoLegs: state.estTramoLegs,
+        estTramoDiam: state.estTramoDiam,
+        estTramoSep: state.estTramoSep,
         loadedSaveId: loadedSaveId ?? undefined,
         loadedSaveName: loadedSaveName ?? undefined,
       },
@@ -492,7 +521,7 @@ export default function CabezalForm() {
           listSaves={() => getSavedBeams("cabezal")}
           deleteSave={(id) => deleteSave(id)}
           onLoad={handleLoadCabezal}
-          label="Cabezales guardados"
+          label="Vigas de fundación guardadas"
         />
 
         <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">

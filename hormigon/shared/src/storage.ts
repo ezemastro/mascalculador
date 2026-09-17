@@ -359,6 +359,18 @@ export interface CabezalFormState {
   cover?: number;
   columnId?: string;
   columnName?: string;
+  /** Adopción de armadura de la viga de fundación (viaja por el state para
+   *  sobrevivir al ciclo guardar → recargar → re-dimensionar). Opcionales. */
+  vigaSupQty?: number;
+  vigaSupDiam?: number;
+  vigaInfQty?: number;
+  vigaInfDiam?: number;
+  estVolLegs?: number;
+  estVolDiam?: number;
+  estVolSep?: number;
+  estTramoLegs?: number;
+  estTramoDiam?: number;
+  estTramoSep?: number;
 }
 
 export function saveLastCabezalFormState(state: CabezalFormState): void {
