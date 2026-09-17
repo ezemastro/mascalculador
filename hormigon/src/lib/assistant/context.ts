@@ -47,7 +47,7 @@ const SCREEN_GUIDES: Record<string, string> = {
   "/concrete":
     "Vigas: definís las luces de cada tramo en metros, el tipo de cada apoyo (articulado, empotrado, o libre en los extremos), las cargas puntuales y distribuidas (muerta y viva), el ancho y el alto de la viga, el recubrimiento, las resistencias y si incluye el peso propio. Al apretar Calcular se analiza la viga continua y obtenés envolventes de momentos y cortes y el armado por tramo.",
   "/rc-column":
-    "Columnas: cargás las fuerzas axiales muerta y viva, la altura libre, los momentos en las dos direcciones (en cabeza y base), las dimensiones de la columna, el factor beta, las resistencias y si incluye el peso propio. También podés sumar las cargas que bajan de columnas y vigas guardadas. Al apretar Calcular se dimensiona la columna y se propone el armado.",
+    "Columnas: cargás las fuerzas axiales muerta y viva, la altura libre (distancia vertical desde la cara superior del apoyo inferior — losa o suelo — hasta la cara inferior del apoyo superior — viga o losa del piso siguiente), los momentos en las dos direcciones (en cabeza y base), las dimensiones de la columna, el factor beta, las resistencias y si incluye el peso propio. También podés sumar las cargas que bajan de columnas y vigas guardadas. Al apretar Calcular se dimensiona la columna y se propone el armado.",
   "/bases":
     "Bases: definís la tensión admisible del terreno, la profundidad de fundación, las cargas que bajan de la columna, las dimensiones de la columna, el tipo de base (centrada, medianera, esquina), las resistencias y el recubrimiento. Al apretar Calcular se dimensiona la base y se verifica que las tensiones del terreno no se superen.",
   "/computos":

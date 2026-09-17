@@ -439,7 +439,7 @@ export default function RCColumnForm() {
       title: "Columna de hormigón",
       fieldDocs: `Campos (nombres exactos, unidades de UI):
 - PD, PL: cargas manuales a nivel de piso (muerta y viva) en kN. Las contribuciones de columnas/vigas guardadas se suman automáticamente (ver totalPD/totalPL en el estado).
-- lu: altura libre de la columna en metros.
+- lu: altura libre de la columna en metros: distancia vertical desde la cara superior del apoyo inferior (losa o suelo) hasta la cara inferior del apoyo superior (viga o losa del piso siguiente).
 - MxSup, MxInf, MySup, MyInf: momentos flectores en kN·m. X=flexión en X, Y=flexión en Y; Sup=cabeza, Inf=base.
 - Cx, Cy: dimensiones de la columna en cm.
 - betaD: factor beta (0 a 1).
@@ -1316,6 +1316,11 @@ export default function RCColumnForm() {
                   l<sub>u</sub> (m)
                 </span>
                 <DecimalInput value={lu} onChange={setLu} />
+                <span className="text-[10px] leading-snug text-text-muted">
+                  Altura libre: de la cara superior del apoyo inferior
+                  (losa/suelo) hasta la cara inferior del apoyo superior
+                  (viga/losa del piso siguiente)
+                </span>
               </label>
               <label className="flex flex-col gap-1">
                 <span className="text-xs text-text-muted">
