@@ -85,19 +85,12 @@ function applyAdopcion(
   });
 }
 
-/** Separaciones múltiplo de 5 entre 5 y smax (inclusive). */
-function sepOptions(smax: number): number[] {
-  const n = Math.max(1, Math.floor(smax / 5));
-  return Array.from({ length: n }, (_, i) => (i + 1) * 5);
-}
-
 /** Editor de un grupo de flexión: desplegables Ø/sep, As provisto y Badge. */
 function BarEditor({
   title,
   grupo,
   result,
   asReq,
-  smax,
   input,
   setInput,
 }: {
@@ -105,7 +98,6 @@ function BarEditor({
   grupo: keyof MuroAdopcion;
   result: MuroBarSelection;
   asReq?: number;
-  smax: number;
   input: MuroInput;
   setInput: React.Dispatch<React.SetStateAction<MuroInput | null>>;
 }) {
@@ -146,24 +138,22 @@ function BarEditor({
           <span className="text-[11px] font-medium text-text-muted">
             Separación (cm)
           </span>
-          <select
+          <input
+            type="number"
             className="w-24"
-            value={sep}
-            onChange={(e) =>
+            min="1"
+            step="1"
+            value={sep === 0 ? "" : sep}
+            onChange={(e) => {
+              const v = parseFloat(e.target.value);
               applyAdopcion(setInput, grupo, {
                 diam,
-                sep: Number(e.target.value),
+                sep: Number.isFinite(v) && v > 0 ? v : 0,
                 ...(adopt?.count !== undefined ? { count: adopt.count } : {}),
                 ...(adopt?.legs !== undefined ? { legs: adopt.legs } : {}),
-              })
-            }
-          >
-            {sepOptions(smax).map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
+              });
+            }}
+          />
         </label>
         <span className="text-xs text-text-muted">
           As prov{" "}
@@ -191,7 +181,6 @@ function StirrupEditor({
   result,
   avsReq,
   avsMin,
-  sMax,
 }: {
   title: string;
   input: MuroInput;
@@ -199,7 +188,6 @@ function StirrupEditor({
   result: MuroBarSelection;
   avsReq: number; // cm²/cm
   avsMin: number; // cm²/cm
-  sMax: number; // cm
 }) {
   const adopt = input.adopcion?.estribo;
   const diam = adopt?.diam ?? result.diam;
@@ -240,23 +228,21 @@ function StirrupEditor({
           <span className="text-[11px] font-medium text-text-muted">
             Separación (cm)
           </span>
-          <select
+          <input
+            type="number"
             className="w-24"
-            value={sep}
-            onChange={(e) =>
+            min="1"
+            step="1"
+            value={sep === 0 ? "" : sep}
+            onChange={(e) => {
+              const v = parseFloat(e.target.value);
               applyAdopcion(setInput, "estribo", {
                 diam,
-                sep: Number(e.target.value),
+                sep: Number.isFinite(v) && v > 0 ? v : 0,
                 legs,
-              })
-            }
-          >
-            {sepOptions(sMax).map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
+              });
+            }}
+          />
         </label>
         <label className="flex min-w-0 flex-col gap-1">
           <span className="text-[11px] font-medium text-text-muted">Ramas</span>
@@ -468,12 +454,6 @@ export default function MuroResults() {
     r.which === "definitivo"
       ? "Definitivo (biapoyado)"
       : "Provisorio (apuntalado)";
-
-  // Separaciones máximas por grupo (para los desplegables de edición).
-  const smaxVert = Math.min(3 * input.e_muro * 100, 30);
-  const smaxHoriz = 45;
-  const smaxTrans = Math.min(3 * input.H_zap * 100, 45);
-  const smaxLong = 45;
 
   function handleSave() {
     const data = { input, result } as Record<string, unknown>;
@@ -734,7 +714,6 @@ export default function MuroResults() {
             grupo="vertInt"
             result={r.vertInt}
             asReq={r.As_req}
-            smax={smaxVert}
             input={input}
             setInput={setInput}
           />
@@ -743,7 +722,6 @@ export default function MuroResults() {
             grupo="vertExt"
             result={r.vertExt}
             asReq={r.As_ext}
-            smax={smaxVert}
             input={input}
             setInput={setInput}
           />
@@ -752,7 +730,6 @@ export default function MuroResults() {
             grupo="horizInt"
             result={r.horizInt}
             asReq={0.0018 * 100 * (input.e_muro * 100)}
-            smax={smaxHoriz}
             input={input}
             setInput={setInput}
           />
@@ -761,7 +738,6 @@ export default function MuroResults() {
             grupo="horizExt"
             result={r.horizExt}
             asReq={0.0018 * 100 * (input.e_muro * 100)}
-            smax={smaxHoriz}
             input={input}
             setInput={setInput}
           />
@@ -830,7 +806,7 @@ export default function MuroResults() {
             sub={
               <span>
                 {input.tipo_zapata === "centrada"
-                  ? `${fmt(r.sigma_adm_kPa, 0)} kPa`
+                  ? "kPa"
                   : `≤ ${fmt(1.25 * r.sigma_adm_kPa, 0)} kPa`}{" "}
                 <Badge ok={r.sigmaOK} />
               </span>
@@ -868,7 +844,6 @@ export default function MuroResults() {
             grupo="trans"
             result={r.trans}
             asReq={r.As_trans_req}
-            smax={smaxTrans}
             input={input}
             setInput={setInput}
           />
@@ -877,7 +852,6 @@ export default function MuroResults() {
             grupo="longInf"
             result={r.longInf}
             asReq={r.As_long}
-            smax={smaxLong}
             input={input}
             setInput={setInput}
           />
@@ -886,7 +860,6 @@ export default function MuroResults() {
             grupo="longSup"
             result={r.longSup}
             asReq={0.0018 * 100 * (input.H_zap * 100)}
-            smax={smaxLong}
             input={input}
             setInput={setInput}
           />
@@ -897,7 +870,6 @@ export default function MuroResults() {
             result={r.estribo}
             avsReq={r.avsReq}
             avsMin={r.avsMin}
-            sMax={r.sMax}
           />
         </div>
         <p className="text-xs text-text-muted mt-3">

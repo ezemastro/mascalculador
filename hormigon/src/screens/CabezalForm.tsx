@@ -1,11 +1,11 @@
 // Módulo admin "Vigas de fundación para cabezales".
 //
-// Por ahora dimensiona SÓLO la viga de fundación (misma formulación que la
-// viga de una base medianera: Ru = Pu·e/(Lcol − e), diagrama, As y estribos).
-// El cabezal en sí (prisma sobre pilotes: cantidad/diámetro de pilotes,
-// reacciones, punzonado, flexión) queda pendiente para una próxima etapa, por
-// eso el módulo no pide suelo ni calcula la zapata. Los guardados usan el tipo
-// propio "cabezal" para no mezclarse con los de Bases.
+// Dimensiona SÓLO la viga de fundación (misma formulación que la viga de una
+// base medianera: Ru = Pu·e/(Lcol − e), diagrama, As y estribos). El cabezal
+// en sí (prisma sobre pilotes: cantidad/diámetro de pilotes, reacciones,
+// punzonado, flexión) se calcula en el módulo Cabezales (/cabezal-pilotes),
+// por eso este módulo no pide suelo ni calcula la zapata. Los guardados usan
+// el tipo propio "cabezal" para no mezclarse con los de Bases.
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout, SavedBeams } from "@mascalculador/shared";
@@ -694,7 +694,7 @@ export default function CabezalForm() {
                       L<sub>x</sub> (cm)
                     </>
                   }
-                  hint="Ancho del cabezal (dirección de la excentricidad)."
+                  hint="Longitud en la dirección de la excentricidad (perpendicular a la medianera; allí corre la viga)."
                 >
                   <input
                     type="number"
@@ -716,7 +716,7 @@ export default function CabezalForm() {
                       L<sub>y</sub> (cm)
                     </>
                   }
-                  hint="Largo del cabezal en la dirección de la viga."
+                  hint="Largo del cabezal en dirección perpendicular a la viga."
                 >
                   <input
                     type="number"
@@ -738,7 +738,7 @@ export default function CabezalForm() {
                       d<sub>med</sub> (cm)
                     </>
                   }
-                  hint="Medianera → centro del cabezal. Si está pegado, = Lx/2."
+                  hint="Distancia entre el eje de la medianera y el centro del cabezal. Si está pegado a la medianera, = Lx/2."
                 >
                   <input
                     type="number"
@@ -760,8 +760,8 @@ export default function CabezalForm() {
               <p className="mt-4 text-[11px] leading-snug text-text-muted">
                 El cabezal puede estar retirado de la medianera; la columna sí
                 apoya en ella. La excentricidad es e = d<sub>med</sub> − c
-                <sub>x</sub>/2. Los pilotes se dimensionarán en una próxima
-                etapa.
+                <sub>x</sub>/2. Los pilotes se dimensionan en el módulo
+                Cabezales.
               </p>
             </Section>
 

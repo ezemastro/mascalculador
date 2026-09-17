@@ -672,12 +672,11 @@ export default function BasesResults({
         title={
           isCabezal ? (
             <>
-              Cabezal — L<sub>x</sub> {result.Lx} × L<sub>y</sub> {result.Ly} cm
+              Cabezal — {result.Lx} × {result.Ly} cm
             </>
           ) : (
             <>
-              Base {typeLabel} — L<sub>x</sub> {result.Lx} × L<sub>y</sub>{" "}
-              {result.Ly} × {result.h} cm
+              Base {typeLabel} — {result.Lx} × {result.Ly} × {result.h} cm
             </>
           )
         }

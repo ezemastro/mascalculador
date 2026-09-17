@@ -89,7 +89,7 @@ const initialState: MuroFormState = {
   gamma_sat: 20,
   phi: 30,
   c: 0,
-  FS_c: 2.5,
+  FS_c: 3,
   h_napa: 0,
   q_lindero: 0,
   sigma_adm_suelo: 0.2,
@@ -332,7 +332,6 @@ export default function MuroForm() {
                     e<sub>muro</sub> — espesor (m)
                   </>
                 }
-                hint="típico 0.25–0.40 m"
               >
                 <input
                   type="number"
