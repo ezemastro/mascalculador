@@ -9,12 +9,11 @@ import {
 } from "../components/GlobalPrintMenu";
 import type { SavedObra } from "../lib/storage";
 
-/** Contexto que el Layout expone por el Outlet (obra activa + permisos). */
+/** Contexto que el Layout expone por el Outlet (obra activa). */
 export type HomeContext = {
   obraId: string;
   obras: SavedObra[];
   onObraChange: (id: string) => void;
-  admin: boolean;
 };
 
 type ModuleDef = {
@@ -252,14 +251,14 @@ function ImprimirCard() {
 /** Página de inicio: acceso a los módulos de cálculo y a las salidas de
  *  obra (cómputos e impresión). La obra activa se elige desde el header. */
 export default function HomeScreen() {
-  const { obraId, obras, onObraChange, admin } =
-    useOutletContext<HomeContext>();
+  const { obraId, obras, onObraChange } = useOutletContext<HomeContext>();
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6">
       <ScreenHeader
-        title="Módulos de cálculo"
-        subtitle="Herramientas de cálculo y salidas de obra"
+        title="MASCALCULADOR"
+        subtitle="Herramientas de cálculo para estructuras de Hormigón Armado según CIRSOC 201-05"
+        logoClassName="h-20 w-auto rounded-lg bg-white px-4 py-2.5 ring-1 ring-black/5"
         actions={
           <ObraMenu obraId={obraId} obras={obras} onObraChange={onObraChange} />
         }
@@ -314,17 +313,6 @@ export default function HomeScreen() {
           <ImprimirCard />
         </div>
       </section>
-
-      {admin && (
-        <footer className="mt-10 text-center">
-          <Link
-            to="/admin"
-            className="text-xs font-medium text-text-muted hover:text-primary"
-          >
-            Admin →
-          </Link>
-        </footer>
-      )}
     </div>
   );
 }

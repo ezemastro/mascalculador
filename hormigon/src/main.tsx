@@ -15,6 +15,7 @@ import {
   RouterProvider,
   Link,
   Outlet,
+  useLocation,
 } from "react-router";
 import AuthScreen from "./screens/AuthScreen.tsx";
 import AdminScreen from "./screens/AdminScreen.tsx";
@@ -108,52 +109,70 @@ function NavBar({
   obras: SavedObra[];
   onObraChange: (id: string) => void;
 }) {
+  const { pathname } = useLocation();
+  // En la home los módulos ya se muestran como tarjetas: la barra queda solo
+  // con la obra y la sesión (usuario / salir).
+  const isHome = pathname === "/";
+
   return (
     <div className="no-print fixed top-0 left-0 right-0 z-50 bg-surface border-b border-border px-4 py-2 flex gap-4 items-center">
-      <ObraMenu obraId={obraId} obras={obras} onObraChange={onObraChange} />
-      <Link to="/" className="text-sm text-text-muted hover:text-text">
-        Inicio
-      </Link>
-      <Link to="/slab" className="text-sm text-text-muted hover:text-text">
-        Losas
-      </Link>
-      <Link
-        to="/slab-compats"
-        className="text-sm text-text-muted hover:text-text"
-      >
-        Apoyos losas
-      </Link>
-      <Link to="/concrete" className="text-sm text-text-muted hover:text-text">
-        Vigas
-      </Link>
-      <Link to="/rc-column" className="text-sm text-text-muted hover:text-text">
-        Columnas
-      </Link>
-      <Link to="/bases" className="text-sm text-text-muted hover:text-text">
-        Bases
-      </Link>
-      <Link to="/muro" className="text-sm text-text-muted hover:text-text">
-        Muro de Contención
-      </Link>
-      <Link to="/computos" className="text-sm text-text-muted hover:text-text">
-        Cómputos
-      </Link>
-      <Link to="/cabezales" className="text-sm text-text-muted hover:text-text">
-        Vigas de fundación para cabezales
-      </Link>
-      <Link
-        to="/cabezal-pilotes"
-        className="text-sm text-text-muted hover:text-text"
-      >
-        Cabezales
-      </Link>
-      {admin && (
-        <Link to="/admin" className="text-sm text-text-muted hover:text-text">
-          Admin
-        </Link>
+      {!isHome && (
+        <ObraMenu obraId={obraId} obras={obras} onObraChange={onObraChange} />
+      )}
+      {!isHome && (
+        <>
+          <Link to="/" className="text-sm text-text-muted hover:text-text">
+            Inicio
+          </Link>
+          <Link to="/slab" className="text-sm text-text-muted hover:text-text">
+            Losas
+          </Link>
+          <Link
+            to="/slab-compats"
+            className="text-sm text-text-muted hover:text-text"
+          >
+            Apoyos losas
+          </Link>
+          <Link
+            to="/concrete"
+            className="text-sm text-text-muted hover:text-text"
+          >
+            Vigas
+          </Link>
+          <Link
+            to="/rc-column"
+            className="text-sm text-text-muted hover:text-text"
+          >
+            Columnas
+          </Link>
+          <Link to="/bases" className="text-sm text-text-muted hover:text-text">
+            Bases
+          </Link>
+          <Link to="/muro" className="text-sm text-text-muted hover:text-text">
+            Muro de Contención
+          </Link>
+          <Link
+            to="/computos"
+            className="text-sm text-text-muted hover:text-text"
+          >
+            Cómputos
+          </Link>
+          <Link
+            to="/cabezales"
+            className="text-sm text-text-muted hover:text-text"
+          >
+            Vigas de fundación para cabezales
+          </Link>
+          <Link
+            to="/cabezal-pilotes"
+            className="text-sm text-text-muted hover:text-text"
+          >
+            Cabezales
+          </Link>
+        </>
       )}
       <div className="ml-auto flex items-center gap-3">
-        <GlobalPrintMenu />
+        {!isHome && <GlobalPrintMenu />}
         {impersonating && (
           <button
             type="button"
@@ -165,6 +184,11 @@ function NavBar({
           </button>
         )}
         <span className="text-xs text-text-muted">{username}</span>
+        {admin && (
+          <Link to="/admin" className="text-xs text-text-muted hover:text-text">
+            Usuarios registrados
+          </Link>
+        )}
         <button
           type="button"
           onClick={onLogout}
@@ -229,7 +253,7 @@ function Layout({
       <div className="pt-10">
         <Outlet
           key={obraId}
-          context={{ obraId, obras, onObraChange: handleObraChange, admin }}
+          context={{ obraId, obras, onObraChange: handleObraChange }}
         />
       </div>
     </>

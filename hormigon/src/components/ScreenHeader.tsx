@@ -28,20 +28,22 @@ export default function ScreenHeader({
   subtitle,
   badge,
   actions,
+  logoClassName = "h-14 w-auto rounded-lg bg-white px-3 py-2 ring-1 ring-black/5",
 }: {
   title: ReactNode;
   subtitle?: ReactNode;
   badge?: { label: string; tone?: ScreenHeaderTone };
   actions?: ReactNode;
+  logoClassName?: string;
 }) {
   return (
-    <header className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
-      <div className="h-1.5 bg-gradient-to-r from-brand to-[#2f7d3b]" />
+    <header className="rounded-2xl border border-border bg-surface shadow-sm">
+      <div className="h-1.5 rounded-t-2xl bg-gradient-to-r from-brand to-[#2f7d3b]" />
       <div className="flex flex-wrap items-center gap-x-5 gap-y-4 p-5">
         <img
           src="/brand-logo.png"
           alt="Marcelo Mastropietro Atelier — Ingeniería & Arquitectura"
-          className="h-14 w-auto rounded-lg bg-white px-3 py-2 ring-1 ring-black/5"
+          className={logoClassName}
         />
         <div className="hidden h-12 w-px bg-border sm:block" />
         <div className="min-w-0">
