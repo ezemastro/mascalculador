@@ -28,14 +28,8 @@ import ColumnPrintPage from "./screens/ColumnPrintPage.tsx";
 import CartelForm from "./screens/CartelForm.tsx";
 import CartelResults from "./screens/CartelResults.tsx";
 import CartelPrintPage from "./screens/CartelPrintPage.tsx";
-import SlabForm from "./screens/SlabForm.tsx";
-import SlabResults from "./screens/SlabResults.tsx";
 import BasesForm from "./screens/BasesForm.tsx";
 import BasesResults from "./screens/BasesResults.tsx";
-import SlabCompat from "./screens/SlabCompat.tsx";
-import CompatList from "./screens/CompatList.tsx";
-import ConcreteForm from "./screens/ConcreteForm.tsx";
-import ConcreteResults from "./screens/ConcreteResults.tsx";
 import RCColumnForm from "./screens/RCColumnForm.tsx";
 import RCColumnResults from "./screens/RCColumnResults.tsx";
 import { ObraPickerHost } from "./components/ObraPicker.tsx";
@@ -133,27 +127,6 @@ function NavBar({
           <Link to="/bases" className="text-sm text-text-muted hover:text-text">
             Bases
           </Link>
-          <Link to="/slab" className="text-sm text-text-muted hover:text-text">
-            Losas H°
-          </Link>
-          <Link
-            to="/slab-compat"
-            className="text-sm text-text-muted hover:text-text"
-          >
-            Compat. Losas
-          </Link>
-          <Link
-            to="/slab-compats"
-            className="text-sm text-text-muted hover:text-text"
-          >
-            Apoyos
-          </Link>
-          <Link
-            to="/concrete"
-            className="text-sm text-text-muted hover:text-text"
-          >
-            Viga H°
-          </Link>
           <Link
             to="/cartel"
             className="text-sm text-text-muted hover:text-text"
@@ -241,14 +214,8 @@ function buildRouter(username: string, onLogout: () => void) {
         { path: "/cartel", Component: CartelForm },
         { path: "/cartel-results", Component: CartelResults },
         { path: "/cartel-print", Component: CartelPrintPage },
-        { path: "/slab", Component: SlabForm },
-        { path: "/slab-results", Component: SlabResults },
         { path: "/bases", Component: BasesForm },
         { path: "/bases-results", Component: BasesResults },
-        { path: "/slab-compat", Component: SlabCompat },
-        { path: "/slab-compats", Component: CompatList },
-        { path: "/concrete", Component: ConcreteForm },
-        { path: "/concrete-results", Component: ConcreteResults },
         { path: "/rc-column", Component: RCColumnForm },
         { path: "/rc-column-results", Component: RCColumnResults },
       ],

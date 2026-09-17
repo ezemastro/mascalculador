@@ -39,27 +39,6 @@ const ICONS = {
       <path d="M5 6h14l2.5 6H2.5z" />
     </>
   ),
-  losas: <path d="M4 4h16v16H4zM4 9h16M4 15h16M9 4v16M15 4v16" />,
-  compatLosas: (
-    <>
-      <path d="M4 4h8v8H4z" />
-      <path d="M12 12h8v8h-8z" />
-      <path d="M8 4v3M4 8h3M16 12v3M12 16h3" />
-    </>
-  ),
-  apoyos: (
-    <>
-      <circle cx="8" cy="12" r="3" />
-      <circle cx="16" cy="12" r="3" />
-      <path d="M11 12h2" />
-    </>
-  ),
-  vigaH: (
-    <>
-      <path d="M4 6h16v6H4z" />
-      <path d="M8 12v6M16 12v6" />
-    </>
-  ),
   cartel: (
     <>
       <path d="M4 4h16v10H4z" />
@@ -97,30 +76,6 @@ const CALC_MODULES: ModuleDef[] = [
     name: "Bases",
     description: "Bases de fundación",
     icon: ICONS.bases,
-  },
-  {
-    to: "/slab",
-    name: "Losas H°",
-    description: "Losas macizas de hormigón armado",
-    icon: ICONS.losas,
-  },
-  {
-    to: "/slab-compat",
-    name: "Compat. Losas",
-    description: "Compatibilidad de losas colindantes",
-    icon: ICONS.compatLosas,
-  },
-  {
-    to: "/slab-compats",
-    name: "Apoyos",
-    description: "Apoyos compatibilizados entre losas",
-    icon: ICONS.apoyos,
-  },
-  {
-    to: "/concrete",
-    name: "Viga H°",
-    description: "Vigas de hormigón armado",
-    icon: ICONS.vigaH,
   },
   {
     to: "/cartel",
@@ -284,7 +239,7 @@ export default function HomeScreen() {
     <div className="mx-auto max-w-5xl px-4 py-6">
       <ScreenHeader
         title="MAS ACERO"
-        subtitle="Herramientas de cálculo para estructuras de Acero y Hormigón Armado"
+        subtitle="Herramientas de cálculo para estructuras de Acero"
         logoClassName="h-20 w-auto rounded-lg bg-white px-4 py-2.5 ring-1 ring-black/5"
         actions={
           <ObraMenu obraId={obraId} obras={obras} onObraChange={onObraChange} />
