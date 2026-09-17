@@ -39,14 +39,20 @@ Disponible en `http://localhost:5174/`.
 Para el programa de **acero**:
 
 ```powershell
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location 'C:\Users\marce\mascalculador\acero'; npm run dev"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location 'C:\Users\marce\mascalculador\acero'; npm run dev:all"
 ```
+
+`dev:all` corre en paralelo (con `concurrently`):
+- **API + SQLite** (`npm run server`, puerto `5178`) — persiste en `acero/data/storage.db` (fuera de git).
+- **Vite** (`npm run dev`, puerto `5173`) — proxya `/api` a la API.
+
+Sin la API, la app sigue funcionando con `localStorage` del navegador (modo offline). Sin `npm run dev:all`, solo `npm run dev` sirve igual (offline).
 
 Disponible en `http://localhost:5173/`.
 
 ## Deploy
 
-Cada carpeta es un stack independiente con su propio `Dockerfile` y `docker-compose.yml`. `viga-continua` y `hormigon`: contenedor Node (Express) que sirve `dist/` + la API de persistencia SQLite (ver nota abajo). `acero`: `npm ci` + `npm run build`, servido con nginx. Los compose usan `expose: 80` + healthcheck y NO publican puertos al host.
+Cada carpeta es un stack independiente con su propio `Dockerfile` y `docker-compose.yml`. `viga-continua`, `hormigon` y `acero`: contenedor Node (Express) que sirve `dist/` + la API de persistencia SQLite (ver nota abajo). Los compose usan `expose: 80` + healthcheck y NO publican puertos al host.
 
 En Coolify, por cada app (viga-continua, hormigon, acero):
 
@@ -59,6 +65,8 @@ En Coolify, por cada app (viga-continua, hormigon, acero):
 > **Nota viga-continua**: su imagen ya NO usa nginx — el contenedor es Node y sirve `dist/` + la API de persistencia (SQLite). El compose declara el volumen `viga-continua-data` montado en `/app/data`; los datos sobreviven redeploys/recreaciones. Backend: `server/index.js` (Express + better-sqlite3), expone `GET /health`, `GET /api/storage`, `POST /api/storage/sync`. El frontend sincroniza localStorage con la API vía `src/lib/cloud-storage.ts` (shim con debounce + flush al cerrar; sin server cae a localStorage nativo).
 
 > **Nota hormigon**: idéntico a viga-continua pero con cookie `hc_session` y API en puerto `5177` (dev). Compose con volumen `hormigon-data` montado en `/app/data`. `.env` igual que viga-continua.
+
+> **Nota acero**: idéntico a viga-continua pero con cookie `ac_session` y API en puerto `5178` (dev). Compose con volumen `acero-data` montado en `/app/data`. `.env` igual que viga-continua. Dominio de producción: `masacero.mastropietro.com.ar`.
 
 > **Auth viga-continua**: registro abierto (username 3-30 chars alfanumérico/`_` + password ≥ 8 chars, hash scrypt con salt). Sesiones por cookie HttpOnly `vc_session` (30 días, server-side en tabla `sessions`). Endpoints `/api/auth/register|login|logout|me`. Storage aislado por usuario (tabla `kv` con `user_id`): cada cuenta solo ve sus datos. Rate limit 20 intentos/15 min por IP en auth. En el primer registro del server, las keys sin dueño del período sin auth se asignan a esa cuenta. El login exige la pantalla `AuthScreen` antes de la app; el shim de localStorage se instala recién tras autenticar.
 

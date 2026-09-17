@@ -10,8 +10,10 @@ dist/
 # Database runtime (SQLite persistido por server/index.js)
 viga-continua/data/
 hormigon/data/
+acero/data/
 
 # Secrets (SMTP, etc.)
 viga-continua/.env
 hormigon/.env
+acero/.env
 
