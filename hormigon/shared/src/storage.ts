@@ -662,6 +662,36 @@ export interface SlabLastFormState {
   dBarX: number;
   dBarY: number;
   includeSelfWeight?: boolean;
+  /**
+   * Análisis de carga manual (CIRSOC 101-05): cuando está activo, D y L se
+   * calculan como la suma del desglose (deadLoads/liveLoads) y los inputs
+   * manuales quedan deshabilitados.
+   */
+  manualLoad?: boolean;
+  deadLoads?: ManualDeadLoadItem[];
+  liveLoads?: ManualLiveLoadItem[];
+}
+
+/** Ítem de carga muerta persistible (catálogo de valores en la app). */
+export interface ManualDeadLoadItem {
+  id?: string;
+  type: string;
+  /** Valor del material elegido (kN/m³ o kN/m² según el tipo). */
+  optionValue?: number;
+  optionLabel?: string;
+  /** Espesor en cm, solo para materiales volumétricos. */
+  thicknessCm?: number;
+  /** Descripción para el tipo "otros". */
+  label?: string;
+  /** Valor en kN/m² para el tipo "otros". */
+  value?: number;
+}
+
+/** Ítem de sobrecarga de uso persistible (valor en kN/m², CIRSOC 101-05 Tabla 4.1). */
+export interface ManualLiveLoadItem {
+  id?: string;
+  label: string;
+  value: number;
 }
 
 export function saveLastSlabFormState(state: SlabLastFormState): void {

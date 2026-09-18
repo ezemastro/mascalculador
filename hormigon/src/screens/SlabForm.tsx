@@ -22,6 +22,19 @@ import {
 import { pickObraIfNeeded } from "../components/ObraPicker";
 import { DecimalInput } from "@mascalculador/shared";
 import { registerAssistantForm } from "../lib/assistant/form-bus";
+import {
+  DEAD_LOAD_TYPES,
+  DEAD_LOAD_TYPE_KEYS,
+  LIVE_LOAD_USES,
+  makeDeadItem,
+  makeLiveItem,
+  totalDeadLoad,
+  totalLiveLoad,
+  deadLoadValue,
+  uid,
+  type DeadLoadItem,
+  type LiveLoadItem,
+} from "../lib/slab-loads";
 
 export interface SlabState {
   lx: number;
@@ -85,7 +98,8 @@ const SLAB_FIELD_DOCS = `Campos (usá exactamente estos nombres, valores en unid
 - fc: resistencia del hormigón en MPa; solo 20, 25, 30 o 35.
 - fy: resistencia del acero en MPa; solo 420 o 500.
 - dBarX, dBarY: diámetro de barra en mm (número > 0). Ej: 10
-- includeSelfWeight: boolean.`;
+- includeSelfWeight: boolean.
+- manualLoad: boolean. true activa el análisis de carga manual (CIRSOC 101-05): D y L se calculan sumando el desglose y los campos D/L quedan deshabilitados. false los vuelve editables. Para editar D o L con el análisis activo, primero mandá manualLoad: false.`;
 
 export default function SlabForm() {
   const location = useLocation();
@@ -135,6 +149,33 @@ export default function SlabForm() {
   const [dBarY, setDBarY] = useState(state?.dBarY ?? lastForm?.dBarY ?? 10);
   const [includeSelfWeight, setIncludeSelfWeight] = useState<boolean>(
     state?.includeSelfWeight ?? lastForm?.includeSelfWeight ?? true,
+  );
+  const [manualLoad, setManualLoad] = useState<boolean>(
+    lastForm?.manualLoad ?? false,
+  );
+  const [deadLoads, setDeadLoads] = useState<DeadLoadItem[]>(() =>
+    (lastForm?.deadLoads ?? []).map((d) => ({
+      ...d,
+      id: d.id ?? uid(),
+      type: (DEAD_LOAD_TYPES[d.type as keyof typeof DEAD_LOAD_TYPES]
+        ? d.type
+        : "contrapiso") as DeadLoadItem["type"],
+    })),
+  );
+  const [liveLoads, setLiveLoads] = useState<LiveLoadItem[]>(() =>
+    (lastForm?.liveLoads ?? []).map((l) => ({
+      ...l,
+      id: l.id ?? uid(),
+    })),
+  );
+
+  const Dtotal = useMemo(
+    () => (manualLoad ? totalDeadLoad(deadLoads) : D),
+    [manualLoad, deadLoads, D],
+  );
+  const Ltotal = useMemo(
+    () => (manualLoad ? totalLiveLoad(liveLoads) : L),
+    [manualLoad, liveLoads, L],
   );
 
   // Live-predimensioned h in cm, recomputed whenever any of the geometric
@@ -198,6 +239,9 @@ export default function SlabForm() {
       dBarX,
       dBarY,
       includeSelfWeight,
+      manualLoad,
+      deadLoads,
+      liveLoads,
     });
   }, [
     lx,
@@ -215,6 +259,9 @@ export default function SlabForm() {
     dBarX,
     dBarY,
     includeSelfWeight,
+    manualLoad,
+    deadLoads,
+    liveLoads,
   ]);
 
   // ---- Asistente virtual: expone el estado y la edición del formulario ----
@@ -233,13 +280,16 @@ export default function SlabForm() {
       cover_cm: cover / 10,
       hAdop_cm: hAdop,
       hPredim_cm: Number(hPredim.toFixed(1)),
-      D,
-      L,
+      D: Dtotal,
+      L: Ltotal,
       fc,
       fy,
       dBarX,
       dBarY,
       includeSelfWeight,
+      manualLoad,
+      deadLoads,
+      liveLoads,
       loadedSaveId,
       loadedSaveName: loadedSaveName ?? null,
     };
@@ -262,6 +312,24 @@ export default function SlabForm() {
           }
           return null;
         };
+        const parseBool = (raw: unknown): boolean | null => {
+          const truthy =
+            raw === true ||
+            raw === 1 ||
+            raw === "1" ||
+            raw === "true" ||
+            raw === "si" ||
+            raw === "sí";
+          const falsy =
+            raw === false ||
+            raw === 0 ||
+            raw === "0" ||
+            raw === "false" ||
+            raw === "no";
+          if (truthy) return true;
+          if (falsy) return false;
+          return null;
+        };
         for (const [key, raw] of Object.entries(values)) {
           switch (key) {
             case "lx":
@@ -270,6 +338,15 @@ export default function SlabForm() {
             case "L":
             case "dBarX":
             case "dBarY": {
+              if (
+                (key === "D" || key === "L") &&
+                assistantStateRef.current.manualLoad
+              ) {
+                errors.push(
+                  `${key}: el análisis de carga manual está activo; enviá manualLoad: false para editar ${key}`,
+                );
+                break;
+              }
               const v = num(raw);
               if (v === null || v <= 0) {
                 errors.push(`${key}: se esperaba un número mayor que 0`);
@@ -327,25 +404,23 @@ export default function SlabForm() {
               break;
             }
             case "includeSelfWeight": {
-              const truthy =
-                raw === true ||
-                raw === 1 ||
-                raw === "1" ||
-                raw === "true" ||
-                raw === "si" ||
-                raw === "sí";
-              const falsy =
-                raw === false ||
-                raw === 0 ||
-                raw === "0" ||
-                raw === "false" ||
-                raw === "no";
-              if (!truthy && !falsy) {
+              const v = parseBool(raw);
+              if (v === null) {
                 errors.push("includeSelfWeight: se esperaba true o false");
                 break;
               }
-              setIncludeSelfWeight(truthy);
+              setIncludeSelfWeight(v);
               applied.push("includeSelfWeight");
+              break;
+            }
+            case "manualLoad": {
+              const v = parseBool(raw);
+              if (v === null) {
+                errors.push("manualLoad: se esperaba true o false");
+                break;
+              }
+              setManualLoad(v);
+              applied.push("manualLoad");
               break;
             }
             case "edgeX0":
@@ -464,8 +539,8 @@ export default function SlabForm() {
         edgeXL,
         edgeY0,
         edgeYL,
-        D,
-        L,
+        D: Dtotal,
+        L: Ltotal,
         fc,
         fy,
         cover,
@@ -480,6 +555,47 @@ export default function SlabForm() {
     });
   }
 
+  function updateDeadItem(id: string, patch: Partial<DeadLoadItem>) {
+    setDeadLoads((items) =>
+      items.map((it) => (it.id === id ? { ...it, ...patch } : it)),
+    );
+  }
+
+  function updateLiveItem(id: string, patch: Partial<LiveLoadItem>) {
+    setLiveLoads((items) =>
+      items.map((it) => (it.id === id ? { ...it, ...patch } : it)),
+    );
+  }
+
+  function handleDeadTypeChange(id: string, type: DeadLoadItem["type"]) {
+    const t = DEAD_LOAD_TYPES[type];
+    const first = t.options[0];
+    updateDeadItem(id, {
+      type,
+      optionValue: first?.value,
+      optionLabel: first?.label,
+      thicknessCm: t.defaultThicknessCm ?? 0,
+      label: "",
+      value: 0,
+    });
+  }
+
+  function addDead() {
+    setDeadLoads((items) => [...items, makeDeadItem()]);
+  }
+
+  function removeDead(id: string) {
+    setDeadLoads((items) => items.filter((it) => it.id !== id));
+  }
+
+  function addLive() {
+    setLiveLoads((items) => [...items, makeLiveItem()]);
+  }
+
+  function removeLive(id: string) {
+    setLiveLoads((items) => items.filter((it) => it.id !== id));
+  }
+
   async function handleSaveData() {
     const slabInput: SlabInput = {
       lx,
@@ -490,8 +606,8 @@ export default function SlabForm() {
         EdgeCondition,
         EdgeCondition,
       ],
-      D,
-      L,
+      D: Dtotal,
+      L: Ltotal,
       fc,
       fy,
       cover,
@@ -551,6 +667,9 @@ export default function SlabForm() {
               setDBarX(10);
               setDBarY(10);
               setIncludeSelfWeight(true);
+              setManualLoad(false);
+              setDeadLoads([]);
+              setLiveLoads([]);
               setLoadedSaveId(null);
               setLoadedSaveName(null);
               localStorage.removeItem("mascalculador_last_slab_form");
@@ -696,21 +815,49 @@ export default function SlabForm() {
                 Incluir peso propio
               </span>
             </label>
+            <label className="flex flex-row items-center gap-2 col-span-2 py-2">
+              <input
+                type="checkbox"
+                checked={manualLoad}
+                onChange={(e) => setManualLoad(e.target.checked)}
+                className="w-4 h-4"
+              />
+              <span className="text-xs text-text-muted">
+                Análisis de carga manual
+              </span>
+            </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
                 D (kN/m²){" "}
                 <span className="text-text-muted/60">
                   —{" "}
-                  {includeSelfWeight
-                    ? "adicional, peso propio calculado"
-                    : "peso propio ya incluido en D"}
+                  {manualLoad
+                    ? "calculado desde el desglose"
+                    : includeSelfWeight
+                      ? "adicional, peso propio calculado"
+                      : "peso propio ya incluido en D"}
                 </span>
               </span>
-              <DecimalInput value={D} onChange={setD} />
+              {manualLoad ? (
+                <input disabled value={Dtotal.toFixed(2)} />
+              ) : (
+                <DecimalInput value={D} onChange={setD} />
+              )}
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">L (kN/m²)</span>
-              <DecimalInput value={L} onChange={setL} />
+              <span className="text-xs text-text-muted">
+                L (kN/m²){" "}
+                {manualLoad && (
+                  <span className="text-text-muted/60">
+                    — calculado desde el desglose
+                  </span>
+                )}
+              </span>
+              {manualLoad ? (
+                <input disabled value={Ltotal.toFixed(2)} />
+              ) : (
+                <DecimalInput value={L} onChange={setL} />
+              )}
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
@@ -741,6 +888,194 @@ export default function SlabForm() {
               </select>
             </label>
           </div>
+
+          {manualLoad && (
+            <div className="mt-4 flex flex-col gap-5 rounded-lg border border-border bg-surface-alt/50 p-4">
+              <div>
+                <h3 className="mb-2 text-sm font-semibold text-text">
+                  Cargas muertas
+                </h3>
+                <div className="flex flex-col gap-2">
+                  {deadLoads.map((it) => {
+                    const type = DEAD_LOAD_TYPES[it.type];
+                    const opt = type.options.find(
+                      (o) => o.value === it.optionValue,
+                    );
+                    return (
+                      <div
+                        key={it.id}
+                        className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface p-2"
+                      >
+                        <select
+                          value={it.type}
+                          onChange={(e) =>
+                            handleDeadTypeChange(
+                              it.id,
+                              e.target.value as DeadLoadItem["type"],
+                            )
+                          }
+                        >
+                          {DEAD_LOAD_TYPE_KEYS.map((k) => (
+                            <option key={k} value={k}>
+                              {DEAD_LOAD_TYPES[k].label}
+                            </option>
+                          ))}
+                        </select>
+                        {it.type === "otros" ? (
+                          <>
+                            <input
+                              placeholder="Descripción"
+                              value={it.label ?? ""}
+                              onChange={(e) =>
+                                updateDeadItem(it.id, { label: e.target.value })
+                              }
+                              className="w-40"
+                            />
+                            <DecimalInput
+                              value={it.value ?? 0}
+                              onChange={(v) =>
+                                updateDeadItem(it.id, { value: v })
+                              }
+                              className="w-20"
+                              decimals={2}
+                            />
+                            <span className="text-xs text-text-muted">
+                              kN/m²
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <select
+                              value={it.optionValue}
+                              onChange={(e) => {
+                                const o = type.options.find(
+                                  (x) => x.value === Number(e.target.value),
+                                );
+                                updateDeadItem(it.id, {
+                                  optionValue: o?.value,
+                                  optionLabel: o?.label,
+                                });
+                              }}
+                            >
+                              {type.options.map((o) => (
+                                <option key={o.label} value={o.value}>
+                                  {o.label} — {o.value}{" "}
+                                  {o.unit === "vol" ? "kN/m³" : "kN/m²"}
+                                </option>
+                              ))}
+                            </select>
+                            {opt?.unit === "vol" && (
+                              <>
+                                <DecimalInput
+                                  value={it.thicknessCm ?? 0}
+                                  onChange={(v) =>
+                                    updateDeadItem(it.id, { thicknessCm: v })
+                                  }
+                                  className="w-20"
+                                  decimals={1}
+                                />
+                                <span className="text-xs text-text-muted">
+                                  cm
+                                </span>
+                              </>
+                            )}
+                          </>
+                        )}
+                        <span className="text-sm font-semibold text-text whitespace-nowrap">
+                          = {deadLoadValue(it).toFixed(2)} kN/m²
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => removeDead(it.id)}
+                          className="ml-auto rounded-md px-2 py-1 text-sm text-text-muted hover:bg-danger/10 hover:text-danger"
+                          aria-label={`Quitar ${type.label.toLowerCase()}`}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+                <button
+                  type="button"
+                  onClick={addDead}
+                  className="mt-2 text-sm font-semibold text-primary hover:underline"
+                >
+                  + Agregar carga muerta
+                </button>
+              </div>
+
+              <div>
+                <h3 className="mb-2 text-sm font-semibold text-text">
+                  Sobrecargas (uso)
+                </h3>
+                <div className="flex flex-col gap-2">
+                  {liveLoads.map((it) => (
+                    <div
+                      key={it.id}
+                      className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface p-2"
+                    >
+                      <select
+                        value={it.label}
+                        onChange={(e) => {
+                          const use =
+                            LIVE_LOAD_USES.find(
+                              (u) => u.label === e.target.value,
+                            ) ?? LIVE_LOAD_USES[0];
+                          updateLiveItem(it.id, {
+                            label: use.label,
+                            value: use.value,
+                          });
+                        }}
+                      >
+                        {LIVE_LOAD_USES.map((u) => (
+                          <option key={u.label} value={u.label}>
+                            {u.label} — {u.value} kN/m²
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-sm font-semibold text-text">
+                        = {it.value.toFixed(2)} kN/m²
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeLive(it.id)}
+                        className="ml-auto rounded-md px-2 py-1 text-sm text-text-muted hover:bg-danger/10 hover:text-danger"
+                        aria-label="Quitar sobrecarga"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={addLive}
+                  className="mt-2 text-sm font-semibold text-primary hover:underline"
+                >
+                  + Agregar sobrecarga
+                </button>
+              </div>
+
+              <div className="flex flex-wrap gap-x-6 gap-y-2 border-t border-border pt-3 text-sm text-text-muted">
+                <span>
+                  D total:{" "}
+                  <span className="font-semibold text-text">
+                    {Dtotal.toFixed(2)} kN/m²
+                  </span>
+                </span>
+                <span>
+                  L total:{" "}
+                  <span className="font-semibold text-text">
+                    {Ltotal.toFixed(2)} kN/m²
+                  </span>
+                </span>
+                <span className="text-xs text-text-muted/60">
+                  Valores según CIRSOC 101-05 (Tablas 3.1 y 4.1)
+                </span>
+              </div>
+            </div>
+          )}
         </section>
 
         <div className="self-center flex gap-3">
