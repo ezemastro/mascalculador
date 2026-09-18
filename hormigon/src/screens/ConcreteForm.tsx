@@ -74,6 +74,13 @@ export interface ConcreteState {
   sustainedPct?: number;
   timeFactor?: number;
   ieMethod?: "branson" | "bischoff";
+  // Viga placa (CIRSOC 201-05 Art. 8.10): T (losa a ambos lados) o L.
+  // hf: espesor de losa; clearLeft/clearRight: separación libre (mm) entre la
+  // cara del nervio y la cara del alma vecina, a cada lado.
+  flangeType?: "T" | "L" | null;
+  flangeHf?: number;
+  flangeClearLeft?: number;
+  flangeClearRight?: number;
 }
 
 export default function ConcreteForm() {
@@ -180,6 +187,18 @@ export default function ConcreteForm() {
   const [directSupport, setDirectSupport] = useState(
     state?.directSupport ?? lastForm?.directSupport ?? true,
   );
+  const [flangeType, setFlangeType] = useState<"T" | "L" | null>(
+    state?.flangeType ?? lastForm?.flangeType ?? null,
+  );
+  const [flangeHf, setFlangeHf] = useState(
+    state?.flangeHf ?? lastForm?.flangeHf ?? 120,
+  );
+  const [flangeClearLeft, setFlangeClearLeft] = useState(
+    state?.flangeClearLeft ?? lastForm?.flangeClearLeft ?? 3000,
+  );
+  const [flangeClearRight, setFlangeClearRight] = useState(
+    state?.flangeClearRight ?? lastForm?.flangeClearRight ?? 3000,
+  );
 
   // Armaduras elegidas en resultados (se pasan de vuelta al calcular)
   const savedReinf = useRef<Record<string, unknown>>({});
@@ -206,6 +225,10 @@ export default function ConcreteForm() {
       includeSelfWeight,
       supportWidths,
       directSupport,
+      flangeType,
+      flangeHf,
+      flangeClearLeft,
+      flangeClearRight,
     });
   }, [
     spanLengths,
@@ -219,6 +242,10 @@ export default function ConcreteForm() {
     includeSelfWeight,
     supportWidths,
     directSupport,
+    flangeType,
+    flangeHf,
+    flangeClearLeft,
+    flangeClearRight,
   ]);
 
   // Abreviaturas y alias del glosario que acepta el asistente para apoyos de
@@ -252,6 +279,10 @@ export default function ConcreteForm() {
       includeSelfWeight,
       supportWidths,
       directSupport,
+      flangeType,
+      flangeHf,
+      flangeClearLeft,
+      flangeClearRight,
       loadedSaveId,
       loadedSaveName: loadedSaveName ?? null,
     };
@@ -279,7 +310,10 @@ export default function ConcreteForm() {
 - bw, h: ancho y alto de la viga en mm. cover: recubrimiento en mm.
 - fc: hormigón en MPa; solo 20, 25, 30 o 35. fy: acero en MPa; 420 o 500.
 - includeSelfWeight, directSupport: boolean.
-- supportWidths: (opcional) array de ancho de apoyos en mm, largo = tramos + 1.`,
+- supportWidths: (opcional) array de ancho de apoyos en mm, largo = tramos + 1.
+- flangeType: "T" | "L" | null — dimensionar como viga placa. T = losa a ambos lados, L = un solo lado, null (o "") desactiva. Con viga placa, h es el alto TOTAL (nervio + losa).
+- flangeHf_cm: espesor de losa en cm (viga placa, > 0).
+- flangeClearLeft_cm, flangeClearRight_cm: separación libre en cm entre la cara del nervio y la cara del alma vecina (T usa ambos lados; L solo la izquierda).`,
       getState: () => assistantStateRef.current,
       apply: (values) => {
         const applied: string[] = [];
@@ -458,6 +492,46 @@ export default function ConcreteForm() {
               applied.push(key);
               break;
             }
+            case "flangeType": {
+              const v = String(raw ?? "")
+                .trim()
+                .toLowerCase();
+              if (v === "t" || v === "te" || v === "viga t") {
+                setFlangeType("T");
+                applied.push("flangeType");
+              } else if (v === "l" || v === "ele" || v === "viga l") {
+                setFlangeType("L");
+                applied.push("flangeType");
+              } else if (
+                v === "" ||
+                v === "null" ||
+                v === "ninguno" ||
+                v === "no" ||
+                raw === null ||
+                raw === false
+              ) {
+                setFlangeType(null);
+                applied.push("flangeType");
+              } else {
+                errors.push('flangeType: "T", "L" o null');
+              }
+              break;
+            }
+            case "flangeHf_cm":
+            case "flangeClearLeft_cm":
+            case "flangeClearRight_cm": {
+              const v = num(raw);
+              if (v === null || v < 0) {
+                errors.push(`${key}: número en cm ≥ 0`);
+                break;
+              }
+              const mm = v * 10;
+              if (key === "flangeHf_cm") setFlangeHf(mm);
+              else if (key === "flangeClearLeft_cm") setFlangeClearLeft(mm);
+              else setFlangeClearRight(mm);
+              applied.push(key);
+              break;
+            }
             default:
               errors.push(`campo desconocido: ${key}`);
           }
@@ -486,6 +560,10 @@ export default function ConcreteForm() {
           fc: s.fc,
           fy: s.fy,
           includeSelfWeight: s.includeSelfWeight,
+          flangeType: s.flangeType,
+          flangeHf: s.flangeHf,
+          flangeClearLeft: s.flangeClearLeft,
+          flangeClearRight: s.flangeClearRight,
         };
         try {
           if (s.loadedSaveId) {
@@ -513,10 +591,16 @@ export default function ConcreteForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- registro único por montaje
   }, []);
 
-  // Peso propio auto-calculado: (bw·h / 1e6) × γ_hormigón [kN/m], en mm
+  // Peso propio auto-calculado: (bw·h / 1e6) × γ_hormigón [kN/m], en mm.
+  // Viga placa: la losa ya está incluida en las cargas → solo el nervio
+  // sobresaliente: bw·(h − h_f).
   const selfWeightD = useMemo(
-    () => (includeSelfWeight ? ((bw * h) / 1e6) * CONCRETE_DENSITY : 0),
-    [bw, h, includeSelfWeight],
+    () =>
+      includeSelfWeight
+        ? ((bw * (flangeType ? Math.max(h - flangeHf, 0) : h)) / 1e6) *
+          CONCRETE_DENSITY
+        : 0,
+    [bw, h, includeSelfWeight, flangeType, flangeHf],
   );
 
   function setSpanCountAndAdjust(count: number) {
@@ -605,6 +689,10 @@ export default function ConcreteForm() {
       fc,
       fy,
       includeSelfWeight,
+      flangeType,
+      flangeHf,
+      flangeClearLeft,
+      flangeClearRight,
       // Conservar armaduras/resultados guardados al corregir la viga
       ...savedReinf.current,
     };
@@ -640,6 +728,10 @@ export default function ConcreteForm() {
     setIncludeSelfWeight(true);
     setSupportWidths([300, 300]);
     setDirectSupport(true);
+    setFlangeType(null);
+    setFlangeHf(120);
+    setFlangeClearLeft(3000);
+    setFlangeClearRight(3000);
     setLoadedSaveId(null);
     setLoadedSaveName(null);
     savedReinf.current = {};
@@ -660,6 +752,10 @@ export default function ConcreteForm() {
         includeSelfWeight,
         supportWidths,
         directSupport,
+        flangeType,
+        flangeHf,
+        flangeClearLeft,
+        flangeClearRight,
         loadedSaveId,
         loadedSaveName,
         // Armaduras de un guardado cargado...
@@ -740,6 +836,15 @@ export default function ConcreteForm() {
           if (typeof d.fy === "number") setFy(d.fy);
           if (typeof d.includeSelfWeight === "boolean")
             setIncludeSelfWeight(d.includeSelfWeight);
+          if (d.flangeType === "T" || d.flangeType === "L")
+            setFlangeType(d.flangeType);
+          else if (d.flangeType === null || d.flangeType === undefined)
+            setFlangeType(null);
+          if (typeof d.flangeHf === "number") setFlangeHf(d.flangeHf);
+          if (typeof d.flangeClearLeft === "number")
+            setFlangeClearLeft(d.flangeClearLeft);
+          if (typeof d.flangeClearRight === "number")
+            setFlangeClearRight(d.flangeClearRight);
           // Guardar armaduras elegidas para pasarlas a resultados
           savedReinf.current = {
             barQty: d.barQty,
@@ -1236,6 +1341,70 @@ export default function ConcreteForm() {
               </select>
             </label>
           </div>
+          <label className="flex flex-row items-center gap-2 mt-4">
+            <input
+              type="checkbox"
+              checked={!!flangeType}
+              onChange={(e) => setFlangeType(e.target.checked ? "T" : null)}
+              className="w-4 h-4"
+            />
+            <span className="text-xs text-text-muted">
+              Dimensionar como viga placa
+            </span>
+          </label>
+          {flangeType && (
+            <div className="mt-3 rounded-lg border border-border bg-surface-alt/50 p-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">Sección</span>
+                  <select
+                    value={flangeType}
+                    onChange={(e) => setFlangeType(e.target.value as "T" | "L")}
+                  >
+                    <option value="T">T — losa a ambos lados</option>
+                    <option value="L">L — losa de un solo lado</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">
+                    Espesor de losa h<sub>f</sub> (cm)
+                  </span>
+                  <DecimalInput
+                    value={flangeHf / 10}
+                    onChange={(n) => setFlangeHf(n * 10)}
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-text-muted">
+                    {flangeType === "T"
+                      ? "Libre al alma vecina — izquierda (cm)"
+                      : "Libre al alma vecina (cm)"}
+                  </span>
+                  <DecimalInput
+                    value={flangeClearLeft / 10}
+                    onChange={(n) => setFlangeClearLeft(n * 10)}
+                  />
+                </label>
+                {flangeType === "T" && (
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs text-text-muted">
+                      Libre al alma vecina — derecha (cm)
+                    </span>
+                    <DecimalInput
+                      value={flangeClearRight / 10}
+                      onChange={(n) => setFlangeClearRight(n * 10)}
+                    />
+                  </label>
+                )}
+              </div>
+              <p className="text-xs text-text-muted/60 mt-3">
+                h = alto total del nervio (incluye el espesor de losa). El ancho
+                de colaboración se calcula por tramo según CIRSOC 201-05 Art.
+                8.10; el peso propio considera solo el nervio (la losa ya está
+                en las cargas).
+              </p>
+            </div>
+          )}
           <div className="mt-4 pt-3 border-t border-border">
             <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
               Anchos de apoyo (cm)

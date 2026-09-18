@@ -4,7 +4,10 @@ import { useLocation, useNavigate } from "react-router";
 import { Coordinates, Mafs, Plot, Polygon, Text } from "mafs";
 import { MainLayout } from "@mascalculador/shared";
 import { formatForce, DecimalInput } from "@mascalculador/shared";
-import { designConcreteDetailed } from "../lib/concrete-design";
+import {
+  designConcreteDetailed,
+  flangeEffectiveWidth,
+} from "../lib/concrete-design";
 import { computeDeflections } from "../lib/deflection";
 import { saveBeam, updateSave } from "../lib/storage";
 import { pickObraIfNeeded } from "../components/ObraPicker";
@@ -248,9 +251,12 @@ export default function ConcreteResults() {
   );
 
   // Peso propio: (bw·h / 1e6) × γ_hormigón [kN/m], en mm.
-  // Const plana: el número es un dep estable por valor para los useMemo.
+  // Viga placa: la losa ya está en las cargas → solo el nervio sobresaliente
+  // bw·(h − h_f).
   const selfWeight = s?.includeSelfWeight
-    ? ((s.bw * s.h) / 1e6) * CONCRETE_DENSITY
+    ? ((s.bw * (s.flangeType ? Math.max(s.h - (s.flangeHf ?? 0), 0) : s.h)) /
+        1e6) *
+      CONCRETE_DENSITY
     : 0;
 
   // Carga uniforme (para reducción de corte) — incluye peso propio
@@ -285,6 +291,18 @@ export default function ConcreteResults() {
       const Mu = envelope.spanMuPos[i];
       const Vu = envelope.spanVu[i];
       const c = ensure(supportWidths, supportPositions.length, 300)[i]; // mm
+      // Viga placa: ancho efectivo de colaboración por tramo (CIRSOC 201-05
+      // Art. 8.10). Solo aplica a momento positivo.
+      const flange = s.flangeType
+        ? flangeEffectiveWidth({
+            bw: s.bw,
+            hf: s.flangeHf ?? 0,
+            type: s.flangeType,
+            clearLeft: s.flangeClearLeft ?? 0,
+            clearRight: s.flangeClearRight ?? 0,
+            span: s.spans[i],
+          })
+        : null;
       const crReq = designConcreteDetailed({
         bw: s.bw,
         h: s.h,
@@ -302,8 +320,10 @@ export default function ConcreteResults() {
         Av: 0,
         nLegs: 0,
         s: 0,
+        flange:
+          flange && Mu > 0 ? { hf: s.flangeHf ?? 0, b: flange.b } : undefined,
       });
-      return { Mu, Vu, crReq, c };
+      return { Mu, Vu, c, crReq, flange };
     });
   }, [s, envelope, qu, supportWidths, directSupport]);
 
@@ -781,6 +801,26 @@ export default function ConcreteResults() {
               Tramo {i + 1} — {dom.length.toFixed(2)} m
             </h2>
 
+            {sr.flange && (
+              <p className="mb-3 text-xs text-text-muted">
+                Viga placa {s.flangeType === "T" ? "T" : "L"}: ancho de
+                colaboración{" "}
+                <strong className="text-text">
+                  b = {(sr.flange.b / 1000).toFixed(2)} m
+                </strong>
+                {cr.flangeEN === "placa" && (
+                  <>
+                    {" "}
+                    — eje neutro en la placa (a = {(cr.flangeA ?? 0).toFixed(
+                      0,
+                    )}{" "}
+                    mm ≤ h<sub>f</sub>)
+                  </>
+                )}
+                {cr.flangeEN === "nervio" && <> — eje neutro en el nervio</>}
+              </p>
+            )}
+
             {/* Tarjetas resumen */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
               <div className="bg-surface-alt rounded-lg p-2">
@@ -1028,7 +1068,10 @@ export default function ConcreteResults() {
                 Ver cuentas
               </summary>
               <pre className="mt-2 p-3 bg-surface-alt rounded-lg text-xs text-text-muted font-mono whitespace-pre-wrap overflow-x-auto">
-                {postSteps(shearChk.steps).join("\n")}
+                {postSteps([
+                  ...(sr.flange?.steps ?? []),
+                  ...shearChk.steps,
+                ]).join("\n")}
               </pre>
             </details>
           </section>

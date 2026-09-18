@@ -17,6 +17,12 @@ export interface ConcreteInput {
   Av: number; // mm² (stirrup area per leg)
   nLegs: number; // number of stirrup legs
   s: number; // mm (stirrup spacing)
+  /**
+   * Viga placa (sección T/L): ancho efectivo `b` y espesor de losa `hf` en mm.
+   * Solo aplica a momento positivo (compresión en la placa). El momento
+   * negativo y el corte usan el alma `bw`.
+   */
+  flange?: { hf: number; b: number };
 }
 
 export interface ConcreteResult {
@@ -35,6 +41,12 @@ export interface ConcreteResult {
   AspReq: number;
   AsMin: number;
   AsOK: boolean;
+  /** Viga placa: ancho efectivo usado (mm). */
+  flangeB?: number;
+  /** Viga placa: profundidad del bloque de compresión (mm). */
+  flangeA?: number;
+  /** Viga placa: dónde cae el eje neutro. */
+  flangeEN?: "placa" | "nervio";
   // Shear results
   Vn: number;
   Vc: number;
@@ -46,6 +58,140 @@ export interface ConcreteResult {
   AvSMin: number; // mm²/m
   sMax: number; // mm
   steps: string[];
+}
+
+/**
+ * Ancho efectivo de colaboración para vigas placa, según CIRSOC 201-05
+ * Art. 8.10.2 (T) y 8.10.3 (L):
+ *  - T: el saliente de cada lado no excede 8·h_f ni la mitad de la separación
+ *    libre al alma adyacente; el ancho total no excede L/4.
+ *  - L: el saliente no excede 6·h_f ni la mitad de la separación libre al
+ *    alma adyacente; el ancho total no excede b_w + L/12.
+ * Distancias libres en mm (cara del nervio a cara del alma vecina); `span`
+ * es la luz del tramo en m.
+ */
+export function flangeEffectiveWidth(input: {
+  bw: number;
+  hf: number;
+  type: "T" | "L";
+  clearLeft?: number;
+  clearRight?: number;
+  span: number;
+}): { b: number; steps: string[] } {
+  const { bw, hf, type, span } = input;
+  const L = span * 1000;
+  const steps: string[] = [];
+  steps.push(
+    `Ancho efectivo de colaboración (CIRSOC 201-05 Art. 8.10.${type === "T" ? 2 : 3}):`,
+  );
+  steps.push(`  L = ${span.toFixed(2)} m, b_w = ${bw} mm, h_f = ${hf} mm`);
+
+  const proy = (limHf: number, clear: number): number =>
+    Math.max(Math.min(limHf, clear / 2), 0);
+
+  if (type === "T") {
+    const pLeft = proy(8 * hf, input.clearLeft ?? 0);
+    const pRight = proy(8 * hf, input.clearRight ?? 0);
+    const bTotal = Math.min(bw + pLeft + pRight, L / 4);
+    steps.push(
+      `  Saliente izq = mín(8·h_f, libre_izq/2) = mín(${((8 * hf) / 1000).toFixed(2)}, ${((input.clearLeft ?? 0) / 2 / 1000).toFixed(2)}) m = ${(pLeft / 1000).toFixed(2)} m`,
+    );
+    steps.push(
+      `  Saliente der = mín(8·h_f, libre_der/2) = ${(pRight / 1000).toFixed(2)} m`,
+    );
+    steps.push(
+      `  b = mín(b_w + salientes, L/4) = mín(${((bw + pLeft + pRight) / 1000).toFixed(3)}, ${(L / 4 / 1000).toFixed(2)}) m = ${(bTotal / 1000).toFixed(3)} m`,
+    );
+    return { b: bTotal, steps };
+  }
+
+  const p = proy(6 * hf, input.clearLeft ?? 0);
+  const bTotal = Math.min(bw + p, bw + L / 12);
+  steps.push(
+    `  Saliente = mín(6·h_f, libre/2) = mín(${((6 * hf) / 1000).toFixed(2)}, ${((input.clearLeft ?? 0) / 2 / 1000).toFixed(2)}) m = ${(p / 1000).toFixed(2)} m`,
+  );
+  steps.push(
+    `  b = mín(b_w + saliente, b_w + L/12) = mín(${((bw + p) / 1000).toFixed(3)}, ${((bw + L / 12) / 1000).toFixed(3)}) m = ${(bTotal / 1000).toFixed(3)} m`,
+  );
+  return { b: bTotal, steps };
+}
+
+interface RectSolution {
+  AsReq: number;
+  AspReq: number;
+  Ka: number;
+  caseLabel: string;
+}
+
+/** Sección rectangular de ancho b bajo momento MnVal (kN·m). Comparte el
+ *  procedimiento K_a / armadura simple-doble del módulo. */
+function rectDesign(
+  bEff: number,
+  MnVal: number,
+  fc: number,
+  fy: number,
+  d: number,
+  dp: number,
+  KaMin: number,
+  KaMax: number,
+  st: string[],
+): RectSolution {
+  const mn_val = (MnVal * 1e6) / (0.85 * fc * bEff * d * d);
+  st.push(
+    `m_n = M_n/(0.85·f'_c·b·d²) = ${MnVal.toFixed(1)}·10⁶/(0.85·${fc}·${bEff}·${d}²) = ${mn_val.toFixed(4)}`,
+  );
+  const Ka = 1 - Math.sqrt(1 - 2 * mn_val);
+  st.push(`K_a = 1 − √(1−2·m_n) = ${Ka.toFixed(4)}`);
+
+  let AsReq = 0;
+  let AspReq = 0;
+  let caseLabel = "";
+  st.push(`K_a = ${Ka.toFixed(4)}`);
+
+  if (Ka <= KaMin) {
+    st.push(`K_a ≤ K_a min (${Ka.toFixed(4)} ≤ ${KaMin.toFixed(4)})`);
+    const ka1 = 1.33 * Ka;
+    st.push(`k_{a1} = 1.33·K_a = ${ka1.toFixed(4)}`);
+    let ku: number;
+    if (ka1 >= KaMin) {
+      st.push(`k_{a1} ≥ K_a min → usa K_a min`);
+      ku = KaMin;
+      caseLabel = `K_a ≤ K_a min, k_{a1} ≥ K_a min → K_a min`;
+    } else {
+      st.push(`k_{a1} < K_a min → usa k_{a1}`);
+      ku = ka1;
+      caseLabel = `K_a ≤ K_a min, k_{a1} < K_a min → k_{a1}`;
+    }
+    AsReq = (0.85 * fc * bEff * ku * d) / fy;
+    st.push(
+      `A_s = 0.85·f'_c·b·K·d/f_y = 0.85·${fc}·${bEff}·${ku.toFixed(4)}·${d}/${fy} = ${AsReq.toFixed(0)} mm²`,
+    );
+  } else if (Ka <= KaMax) {
+    st.push(`K_a min < K_a ≤ K_a max → armadura simple`);
+    AsReq = (0.85 * fc * bEff * Ka * d) / fy;
+    st.push(
+      `A_s = 0.85·f'_c·b·K_a·d/f_y = 0.85·${fc}·${bEff}·${Ka.toFixed(4)}·${d}/${fy} = ${AsReq.toFixed(0)} mm²`,
+    );
+    caseLabel = "armadura simple";
+  } else {
+    st.push(`K_a > K_a max → armadura doble`);
+    const Mc = (0.85 * fc * bEff * d * d * KaMax * (1 - KaMax / 2)) / 1e6;
+    const MnValB = MnVal;
+    const deltaMn = MnValB - Mc;
+    AspReq = (deltaMn * 1e6) / (fy * (d - dp));
+    AsReq = (0.85 * fc * bEff * KaMax * d) / fy + AspReq;
+    caseLabel = "armadura doble";
+    st.push(
+      `M_c = 0.85·f'_c·b·d²·K_a max·(1-K_a max/2) = ${Mc.toFixed(1)} kN·m`,
+    );
+    st.push(
+      `ΔM_n = ${MnValB.toFixed(1)} − ${Mc.toFixed(1)} = ${deltaMn.toFixed(1)} kN·m`,
+    );
+    st.push(`A_s' = ΔM_n/[f_y·(d−d')] = ${AspReq.toFixed(0)} mm²`);
+    st.push(`A_s = 0.85·f'_c·b·K_a max·d/f_y + A_s' = ${AsReq.toFixed(0)} mm²`);
+  }
+
+  return { AsReq, AspReq, Ka, caseLabel };
 }
 
 export function designConcreteDetailed(input: ConcreteInput): ConcreteResult {
@@ -85,12 +231,8 @@ export function designConcreteDetailed(input: ConcreteInput): ConcreteResult {
   st.push(`β₁ = ${beta1.toFixed(3)}`);
 
   const Mn_nmm = (Mu / 0.9) * 1e6;
-  const mn_val = Mn_nmm / (0.85 * fc * bw * d * d);
-  st.push(`M_n = M_u/0.9 = ${(Mu / 0.9).toFixed(1)} kN·m`);
-  st.push(`m_n = M_n/(0.85·f'_c·b_w·d²) = ${mn_val.toFixed(4)}`);
-
-  const Ka = 1 - Math.sqrt(1 - 2 * mn_val);
-  st.push(`K_a = 1 − √(1−2·m_n) = ${Ka.toFixed(4)}`);
+  const MnVal = Mu / 0.9;
+  st.push(`M_n = M_u/0.9 = ${MnVal.toFixed(1)} kN·m`);
 
   let KaMin: number;
   if (fc <= 30) {
@@ -105,54 +247,86 @@ export function designConcreteDetailed(input: ConcreteInput): ConcreteResult {
   st.push(`K_a max = 0.375·β₁ = ${KaMax.toFixed(4)}`);
   st.push("");
 
-  let AsReq = 0,
-    AspReq = 0,
-    caseLabel = "";
-  st.push(`K_a = ${Ka.toFixed(4)}`);
+  let AsReq = 0;
+  let AspReq = 0;
+  let caseLabel = "";
+  let mn_val = 0;
+  let Ka = 0;
+  let flangeB: number | undefined;
+  let flangeA: number | undefined;
+  let flangeEN: "placa" | "nervio" | undefined;
 
-  if (Ka <= KaMin) {
-    st.push(`K_a ≤ K_a min (${Ka.toFixed(4)} ≤ ${KaMin.toFixed(4)})`);
-    const ka1 = 1.33 * Ka;
-    st.push(`k_{a1} = 1.33·K_a = ${ka1.toFixed(4)}`);
-    let ku: number;
-    if (ka1 >= KaMin) {
-      st.push(`k_{a1} ≥ K_a min → usa K_a min`);
-      ku = KaMin;
-      caseLabel = `K_a ≤ K_a min, k_{a1} ≥ K_a min → K_a min`;
+  const flange = input.flange;
+  if (flange && Mu > 0) {
+    flangeB = flange.b;
+    st.push(
+      `Sección viga placa: b = ${flange.b} mm, h_f = ${flange.hf} mm, b_w = ${bw} mm`,
+    );
+    // ¿El eje neutro corta la placa? Probar como rectangular de ancho b.
+    const mn_b = Mn_nmm / (0.85 * fc * flange.b * d * d);
+    const enNervioSeguro = mn_b > 0.5;
+    const Ka_b = enNervioSeguro ? 1 : 1 - Math.sqrt(1 - 2 * mn_b);
+    const a_b = Ka_b * d;
+    st.push(
+      enNervioSeguro
+        ? `Probar eje neutro en la placa: m_n = ${mn_b.toFixed(4)} > 0.5 → el eje neutro corta el nervio`
+        : `Probar eje neutro en la placa: m_n = ${mn_b.toFixed(4)}, K_a = ${Ka_b.toFixed(4)}, a = K_a·d = ${a_b.toFixed(1)} mm`,
+    );
+    if (!enNervioSeguro && a_b <= flange.hf) {
+      flangeEN = "placa";
+      st.push(
+        `a (${a_b.toFixed(1)} mm) ≤ h_f (${flange.hf} mm) → el eje neutro corta la placa: dimensionar como rectangular de ancho b = ${flange.b} mm`,
+      );
+      const sol = rectDesign(flange.b, MnVal, fc, fy, d, dp, KaMin, KaMax, st);
+      AsReq = sol.AsReq;
+      AspReq = sol.AspReq;
+      Ka = sol.Ka;
+      mn_val = mn_b;
+      flangeA = sol.Ka * d;
+      caseLabel = `${sol.caseLabel} (T, EN en placa)`;
     } else {
-      st.push(`k_{a1} < K_a min → usa k_{a1}`);
-      ku = ka1;
-      caseLabel = `K_a ≤ K_a min, k_{a1} < K_a min → k_{a1}`;
+      flangeEN = "nervio";
+      st.push(
+        `a (${a_b.toFixed(1)} mm) > h_f (${flange.hf} mm) → el eje neutro corta el nervio: descomponer alas + nervio`,
+      );
+      const Cf = 0.85 * fc * (flange.b - bw) * flange.hf;
+      const Asf = Cf / fy;
+      const Mnf = (Cf * (d - flange.hf / 2)) / 1e6;
+      const Mnw = MnVal - Mnf;
+      st.push(
+        `C_f = 0.85·f'_c·(b−b_w)·h_f = 0.85·${fc}·${flange.b - bw}·${flange.hf} = ${Cf.toFixed(0)} N`,
+      );
+      st.push(
+        `A_sf = C_f/f_y = ${Cf.toFixed(0)}/${fy} = ${Asf.toFixed(0)} mm²`,
+      );
+      st.push(
+        `M_nf = C_f·(d−h_f/2) = ${Cf.toFixed(0)}·(${d}−${(flange.hf / 2).toFixed(0)}) = ${Mnf.toFixed(1)} kN·m`,
+      );
+      st.push(
+        `M_nw = M_n − M_nf = ${MnVal.toFixed(1)} − ${Mnf.toFixed(1)} = ${Mnw.toFixed(1)} kN·m`,
+      );
+      st.push(`Nervio como sección rectangular de ancho b_w = ${bw} mm:`);
+      const sol = rectDesign(bw, Mnw, fc, fy, d, dp, KaMin, KaMax, st);
+      AsReq = Asf + sol.AsReq;
+      AspReq = sol.AspReq;
+      Ka = sol.Ka;
+      mn_val = (Mnw * 1e6) / (0.85 * fc * bw * d * d);
+      // Profundidad del bloque de compresión en el nervio (neto de armadura
+      // de compresión en caso de armadura doble).
+      flangeA = ((AsReq - AspReq - Asf) * fy) / (0.85 * fc * bw);
+      st.push(
+        `A_s total = A_sf + A_sw = ${Asf.toFixed(0)} + ${sol.AsReq.toFixed(0)} = ${AsReq.toFixed(0)} mm²`,
+      );
+      caseLabel = `${sol.caseLabel} del nervio + alas (T, EN en nervio)`;
     }
-    AsReq = (0.85 * fc * bw * ku * d) / fy;
-    st.push(
-      `A_s = 0.85·f'_c·b_w·K·d/f_y = 0.85·${fc}·${bw}·${ku.toFixed(4)}·${d}/${fy} = ${AsReq.toFixed(0)} mm²`,
-    );
-  } else if (Ka <= KaMax) {
-    st.push(`K_a min < K_a ≤ K_a max → armadura simple`);
-    AsReq = (0.85 * fc * bw * Ka * d) / fy;
-    st.push(
-      `A_s = 0.85·f'_c·b_w·K_a·d/f_y = 0.85·${fc}·${bw}·${Ka.toFixed(4)}·${d}/${fy} = ${AsReq.toFixed(0)} mm²`,
-    );
-    caseLabel = "armadura simple";
   } else {
-    st.push(`K_a > K_a max → armadura doble`);
-    const Mc = (0.85 * fc * bw * d * d * KaMax * (1 - KaMax / 2)) / 1e6;
-    const MnVal = Mu / 0.9;
-    const deltaMn = MnVal - Mc;
-    AspReq = (deltaMn * 1e6) / (fy * (d - dp));
-    AsReq = (0.85 * fc * bw * KaMax * d) / fy + AspReq;
-    caseLabel = "armadura doble";
-    st.push(
-      `M_c = 0.85·f'_c·b_w·d²·K_a max·(1-K_a max/2) = ${Mc.toFixed(1)} kN·m`,
-    );
-    st.push(
-      `ΔM_n = ${MnVal.toFixed(1)} − ${Mc.toFixed(1)} = ${deltaMn.toFixed(1)} kN·m`,
-    );
-    st.push(`A_s' = ΔM_n/[f_y·(d−d')] = ${AspReq.toFixed(0)} mm²`);
-    st.push(
-      `A_s = 0.85·f'_c·b_w·K_a max·d/f_y + A_s' = ${AsReq.toFixed(0)} mm²`,
-    );
+    mn_val = Mn_nmm / (0.85 * fc * bw * d * d);
+    st.push(`m_n = M_n/(0.85·f'_c·b_w·d²) = ${mn_val.toFixed(4)}`);
+    const sol = rectDesign(bw, MnVal, fc, fy, d, dp, KaMin, KaMax, st);
+    AsReq = sol.AsReq;
+    AspReq = sol.AspReq;
+    Ka = sol.Ka;
+    caseLabel = sol.caseLabel;
   }
 
   const AsMin1 = (Math.sqrt(fc) / (4 * fy)) * bw * d;
@@ -305,6 +479,9 @@ export function designConcreteDetailed(input: ConcreteInput): ConcreteResult {
     AspReq: Math.round(AspReq),
     AsMin: Math.round(AsMin),
     AsOK,
+    flangeB,
+    flangeA,
+    flangeEN,
     Vn,
     Vc,
     VsReq: VsReq > 0 ? VsReq : 0,

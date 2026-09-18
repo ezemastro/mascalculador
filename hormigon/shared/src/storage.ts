@@ -554,6 +554,12 @@ export interface ConcreteLastFormState {
   includeSelfWeight?: boolean;
   supportWidths?: number[];
   directSupport?: boolean;
+  // Viga placa (CIRSOC 201-05 Art. 8.10). hf: espesor de losa; clears:
+  // separación libre (mm) entre la cara del nervio y el alma vecina.
+  flangeType?: "T" | "L" | null;
+  flangeHf?: number;
+  flangeClearLeft?: number;
+  flangeClearRight?: number;
 }
 
 export function saveLastConcreteFormState(state: ConcreteLastFormState): void {
