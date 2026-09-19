@@ -282,24 +282,53 @@ export function designConcreteDetailed(input: ConcreteInput): ConcreteResult {
       st.push(
         `a (${a_b.toFixed(1)} mm) ≤ h_f (${flange.hf} mm) → el eje neutro corta la placa: dimensionar como rectangular de ancho b = ${flange.b} mm`,
       );
-      const sol = rectDesign(
-        flange.b,
-        MnVal,
-        fc,
-        fy,
-        d,
-        dp,
-        KaMin,
-        KaMax,
-        "b",
-        st,
-      );
-      AsReq = sol.AsReq;
-      AspReq = sol.AspReq;
-      Ka = sol.Ka;
-      mn_val = mn_b;
-      flangeA = sol.Ka * d;
-      caseLabel = `${sol.caseLabel} (T, EN en placa)`;
+      if (Ka_b <= KaMax) {
+        const AsMom = (0.85 * fc * flange.b * Ka_b * d) / fy;
+        st.push(`K_a ≤ K_a max → armadura simple`);
+        st.push(
+          `A_s = 0.85·f'_c·b·K_a·d/f_y = 0.85·${fc}·${flange.b}·${Ka_b.toFixed(4)}·${d}/${fy} = ${AsMom.toFixed(0)} mm²`,
+        );
+        // Piso de armadura mínima (CIRSOC 201-05 10.5.1/10.5.3): la mínima
+        // se calcula con el alma b_w (no con la placa). Si la requerida cae
+        // debajo, vale la regla de la 1.33× contra esa mínima.
+        const AsMinBW = Math.max(
+          (Math.sqrt(fc) / (4 * fy)) * bw * d,
+          (1.4 / fy) * bw * d,
+        );
+        let AsPlaca = AsMom;
+        if (AsMom < AsMinBW) {
+          AsPlaca = Math.min(1.33 * AsMom, AsMinBW);
+          st.push(
+            `A_s req (${AsMom.toFixed(0)} mm²) < A_s mín (${AsMinBW.toFixed(0)} mm², con b_w) → usa ${AsPlaca.toFixed(0)} mm² (regla 1.33×)`,
+          );
+        }
+        AsReq = AsPlaca;
+        AspReq = 0;
+        Ka = Ka_b;
+        mn_val = mn_b;
+        flangeA = Ka_b * d;
+        caseLabel = "armadura simple (T, EN en placa)";
+      } else {
+        st.push(`K_a > K_a max → armadura doble`);
+        const sol = rectDesign(
+          flange.b,
+          MnVal,
+          fc,
+          fy,
+          d,
+          dp,
+          KaMin,
+          KaMax,
+          "b",
+          st,
+        );
+        AsReq = sol.AsReq;
+        AspReq = sol.AspReq;
+        Ka = sol.Ka;
+        mn_val = mn_b;
+        flangeA = sol.Ka * d;
+        caseLabel = `${sol.caseLabel} (T, EN en placa)`;
+      }
     } else {
       flangeEN = "nervio";
       st.push(

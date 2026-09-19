@@ -1062,16 +1062,24 @@ export default function ConcreteResults() {
               </div>
             </div>
 
-            {/* Cuentas */}
+            {/* Cuentas: diseño (con placa colaborante si aplica) */}
             <details className="mt-3">
               <summary className="cursor-pointer text-xs text-text-muted hover:text-text">
-                Ver cuentas
+                Ver cuentas (diseño)
               </summary>
               <pre className="mt-2 p-3 bg-surface-alt rounded-lg text-xs text-text-muted font-mono whitespace-pre-wrap overflow-x-auto">
-                {postSteps([
-                  ...(sr.flange?.steps ?? []),
-                  ...shearChk.steps,
-                ]).join("\n")}
+                {postSteps([...(sr.flange?.steps ?? []), ...cr.steps]).join(
+                  "\n",
+                )}
+              </pre>
+            </details>
+            {/* Cuentas: chequeo con armadura colocada (sección rectangular b_w) */}
+            <details className="mt-3">
+              <summary className="cursor-pointer text-xs text-text-muted hover:text-text">
+                Ver cuentas (chequeo con armadura colocada)
+              </summary>
+              <pre className="mt-2 p-3 bg-surface-alt rounded-lg text-xs text-text-muted font-mono whitespace-pre-wrap overflow-x-auto">
+                {postSteps(shearChk.steps).join("\n")}
               </pre>
             </details>
           </section>
