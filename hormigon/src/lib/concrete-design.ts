@@ -124,7 +124,9 @@ interface RectSolution {
 }
 
 /** Sección rectangular de ancho b bajo momento MnVal (kN·m). Comparte el
- *  procedimiento K_a / armadura simple-doble del módulo. */
+ *  procedimiento K_a / armadura simple-doble del módulo. `bLabel` se usa en
+ *  los pasos para nombrar el ancho según el contexto (b_w en el nervio, b en
+ *  la placa colaborante). */
 function rectDesign(
   bEff: number,
   MnVal: number,
@@ -134,11 +136,12 @@ function rectDesign(
   dp: number,
   KaMin: number,
   KaMax: number,
+  bLabel: string,
   st: string[],
 ): RectSolution {
   const mn_val = (MnVal * 1e6) / (0.85 * fc * bEff * d * d);
   st.push(
-    `m_n = M_n/(0.85·f'_c·b·d²) = ${MnVal.toFixed(1)}·10⁶/(0.85·${fc}·${bEff}·${d}²) = ${mn_val.toFixed(4)}`,
+    `m_n = M_n/(0.85·f'_c·${bLabel}·d²) = ${MnVal.toFixed(1)}·10⁶/(0.85·${fc}·${bEff}·${d}²) = ${mn_val.toFixed(4)}`,
   );
   const Ka = 1 - Math.sqrt(1 - 2 * mn_val);
   st.push(`K_a = 1 − √(1−2·m_n) = ${Ka.toFixed(4)}`);
@@ -164,13 +167,13 @@ function rectDesign(
     }
     AsReq = (0.85 * fc * bEff * ku * d) / fy;
     st.push(
-      `A_s = 0.85·f'_c·b·K·d/f_y = 0.85·${fc}·${bEff}·${ku.toFixed(4)}·${d}/${fy} = ${AsReq.toFixed(0)} mm²`,
+      `A_s = 0.85·f'_c·${bLabel}·K·d/f_y = 0.85·${fc}·${bEff}·${ku.toFixed(4)}·${d}/${fy} = ${AsReq.toFixed(0)} mm²`,
     );
   } else if (Ka <= KaMax) {
     st.push(`K_a min < K_a ≤ K_a max → armadura simple`);
     AsReq = (0.85 * fc * bEff * Ka * d) / fy;
     st.push(
-      `A_s = 0.85·f'_c·b·K_a·d/f_y = 0.85·${fc}·${bEff}·${Ka.toFixed(4)}·${d}/${fy} = ${AsReq.toFixed(0)} mm²`,
+      `A_s = 0.85·f'_c·${bLabel}·K_a·d/f_y = 0.85·${fc}·${bEff}·${Ka.toFixed(4)}·${d}/${fy} = ${AsReq.toFixed(0)} mm²`,
     );
     caseLabel = "armadura simple";
   } else {
@@ -182,13 +185,15 @@ function rectDesign(
     AsReq = (0.85 * fc * bEff * KaMax * d) / fy + AspReq;
     caseLabel = "armadura doble";
     st.push(
-      `M_c = 0.85·f'_c·b·d²·K_a max·(1-K_a max/2) = ${Mc.toFixed(1)} kN·m`,
+      `M_c = 0.85·f'_c·${bLabel}·d²·K_a max·(1-K_a max/2) = ${Mc.toFixed(1)} kN·m`,
     );
     st.push(
       `ΔM_n = ${MnValB.toFixed(1)} − ${Mc.toFixed(1)} = ${deltaMn.toFixed(1)} kN·m`,
     );
     st.push(`A_s' = ΔM_n/[f_y·(d−d')] = ${AspReq.toFixed(0)} mm²`);
-    st.push(`A_s = 0.85·f'_c·b·K_a max·d/f_y + A_s' = ${AsReq.toFixed(0)} mm²`);
+    st.push(
+      `A_s = 0.85·f'_c·${bLabel}·K_a max·d/f_y + A_s' = ${AsReq.toFixed(0)} mm²`,
+    );
   }
 
   return { AsReq, AspReq, Ka, caseLabel };
@@ -277,7 +282,18 @@ export function designConcreteDetailed(input: ConcreteInput): ConcreteResult {
       st.push(
         `a (${a_b.toFixed(1)} mm) ≤ h_f (${flange.hf} mm) → el eje neutro corta la placa: dimensionar como rectangular de ancho b = ${flange.b} mm`,
       );
-      const sol = rectDesign(flange.b, MnVal, fc, fy, d, dp, KaMin, KaMax, st);
+      const sol = rectDesign(
+        flange.b,
+        MnVal,
+        fc,
+        fy,
+        d,
+        dp,
+        KaMin,
+        KaMax,
+        "b",
+        st,
+      );
       AsReq = sol.AsReq;
       AspReq = sol.AspReq;
       Ka = sol.Ka;
@@ -306,7 +322,7 @@ export function designConcreteDetailed(input: ConcreteInput): ConcreteResult {
         `M_nw = M_n − M_nf = ${MnVal.toFixed(1)} − ${Mnf.toFixed(1)} = ${Mnw.toFixed(1)} kN·m`,
       );
       st.push(`Nervio como sección rectangular de ancho b_w = ${bw} mm:`);
-      const sol = rectDesign(bw, Mnw, fc, fy, d, dp, KaMin, KaMax, st);
+      const sol = rectDesign(bw, Mnw, fc, fy, d, dp, KaMin, KaMax, "b_w", st);
       AsReq = Asf + sol.AsReq;
       AspReq = sol.AspReq;
       Ka = sol.Ka;
@@ -322,7 +338,7 @@ export function designConcreteDetailed(input: ConcreteInput): ConcreteResult {
   } else {
     mn_val = Mn_nmm / (0.85 * fc * bw * d * d);
     st.push(`m_n = M_n/(0.85·f'_c·b_w·d²) = ${mn_val.toFixed(4)}`);
-    const sol = rectDesign(bw, MnVal, fc, fy, d, dp, KaMin, KaMax, st);
+    const sol = rectDesign(bw, MnVal, fc, fy, d, dp, KaMin, KaMax, "b_w", st);
     AsReq = sol.AsReq;
     AspReq = sol.AspReq;
     Ka = sol.Ka;
