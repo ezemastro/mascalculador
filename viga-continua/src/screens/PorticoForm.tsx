@@ -18,7 +18,7 @@
  * Mafs. La leyenda está en `PorticoResults` (PR4).
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ScreenHeader from "../components/ScreenHeader";
 import { useLocation, useNavigate } from "react-router";
 import { DecimalInput, MainLayout, SavedBeams } from "@mascalculador/shared";
@@ -35,8 +35,11 @@ import {
   PorticoValidationError,
 } from "../lib/portico-analysis";
 import { createDefaultPorticoState } from "../lib/portico-defaults";
+import { registerAssistantForm } from "../lib/assistant/form-bus";
 import type {
   PorticoState,
+  PorticoNode,
+  PorticoBar,
   PorticoBarLoad,
   PorticoSupportKind,
 } from "../lib/portico";
@@ -112,6 +115,309 @@ export default function PorticoForm() {
   useEffect(() => {
     saveLastPorticoFormState(state, { loadedSaveId, loadedSaveName });
   }, [state, loadedSaveId, loadedSaveName]);
+
+  // ---- Asistente virtual: estado y edición asistida del pórtico ----
+  const assistantStateRef = useRef<Record<string, unknown>>({});
+  useEffect(() => {
+    assistantStateRef.current = {
+      nodes: state.nodes,
+      bars: state.bars,
+      loads: state.loads,
+      supports: state.supports,
+      loadedSaveId,
+      loadedSaveName: loadedSaveName ?? null,
+    };
+  });
+
+  useEffect(() => {
+    const num = (v: unknown): number | null => {
+      if (typeof v === "number" && Number.isFinite(v)) return v;
+      if (typeof v === "string") {
+        const parsed = Number(v.trim().replace(",", "."));
+        if (Number.isFinite(parsed)) return parsed;
+      }
+      return null;
+    };
+    const makeId = (prefix: string): string =>
+      `${prefix}-${Math.random().toString(36).slice(2, 8)}`;
+    const mapSupport = (v: unknown): PorticoSupportKind | null => {
+      const key = String(v).trim().toLowerCase();
+      if (key === "hinge" || key === "articulado" || key === "apoyado") {
+        return "hinge";
+      }
+      if (key === "fixed" || key === "empotrado" || key === "encastrado") {
+        return "fixed";
+      }
+      return null;
+    };
+    const mapLoadKind = (v: unknown): PorticoBarLoad["kind"] | null => {
+      const key = String(v).trim().toLowerCase();
+      if (key === "point" || key === "puntual") return "point";
+      if (key === "distributed" || key === "distribuida") return "distributed";
+      return null;
+    };
+    const controller = {
+      title: "Pórtico",
+      fieldDocs: `Campos (nombres exactos, unidades de UI):
+- nodes: array de nudos {id, x, y} (x e y en metros; el eje +y apunta hacia ABAJO). Mínimo 2, máximo 5.
+- bars: array de barras {id, fromNodeId, toNodeId, E, A_cm2, I_cm4}. E en MPa; A se da en cm² (se guarda como m²) e I en cm⁴ (se guarda como m⁴). También se aceptan A e I directamente en m² y m⁴.
+- supports: array de apoyos {nodeId, kind}; kind "hinge"/"articulado" (fija traslaciones) o "fixed"/"empotrado" (fija además la rotación).
+- loads: array de cargas sobre barra {barId, kind, D, L, angle, a, b?}. kind "point"/"puntual" (kN, posición a en m) o "distributed"/"distribuida" (kN/m entre a y b). angle en grados (0° = +x, 90° = +y = abajo). D=muerta, L=viva.`,
+      getState: () => {
+        const s = assistantStateRef.current;
+        return {
+          nodes: s.nodes,
+          bars: (s.bars as PorticoBar[]).map((b) => ({
+            id: b.id,
+            fromNodeId: b.fromNodeId,
+            toNodeId: b.toNodeId,
+            E: b.E,
+            A_cm2: b.A * 1e4,
+            I_cm4: b.I * 1e8,
+          })),
+          loads: s.loads,
+          supports: s.supports,
+          loadedSaveId: s.loadedSaveId,
+          loadedSaveName: s.loadedSaveName,
+        };
+      },
+      apply: (values: Record<string, unknown>) => {
+        const applied: string[] = [];
+        const errors: string[] = [];
+
+        for (const [key, raw] of Object.entries(values)) {
+          switch (key) {
+            case "nodes": {
+              if (!Array.isArray(raw) || raw.length < 2 || raw.length > CAP) {
+                errors.push(`nodes: array de 2 a ${CAP} nudos {id, x, y}`);
+                break;
+              }
+              const nodes: PorticoNode[] = [];
+              let ok = true;
+              for (const item of raw as unknown[]) {
+                if (!item || typeof item !== "object") {
+                  ok = false;
+                  break;
+                }
+                const o = item as Record<string, unknown>;
+                const id =
+                  typeof o.id === "string" && o.id.trim() ? o.id.trim() : "";
+                const x = num(o.x);
+                const y = num(o.y);
+                if (!id || x === null || y === null) {
+                  ok = false;
+                  break;
+                }
+                nodes.push({ id, x, y });
+              }
+              if (!ok) {
+                errors.push("nodes: cada nudo debe ser {id, x, y} (m)");
+                break;
+              }
+              setState((s) => ({ ...s, nodes }));
+              applied.push("nodes");
+              break;
+            }
+            case "bars": {
+              if (!Array.isArray(raw) || raw.length < 1 || raw.length > CAP) {
+                errors.push(`bars: array de 1 a ${CAP} barras`);
+                break;
+              }
+              const bars: PorticoBar[] = [];
+              let ok = true;
+              for (const item of raw as unknown[]) {
+                if (!item || typeof item !== "object") {
+                  ok = false;
+                  break;
+                }
+                const o = item as Record<string, unknown>;
+                const id =
+                  typeof o.id === "string" && o.id.trim() ? o.id.trim() : "";
+                const fromNodeId =
+                  typeof o.fromNodeId === "string" ? o.fromNodeId : "";
+                const toNodeId =
+                  typeof o.toNodeId === "string" ? o.toNodeId : "";
+                const E = num(o.E) ?? 1;
+                const hasAcm2 = o.A_cm2 != null;
+                const aRaw = num(hasAcm2 ? o.A_cm2 : o.A);
+                const A = aRaw === null ? null : aRaw / (hasAcm2 ? 1e4 : 1);
+                const hasIcm4 = o.I_cm4 != null;
+                const iRaw = num(hasIcm4 ? o.I_cm4 : o.I);
+                const I = iRaw === null ? null : iRaw / (hasIcm4 ? 1e8 : 1);
+                if (
+                  !id ||
+                  !fromNodeId ||
+                  !toNodeId ||
+                  A === null ||
+                  I === null
+                ) {
+                  ok = false;
+                  break;
+                }
+                bars.push({ id, fromNodeId, toNodeId, E, A, I });
+              }
+              if (!ok) {
+                errors.push(
+                  "bars: cada barra debe ser {id, fromNodeId, toNodeId, E, A_cm2, I_cm4}",
+                );
+                break;
+              }
+              setState((s) => ({ ...s, bars }));
+              applied.push("bars");
+              break;
+            }
+            case "supports": {
+              if (!Array.isArray(raw) || raw.length > CAP) {
+                errors.push(`supports: array de hasta ${CAP} apoyos`);
+                break;
+              }
+              const supports: Array<{
+                id: string;
+                nodeId: string;
+                kind: PorticoSupportKind;
+              }> = [];
+              let ok = true;
+              for (const item of raw as unknown[]) {
+                if (!item || typeof item !== "object") {
+                  ok = false;
+                  break;
+                }
+                const o = item as Record<string, unknown>;
+                const nodeId = typeof o.nodeId === "string" ? o.nodeId : "";
+                const kind = mapSupport(o.kind);
+                if (!nodeId || !kind) {
+                  ok = false;
+                  break;
+                }
+                supports.push({
+                  id:
+                    typeof o.id === "string" && o.id.trim()
+                      ? o.id.trim()
+                      : makeId("Sup"),
+                  nodeId,
+                  kind,
+                });
+              }
+              if (!ok) {
+                errors.push(
+                  'supports: cada apoyo debe ser {nodeId, kind} con kind "hinge" o "fixed"',
+                );
+                break;
+              }
+              if (supports.length > 0 || raw.length === 0) {
+                setState((s) => ({ ...s, supports }));
+                applied.push("supports");
+              }
+              break;
+            }
+            case "loads": {
+              if (!Array.isArray(raw) || raw.length > CAP) {
+                errors.push(`loads: array de hasta ${CAP} cargas`);
+                break;
+              }
+              const loads: PorticoBarLoad[] = [];
+              let ok = true;
+              for (const item of raw as unknown[]) {
+                if (!item || typeof item !== "object") {
+                  ok = false;
+                  break;
+                }
+                const o = item as Record<string, unknown>;
+                const barId = typeof o.barId === "string" ? o.barId : "";
+                const kind = mapLoadKind(o.kind);
+                const D = num(o.D) ?? 0;
+                const L = num(o.L) ?? 0;
+                const angle = num(o.angle) ?? 0;
+                const a = num(o.a) ?? 0;
+                if (!barId || !kind) {
+                  ok = false;
+                  break;
+                }
+                const load: PorticoBarLoad = {
+                  id:
+                    typeof o.id === "string" && o.id.trim()
+                      ? o.id.trim()
+                      : makeId("L"),
+                  barId,
+                  kind,
+                  D,
+                  L,
+                  angle,
+                  a,
+                };
+                if (kind === "distributed") {
+                  load.b = num(o.b) ?? a;
+                }
+                loads.push(load);
+              }
+              if (!ok) {
+                errors.push(
+                  "loads: cada carga debe ser {barId, kind, D, L, angle, a, b?}",
+                );
+                break;
+              }
+              setState((s) => ({ ...s, loads }));
+              applied.push("loads");
+              break;
+            }
+            default:
+              errors.push(`campo desconocido: ${key}`);
+          }
+        }
+        return { applied, errors };
+      },
+      save: async ({ name }: { name: string }) => {
+        const trimmed = name.trim();
+        if (!trimmed) return { applied: [], errors: ["se requiere un nombre"] };
+        const s = assistantStateRef.current;
+        const input: PorticoState = {
+          nodes: s.nodes as PorticoState["nodes"],
+          bars: s.bars as PorticoState["bars"],
+          loads: s.loads as PorticoState["loads"],
+          supports: s.supports as PorticoState["supports"],
+        };
+        try {
+          if (s.loadedSaveId) {
+            updatePorticoInput(s.loadedSaveId as string, {
+              name:
+                typeof s.loadedSaveName === "string"
+                  ? s.loadedSaveName
+                  : trimmed,
+              input,
+            });
+            return {
+              applied: [`guardado actualizado: ${s.loadedSaveName ?? ""}`],
+              errors: [],
+            };
+          }
+          const saved = savePorticoInput({ name: trimmed, input });
+          setLoadedSaveId(saved.id);
+          setLoadedSaveName(trimmed);
+          return {
+            applied: [`guardado como "${trimmed}"`],
+            errors: [],
+          };
+        } catch (err) {
+          return {
+            applied: [],
+            errors: [err instanceof Error ? err.message : "error al guardar"],
+          };
+        }
+      },
+    };
+    const cleanupModeQuery = registerAssistantForm({
+      screen: "/?mode=portico",
+      ...controller,
+    });
+    const cleanupNamedQuery = registerAssistantForm({
+      screen: "/viga-continua?mode=portico",
+      ...controller,
+    });
+    return () => {
+      cleanupModeQuery();
+      cleanupNamedQuery();
+    };
+  }, []);
 
   // ---- Manipuladores de filas (cap 5/5/5/5) ----
 

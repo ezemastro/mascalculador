@@ -14,6 +14,7 @@ import AdminScreen from "./screens/AdminScreen.tsx";
 import VigaContinuaForm from "./screens/VigaContinuaForm.tsx";
 import VigaContinuaResults from "./screens/VigaContinuaResults.tsx";
 import PrintPage from "./screens/PrintPage.tsx";
+import AssistantWidget from "./components/AssistantWidget.tsx";
 
 // Route + URL contract (since PR1):
 //   /                                  → VigaContinuaForm (default mode)
@@ -107,6 +108,7 @@ function NavBar({
       <main className="px-4 py-4">
         <Outlet />
       </main>
+      <AssistantWidget />
     </div>
   );
 }

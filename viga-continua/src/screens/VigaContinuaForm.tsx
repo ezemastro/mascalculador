@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import { DecimalInput } from "@mascalculador/shared";
@@ -10,6 +10,7 @@ import {
   updateVigaContinuaInput,
   getSavedVigasContinuas,
 } from "../lib/storage";
+import { registerAssistantForm } from "../lib/assistant/form-bus";
 import type { AnalysisLoad, VigaContinuaState } from "../lib/viga-continua";
 import ModeSelector, { type Mode } from "../components/ModeSelector";
 import ScreenHeader from "../components/ScreenHeader";
@@ -91,6 +92,186 @@ export default function VigaContinuaForm() {
       loadedSaveName: loadedSaveName ?? undefined,
     });
   }, [spanLengths, supportTypes, loads, loadedSaveId, loadedSaveName]);
+
+  // ---- Asistente virtual: estado y edición asistida de la viga ----
+  const assistantStateRef = useRef<Record<string, unknown>>({});
+  useEffect(() => {
+    assistantStateRef.current = {
+      spans: spanLengths,
+      supportTypes,
+      loads,
+      loadedSaveId,
+      loadedSaveName: loadedSaveName ?? null,
+    };
+  });
+
+  useEffect(() => {
+    const num = (v: unknown): number | null => {
+      if (typeof v === "number" && Number.isFinite(v)) return v;
+      if (typeof v === "string") {
+        const parsed = Number(v.trim().replace(",", "."));
+        if (Number.isFinite(parsed)) return parsed;
+      }
+      return null;
+    };
+    const makeId = (): string =>
+      Math.random().toString(36).slice(2) + Date.now().toString(36);
+    const mapSupport = (v: unknown): SupportType | null => {
+      const key = String(v).trim().toLowerCase();
+      if (key === "simple" || key === "articulado" || key === "apoyado") {
+        return "simple";
+      }
+      if (key === "fixed" || key === "empotrado" || key === "encastrado") {
+        return "fixed";
+      }
+      if (key === "free" || key === "libre" || key === "voladizo") {
+        return "free";
+      }
+      return null;
+    };
+    const controller = {
+      title: "Viga continua",
+      fieldDocs: `Campos (nombres exactos, unidades de UI):
+- spans: array de luces por tramo en metros (ej [6, 5]); define la cantidad de tramos (1 a 5).
+- supportTypes: array de apoyos, largo = tramos + 1; valores "simple" (articulado/apoyado), "fixed" (empotrado/encastrado), "free" (libre/voladizo, solo en extremos).
+- loads: array de cargas. Puntual: {type:"point", D, L, position} (kN, posición en metros desde el apoyo izquierdo). Distribuida: {type:"distributed", D, L, start, end} (kN/m). D=muerta, L=viva; U=1.2·D+1.6·L.`,
+      getState: () => assistantStateRef.current,
+      apply: (values: Record<string, unknown>) => {
+        const applied: string[] = [];
+        const errors: string[] = [];
+        const s = assistantStateRef.current;
+        const totalLength = (s.spans as number[]).reduce((a, b) => a + b, 0);
+
+        for (const [key, raw] of Object.entries(values)) {
+          switch (key) {
+            case "spans": {
+              if (
+                !Array.isArray(raw) ||
+                raw.length < 1 ||
+                raw.length > 5 ||
+                raw.some((v) => {
+                  const n = num(v);
+                  return n === null || n <= 0;
+                })
+              ) {
+                errors.push("spans: array de 1 a 5 números > 0 (luces en m)");
+                break;
+              }
+              const arr = (raw as unknown[]).map((v) => num(v) as number);
+              setSpanLengths(arr);
+              setSpanCount(arr.length);
+              setSupportTypes((prev) => {
+                const next = prev.slice(0, arr.length + 1);
+                while (next.length < arr.length + 1) next.push("simple");
+                return next;
+              });
+              applied.push("spans");
+              break;
+            }
+            case "supportTypes": {
+              if (!Array.isArray(raw)) {
+                errors.push("supportTypes: array de apoyos");
+                break;
+              }
+              const mapped = raw.map((v) => mapSupport(v));
+              if (mapped.some((v) => v === null)) {
+                errors.push('supportTypes: valores "simple", "fixed" o "free"');
+                break;
+              }
+              setSupportTypes(mapped as SupportType[]);
+              applied.push("supportTypes");
+              break;
+            }
+            case "loads": {
+              if (!Array.isArray(raw)) {
+                errors.push("loads: array de cargas");
+                break;
+              }
+              const loads: AnalysisLoad[] = [];
+              let ok = true;
+              for (const item of raw as unknown[]) {
+                if (!item || typeof item !== "object") {
+                  ok = false;
+                  break;
+                }
+                const o = item as Record<string, unknown>;
+                const D = num(o.D) ?? 0;
+                const L = num(o.L) ?? 0;
+                if (o.type === "distributed") {
+                  loads.push({
+                    id: makeId(),
+                    type: "distributed",
+                    D,
+                    L,
+                    start: num(o.start) ?? 0,
+                    end: num(o.end) ?? totalLength,
+                  });
+                } else {
+                  loads.push({
+                    id: makeId(),
+                    type: "point",
+                    D,
+                    L,
+                    position: num(o.position) ?? 0,
+                  });
+                }
+              }
+              if (!ok) {
+                errors.push("loads: cada carga debe ser {type, D, L, ...}");
+                break;
+              }
+              setLoads(loads);
+              applied.push("loads");
+              break;
+            }
+            default:
+              errors.push(`campo desconocido: ${key}`);
+          }
+        }
+        return { applied, errors };
+      },
+      save: async ({ name }: { name: string }) => {
+        const trimmed = name.trim();
+        if (!trimmed) return { applied: [], errors: ["se requiere un nombre"] };
+        const s = assistantStateRef.current;
+        const input = {
+          spans: s.spans as number[],
+          supportTypes: s.supportTypes as SupportType[],
+          loads: s.loads as AnalysisLoad[],
+        };
+        try {
+          if (s.loadedSaveId) {
+            updateVigaContinuaInput(s.loadedSaveId as string, { input });
+            return {
+              applied: [`guardado actualizado: ${s.loadedSaveName ?? ""}`],
+              errors: [],
+            };
+          }
+          const saved = saveVigaContinuaInput(trimmed, { input });
+          setLoadedSaveId(saved.id);
+          setLoadedSaveName(trimmed);
+          return {
+            applied: [`guardado como "${trimmed}"`],
+            errors: [],
+          };
+        } catch (err) {
+          return {
+            applied: [],
+            errors: [err instanceof Error ? err.message : "error al guardar"],
+          };
+        }
+      },
+    };
+    const cleanupRoot = registerAssistantForm({ screen: "/", ...controller });
+    const cleanupNamed = registerAssistantForm({
+      screen: "/viga-continua",
+      ...controller,
+    });
+    return () => {
+      cleanupRoot();
+      cleanupNamed();
+    };
+  }, []);
 
   function setSpanCountAndAdjust(count: number) {
     setSpanLengths((prev) =>
