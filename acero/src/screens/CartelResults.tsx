@@ -1,6 +1,9 @@
+import { useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import ScreenHeader from "../components/ScreenHeader";
+import { pickObraIfNeeded } from "../components/ObraPicker";
+import { saveBeam, updateSave } from "../lib/storage";
 import { calculateCartel } from "../lib/cartel-calc";
 import type { CartelState } from "./CartelForm";
 
@@ -8,6 +11,13 @@ export default function CartelResults() {
   const location = useLocation();
   const navigate = useNavigate();
   const state = location.state as CartelState | null;
+
+  const [savedId, setSavedId] = useState<string | null>(
+    state?.loadedSaveId ?? null,
+  );
+  const [savedName, setSavedName] = useState<string | null>(
+    state?.loadedSaveName ?? null,
+  );
 
   if (!state) {
     return (
@@ -27,19 +37,83 @@ export default function CartelResults() {
 
   const result = calculateCartel(state);
 
+  const saveData: Record<string, unknown> = {
+    anchoCartel: state.anchoCartel,
+    altoCartel: state.altoCartel,
+    despegue: state.despegue,
+    sepColumnas: state.sepColumnas,
+    sepCorreas: state.sepCorreas,
+    tipoColumna: state.tipoColumna,
+    tienePuntal: state.tienePuntal,
+    hPuntal: state.hPuntal,
+    dPuntal: state.dPuntal,
+    velocidadViento: state.velocidadViento,
+    categoria: state.categoria,
+    exposicion: state.exposicion,
+    hCol: state.hCol,
+    aCol: state.aCol,
+    perfilCordon: state.perfilCordon,
+    perfilDiagonal: state.perfilDiagonal,
+    perfilMontante: state.perfilMontante,
+    Fy: state.Fy,
+    perfilIPN: state.perfilIPN,
+    separacionCol: state.separacionCol,
+    cantColumnas: state.cantColumnas,
+    vueloLateral: state.vueloLateral,
+    KGlobal: state.KGlobal,
+    tipoPuntal: state.tipoPuntal,
+  };
+
+  async function handleSaveFromResults() {
+    if (savedId) {
+      updateSave(savedId, saveData);
+      return;
+    }
+
+    const name = prompt("Nombre para guardar este cartel:");
+    if (!name) return;
+    const target = await pickObraIfNeeded();
+    if (target === null) return;
+    try {
+      const saved = saveBeam(name, "cartel", saveData, target);
+      setSavedId(saved.id);
+      setSavedName(name);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Error al guardar");
+    }
+  }
+
   return (
     <MainLayout>
       <ScreenHeader
         title={`Cartel ${result.nColumnas} col. × ${result.nCorreas} correas`}
         subtitle={`${state.anchoCartel} × ${state.altoCartel} m · d = ${state.despegue} m · V = ${state.velocidadViento} m/s`}
-        badge={{ label: "Resultado", tone: "neutral" }}
+        badge={
+          savedName
+            ? { label: savedName, tone: "saved" }
+            : { label: "Resultado", tone: "neutral" }
+        }
         actions={
           <div className="flex items-center gap-2">
             <button
-              onClick={() => navigate("/cartel", { state })}
+              onClick={() =>
+                navigate("/cartel", {
+                  state: {
+                    ...state,
+                    loadedSaveId: savedId ?? undefined,
+                    loadedSaveName: savedName ?? undefined,
+                  },
+                })
+              }
               className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-4 py-1.5 rounded-lg"
             >
               ← Volver
+            </button>
+            <button
+              onClick={handleSaveFromResults}
+              className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-4 py-1.5 rounded-lg"
+            >
+              {savedId ? "💾 Guardar corrección" : "💾 Guardar"}
             </button>
             <button
               onClick={() => navigate("/cartel-print", { state })}

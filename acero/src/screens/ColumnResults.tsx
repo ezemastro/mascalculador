@@ -1,6 +1,9 @@
+import { useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout } from "@mascalculador/shared";
 import ScreenHeader from "../components/ScreenHeader";
+import { pickObraIfNeeded } from "../components/ObraPicker";
+import { saveBeam, updateSave } from "../lib/storage";
 import { IPN_PROFILES } from "../lib/profiles";
 import { UPN_PROFILES, getDoubleUPN } from "../lib/upn-profiles";
 import { TUBE_PROFILES } from "../lib/tube-profiles";
@@ -16,6 +19,13 @@ export default function ColumnResults() {
   const location = useLocation();
   const navigate = useNavigate();
   const state = location.state as ColumnState | null;
+
+  const [savedId, setSavedId] = useState<string | null>(
+    state?.loadedSaveId ?? null,
+  );
+  const [savedName, setSavedName] = useState<string | null>(
+    state?.loadedSaveName ?? null,
+  );
 
   if (!state) {
     return (
@@ -54,6 +64,47 @@ export default function ColumnResults() {
     Ky,
     Fy,
   } = state;
+
+  async function handleSaveFromResults() {
+    const data: Record<string, unknown> = {
+      profileType,
+      profileName,
+      upnName,
+      upnGap,
+      tubeName,
+      armadaBf,
+      armadaTf,
+      armadaHw,
+      armadaTw,
+      cajonH,
+      cajonB,
+      cajonT,
+      Pu,
+      Mux,
+      Muy,
+      L,
+      Kx,
+      Ky,
+      Fy,
+    };
+
+    if (savedId) {
+      updateSave(savedId, data);
+      return;
+    }
+
+    const name = prompt("Nombre para guardar esta columna:");
+    if (!name) return;
+    const target = await pickObraIfNeeded();
+    if (target === null) return;
+    try {
+      const saved = saveBeam(name, "columna", data, target);
+      setSavedId(saved.id);
+      setSavedName(name);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Error al guardar");
+    }
+  }
 
   let Ag: number,
     Ix: number,
@@ -210,14 +261,32 @@ export default function ColumnResults() {
       <ScreenHeader
         title={`Columna ${displayName}`}
         subtitle={`L = ${L} mm · Kx = ${Kx} · Ky = ${Ky} · Fy = ${Fy} MPa`}
-        badge={{ label: "Resultado", tone: "neutral" }}
+        badge={
+          savedName
+            ? { label: savedName, tone: "saved" }
+            : { label: "Resultado", tone: "neutral" }
+        }
         actions={
           <div className="flex items-center gap-2">
             <button
-              onClick={() => navigate("/columns", { state })}
+              onClick={() =>
+                navigate("/columns", {
+                  state: {
+                    ...state,
+                    loadedSaveId: savedId ?? undefined,
+                    loadedSaveName: savedName ?? undefined,
+                  },
+                })
+              }
               className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-4 py-1.5 rounded-lg"
             >
               ← Volver
+            </button>
+            <button
+              onClick={handleSaveFromResults}
+              className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-4 py-1.5 rounded-lg"
+            >
+              {savedId ? "💾 Guardar corrección" : "💾 Guardar"}
             </button>
             <button
               onClick={() => navigate("/column-print", { state })}

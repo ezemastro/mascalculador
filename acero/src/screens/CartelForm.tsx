@@ -45,6 +45,8 @@ export interface CartelState {
   // Front view
   cantColumnas?: number;
   vueloLateral?: number;
+  loadedSaveId?: string | null;
+  loadedSaveName?: string | null;
 }
 
 export default function CartelForm() {
@@ -118,8 +120,15 @@ export default function CartelForm() {
     state?.KGlobal ?? lastForm?.KGlobal ?? 1.0,
   );
 
-  const [loadedSaveId, setLoadedSaveId] = useState<string | null>(null);
-  const [loadedSaveName, setLoadedSaveName] = useState<string | null>(null);
+  // Id del elemento cargado (null = nuevo, sin guardar). Se restaura desde
+  // results al volver, para no perder la identidad del guardado.
+  const [loadedSaveId, setLoadedSaveId] = useState<string | null>(
+    state?.loadedSaveId ?? null,
+  );
+  // Nombre del elemento cargado (para mostrar)
+  const [loadedSaveName, setLoadedSaveName] = useState<string | null>(
+    state?.loadedSaveName ?? null,
+  );
 
   // Derive sepColumnas from cantColumnas + vueloLateral
   const computedSepColumnas =
@@ -297,6 +306,8 @@ export default function CartelForm() {
       vueloLateral,
       KGlobal,
       tipoPuntal,
+      loadedSaveId: loadedSaveId ?? undefined,
+      loadedSaveName: loadedSaveName ?? undefined,
     };
     navigate("/cartel-results", { state: cartelState });
   }

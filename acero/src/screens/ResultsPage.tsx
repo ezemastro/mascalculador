@@ -1,7 +1,10 @@
+import { useState } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { Mafs, Plot, Text, Vector } from "mafs";
 import { MainLayout } from "@mascalculador/shared";
 import ScreenHeader from "../components/ScreenHeader";
+import { pickObraIfNeeded } from "../components/ObraPicker";
+import { saveBeam, updateSave } from "../lib/storage";
 import {
   calculateBeamDual,
   formatForce,
@@ -20,7 +23,16 @@ export default function ResultsPage() {
     loads?: Load[];
     beamConfig?: BeamConfig;
     designParams?: SteelDesignParams;
+    loadedSaveId?: string | null;
+    loadedSaveName?: string | null;
   } | null;
+
+  const [savedId, setSavedId] = useState<string | null>(
+    state?.loadedSaveId ?? null,
+  );
+  const [savedName, setSavedName] = useState<string | null>(
+    state?.loadedSaveName ?? null,
+  );
 
   if (!state?.loads || !state?.beamConfig) {
     return (
@@ -40,6 +52,43 @@ export default function ResultsPage() {
 
   const { loads, beamConfig } = state;
   const designParams = state.designParams;
+
+  async function handleSaveFromResults() {
+    const data = {
+      spans: beamConfig.spans,
+      supportTypes: beamConfig.supportTypes,
+      loads: loads.map((l) => ({
+        ...l,
+        magnitude: (l.deadLoad ?? 0) + (l.liveLoad ?? 0),
+      })),
+      profileName: designParams?.profileName ?? "IPN 200",
+      profileType: designParams?.profileType ?? "IPN",
+      Fy: designParams?.Fy ?? 235,
+      Lb: (designParams?.Lb ?? L * 1000) / 10,
+      Lb1: (designParams?.Lb1 ?? designParams?.Lb ?? L * 1000) / 10,
+      Lb2: (designParams?.Lb2 ?? designParams?.Lb ?? L * 1000) / 10,
+      Cb: designParams?.Cb ?? 1.0,
+      deflectionLimit: designParams?.deflectionLimit ?? 300,
+      loadPosition: designParams?.loadPosition ?? "top",
+    };
+
+    if (savedId) {
+      updateSave(savedId, data);
+      return;
+    }
+
+    const name = prompt("Nombre para guardar esta viga:");
+    if (!name) return;
+    const target = await pickObraIfNeeded();
+    if (target === null) return;
+    try {
+      const saved = saveBeam(name, "acero", data, target);
+      setSavedId(saved.id);
+      setSavedName(name);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Error al guardar");
+    }
+  }
   const { spans, supportTypes } = beamConfig;
   const L = spans.reduce((a, b) => a + b, 0);
 
@@ -224,18 +273,34 @@ export default function ResultsPage() {
       <ScreenHeader
         title="Resultados"
         subtitle={`Viga de ${formatLength(L)}`}
-        badge={{ label: "Resultado", tone: "neutral" }}
+        badge={
+          savedName
+            ? { label: savedName, tone: "saved" }
+            : { label: "Resultado", tone: "neutral" }
+        }
         actions={
           <div className="flex items-center gap-2">
             <button
               onClick={() =>
                 navigate("/viga-acero", {
-                  state: { loads, beamConfig, designParams },
+                  state: {
+                    loads,
+                    beamConfig,
+                    designParams,
+                    loadedSaveId: savedId ?? undefined,
+                    loadedSaveName: savedName ?? undefined,
+                  },
                 })
               }
               className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-4 py-1.5 rounded-lg"
             >
               ← Volver
+            </button>
+            <button
+              onClick={handleSaveFromResults}
+              className="text-sm bg-surface-alt border border-border hover:bg-surface text-text-muted px-4 py-1.5 rounded-lg"
+            >
+              {savedId ? "💾 Guardar corrección" : "💾 Guardar"}
             </button>
             <button
               onClick={() =>

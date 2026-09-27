@@ -37,6 +37,8 @@ export interface ColumnState {
   Kx: number;
   Ky: number;
   Fy: number;
+  loadedSaveId?: string | null;
+  loadedSaveName?: string | null;
 }
 
 export default function ColumnForm() {
@@ -103,10 +105,15 @@ export default function ColumnForm() {
   const [Ky, setKy] = useState(state?.Ky ?? lastForm?.Ky ?? 1.0);
   const [Fy, setFy] = useState(state?.Fy ?? lastForm?.Fy ?? 235);
 
-  // Id del elemento cargado (null = nuevo, sin guardar)
-  const [loadedSaveId, setLoadedSaveId] = useState<string | null>(null);
+  // Id del elemento cargado (null = nuevo, sin guardar). Se restaura desde
+  // results al volver, para no perder la identidad del guardado.
+  const [loadedSaveId, setLoadedSaveId] = useState<string | null>(
+    state?.loadedSaveId ?? null,
+  );
   // Nombre del elemento cargado (para mostrar)
-  const [loadedSaveName, setLoadedSaveName] = useState<string | null>(null);
+  const [loadedSaveName, setLoadedSaveName] = useState<string | null>(
+    state?.loadedSaveName ?? null,
+  );
 
   // Guard: skip first auto-save to avoid overwriting router state with defaults
   const mountedRef = useRef(false);
@@ -248,6 +255,8 @@ export default function ColumnForm() {
       Kx,
       Ky,
       Fy,
+      loadedSaveId: loadedSaveId ?? undefined,
+      loadedSaveName: loadedSaveName ?? undefined,
     };
     navigate("/column-results", { state: columnState });
   }

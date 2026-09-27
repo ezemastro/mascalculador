@@ -22,6 +22,8 @@ export default function FormPage() {
     loads?: Load[];
     beamConfig?: BeamConfig;
     designParams?: SteelDesignParams;
+    loadedSaveId?: string | null;
+    loadedSaveName?: string | null;
   } | null;
 
   // Auto-restore last form state when no navigation state is present
@@ -76,10 +78,15 @@ export default function FormPage() {
       "top",
   );
 
-  // Id del elemento cargado (null = nuevo, sin guardar)
-  const [loadedSaveId, setLoadedSaveId] = useState<string | null>(null);
+  // Id del elemento cargado (null = nuevo, sin guardar). Se restaura desde
+  // results al volver, para no perder la identidad del guardado.
+  const [loadedSaveId, setLoadedSaveId] = useState<string | null>(
+    state?.loadedSaveId ?? null,
+  );
   // Nombre del elemento cargado (para mostrar)
-  const [loadedSaveName, setLoadedSaveName] = useState<string | null>(null);
+  const [loadedSaveName, setLoadedSaveName] = useState<string | null>(
+    state?.loadedSaveName ?? null,
+  );
 
   // Auto-save form state to localStorage on every change
   useEffect(() => {
@@ -216,7 +223,13 @@ export default function FormPage() {
       loadPosition,
     };
     navigate("/results", {
-      state: { loads, beamConfig, designParams },
+      state: {
+        loads,
+        beamConfig,
+        designParams,
+        loadedSaveId: loadedSaveId ?? undefined,
+        loadedSaveName: loadedSaveName ?? undefined,
+      },
     });
   }
 
