@@ -951,6 +951,8 @@ export default function CartelForm() {
               vueloLateral={vueloLateral}
               sepColumnas={computedSepColumnas}
               sepCorreas={sepCorreas}
+              tipoColumna={tipoColumna}
+              separacionCol={separacionCol ?? 0}
             />
           </div>
         </section>
@@ -1014,7 +1016,7 @@ export default function CartelForm() {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-text-muted">
-                    h<sub>col</sub> — Ancho sección (m)
+                    h<sub>col</sub> — Profundidad (m)
                   </span>
                   <DecimalInput value={hCol} onChange={setHCol} />
                 </label>
@@ -1048,7 +1050,7 @@ export default function CartelForm() {
                 {tipoColumna === 4 && (
                   <label className="flex flex-col gap-1">
                     <span className="text-xs text-text-muted">
-                      sep<sub>col</sub> — Profundidad (m)
+                      sep<sub>col</sub> — Ancho columna (m)
                     </span>
                     <DecimalInput
                       value={separacionCol}

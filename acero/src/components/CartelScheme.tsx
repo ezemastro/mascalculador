@@ -464,6 +464,8 @@ export function CartelFrontalScheme({
   vueloLateral,
   sepColumnas,
   sepCorreas,
+  tipoColumna,
+  separacionCol,
 }: {
   anchoCartel: number;
   altoCartel: number;
@@ -472,6 +474,8 @@ export function CartelFrontalScheme({
   vueloLateral: number;
   sepColumnas: number;
   sepCorreas: number;
+  tipoColumna: number;
+  separacionCol: number;
 }) {
   const A = Math.max(anchoCartel, 0.5);
   const hAlto = Math.max(altoCartel, 0.3);
@@ -529,28 +533,81 @@ export function CartelFrontalScheme({
     >
       <Ground x1={px(-0.2)} x2={px(A + 0.2)} y={Y0} />
 
-      {/* Columnas: visibles bajo el panel, punteadas detrás */}
+      {/* Columnas: visibles bajo el panel, punteadas detrás.
+          Tipo 4 (cajón de 4 cordones): se dibuja el ancho sep_col entre
+          cordones; tipos 1/2 planos se ven de canto (una línea). */}
       {Array.from({ length: n }, (_, i) => {
-        const x = px(colX(i));
+        const xc = px(colX(i));
+        const isBox = tipoColumna === 4;
+        const w = (isBox ? Math.max(separacionCol || 0.1, 0.05) : 0.1) * s;
+        const xa = xc - w / 2;
+        const xb = xc + w / 2;
         return (
           <g key={i}>
             <line
-              x1={x}
+              x1={xa}
               y1={Y0}
-              x2={x}
+              x2={xa}
               y2={panelBot}
               stroke={C_CHORD}
-              strokeWidth="2.4"
+              strokeWidth="2.2"
             />
             <line
-              x1={x}
+              x1={xb}
+              y1={Y0}
+              x2={xb}
+              y2={panelBot}
+              stroke={C_CHORD}
+              strokeWidth="2.2"
+            />
+            <line
+              x1={xa}
               y1={panelBot}
-              x2={x}
+              x2={xa}
               y2={panelTop}
               stroke={C_CHORD}
               strokeWidth="1"
               strokeDasharray="3 3"
             />
+            <line
+              x1={xb}
+              y1={panelBot}
+              x2={xb}
+              y2={panelTop}
+              stroke={C_CHORD}
+              strokeWidth="1"
+              strokeDasharray="3 3"
+            />
+            {isBox && (
+              <>
+                <line
+                  x1={xa}
+                  y1={Y0}
+                  x2={xb}
+                  y2={Y0}
+                  stroke={C_MONT}
+                  strokeWidth="1"
+                />
+                <line
+                  x1={xa}
+                  y1={panelBot}
+                  x2={xb}
+                  y2={panelBot}
+                  stroke={C_MONT}
+                  strokeWidth="1"
+                />
+                {colX(i) === colX(0) && i === 0 && (
+                  <HDim
+                    y={(Y0 + panelBot) / 2}
+                    x1={xa}
+                    x2={xb}
+                    base="sep"
+                    sub="col"
+                    value={fmt(separacionCol)}
+                  />
+                )}
+              </>
+            )}
           </g>
         );
       })}

@@ -182,7 +182,7 @@ function NavCartelPrintout({ state }: { state: CartelState }) {
               <>
                 <tr>
                   <td className="font-bold p-1 border w-40">
-                    h<sub>col</sub> (ancho)
+                    h<sub>col</sub> (prof.)
                   </td>
                   <td className="p-1 border">{state.hCol} m</td>
                   <td className="font-bold p-1 border w-40">
@@ -193,7 +193,7 @@ function NavCartelPrintout({ state }: { state: CartelState }) {
                 {state.tipoColumna === 4 && (
                   <tr>
                     <td className="font-bold p-1 border">
-                      sep<sub>col</sub> (prof.)
+                      sep<sub>col</sub> (ancho)
                     </td>
                     <td className="p-1 border">{state.separacionCol} m</td>
                     <td className="font-bold p-1 border">Cordones</td>

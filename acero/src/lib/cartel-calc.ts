@@ -1021,7 +1021,7 @@ export function calculateCartel(input: CartelInput): CartelResult {
     const trussTitle = tipoColumna === 4 ? "Celosía completa (4 cordones)" : "Reticulado de columna";
     steps.push(
       `--- ${trussTitle} ---`,
-      `h_col = ${hCol} m (ancho sección), a_col = ${aCol} m (alto panel)`,
+      `h_col = ${hCol} m (profundidad), a_col = ${aCol} m (alto panel)`,
     );
     if (tipoColumna === 4) {
       steps.push(
