@@ -255,7 +255,7 @@ export default function BasesForm() {
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs text-text-muted">
-                D<sub>f</sub> (cm)
+                D<sub>f</sub> — profundidad de fundación (cm)
               </span>
               <input
                 type="number"
