@@ -2,6 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { MainLayout, SavedBeams } from "@mascalculador/shared";
 import ScreenHeader from "../components/ScreenHeader";
+import {
+  CartelLateralScheme,
+  CartelFrontalScheme,
+} from "../components/CartelScheme";
 import { ANGLE_PROFILES } from "../lib/angle-profiles";
 import { IPN_PROFILES } from "../lib/profiles";
 import {
@@ -316,7 +320,11 @@ export default function CartelForm() {
     <MainLayout>
       <ScreenHeader
         title="Carteles"
-        subtitle={loadedSaveName ? `Editando: ${loadedSaveName}` : "CIRSOC 102 — Viento y reticulado de columnas"}
+        subtitle={
+          loadedSaveName
+            ? `Editando: ${loadedSaveName}`
+            : "CIRSOC 102 — Viento y reticulado de columnas"
+        }
         badge={
           loadedSaveName
             ? { label: loadedSaveName, tone: "saved" }
@@ -582,6 +590,19 @@ export default function CartelForm() {
                 </div>
               </div>
             )}
+          </div>
+
+          <div className="mt-5 flex justify-center rounded-lg bg-surface-alt/40 p-3">
+            <CartelLateralScheme
+              altoCartel={altoCartel}
+              despegue={despegue}
+              hCol={hCol}
+              aCol={aCol}
+              tipoColumna={tipoColumna}
+              tienePuntal={tienePuntal}
+              hPuntal={hPuntal}
+              dPuntal={dPuntal}
+            />
           </div>
         </section>
 
@@ -921,6 +942,17 @@ export default function CartelForm() {
                 ` (vuelo ${vueloLateral.toFixed(2)} m en cada extremo)`}
             </p>
           )}
+          <div className="mt-5 flex justify-center rounded-lg bg-surface-alt/40 p-3">
+            <CartelFrontalScheme
+              anchoCartel={anchoCartel}
+              altoCartel={altoCartel}
+              despegue={despegue}
+              cantColumnas={cantColumnas}
+              vueloLateral={vueloLateral}
+              sepColumnas={computedSepColumnas}
+              sepCorreas={sepCorreas}
+            />
+          </div>
         </section>
 
         {/* Columna — dinámico según tipo */}
