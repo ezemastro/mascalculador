@@ -45,7 +45,7 @@ export interface DesignResult {
   LrEff: number; // mm (load-position-adjusted)
   Mr: number; // N·mm = 0.7·Fy·Sx·1e3
   Fe: number; // MPa (tensión crítica elástica equivalente = Mcr/Sx)
-  Mcr: number; // N·mm = 1.28·Cb·Sx·X1/(Lb/ry) capped at Mp (CIRSOC F.1.13.a)
+  Mcr: number; // N·mm = Cb·Fe_elástica·Sx capped at Mp (solución clásica con alabeo)
   X1: number; // MPa (CIRSOC F.1.13.a)
   FL: number; // MPa
   X2: number; // 1/MPa² (CIRSOC, warping factor)
@@ -136,8 +136,11 @@ export function checkBeam(
   // Lp base (carga en ala superior): CIRSOC — factor 1.59 para doble T
   const Lp = 1.59 * ry_mm * Math.sqrt(E / Fy); // mm
 
-  // Lr base (carga en ala superior): CIRSOC — Lr = 1.28·ry·X1/FL
-  const Lr = (1.28 * ry_mm * X1) / FL; // mm
+  // Lr base: frontera elástica/inelástica Fe(Lr) = FL, con la solución elástica
+  // de PLT que incluye alabeo (ver abajo). Resultado de despejar Fe(Lr) = FL:
+  // Lr = ry·(X1/FL)·√(1 + √(1 + X2·FL²))
+  const Lr =
+    ry_mm * (X1 / FL) * Math.sqrt(1 + Math.sqrt(1 + X2 * FL * FL)); // mm
 
   // Ajuste por punto de aplicación de carga
   // Ala superior (default) = factor 1.0; centro de corte ≈ +10%; ala inferior ≈ +25%
@@ -148,14 +151,20 @@ export function checkBeam(
   const LpEff = Lp * lpFactor;
   const LrEff = Lr * lrFactor;
 
-  // Mcr = momento crítico elástico de PLT según CIRSOC 301-05 F.1.13.a
-  // Mcr = 1.28·Cb·Sx·X1 / (Lb/ry)  →  Mcr = 1.28·Cb·π·√(E·G·J·A/2)·ry / Lb
-  const Mcr_raw =
-    (1.28 * Cb * Sx_mm3 * X1) / (effectiveLb / ry_mm); // N·mm
-  // Simplified form (Sx cancels): Mcr = 1.28·Cb·π·√(E·G·J·A/2)·ry / Lb
+  // ---- Solución elástica de PLT con alabeo ----
+  // Teoría clásica (St-Venant + alabeo):
+  //   Mcr = (π/Lb)·√(E·Iy·(G·J + π²·E·Cw/Lb²))
+  // Expresada con los parámetros X1/X2:
+  //   Fe = X1·(ry/Lb)·√(2 + X1²·X2·(ry/Lb)²)
+  // (La versión anterior, 1.28·X1·ry/Lb, despreciaba el término de alabeo.)
+  const slenderness = effectiveLb / ry_mm; // Lb/ry
+  const FeElastic =
+    (X1 / slenderness) *
+    Math.sqrt(2 + (X1 * X1 * X2) / (slenderness * slenderness)); // MPa (Cb = 1)
+  const Mcr_raw = Cb * FeElastic * Sx_mm3; // N·mm
   const Mcr = Math.min(Mcr_raw, Mp); // N·mm, capped at Mp
 
-  // Fe = tensión crítica elástica equivalente (para reporte)
+  // Fe = tensión crítica elástica equivalente (para reporte, incluye Cb)
   const Fe = Mcr_raw / Sx_mm3; // MPa
 
   // LTB nominal moment
@@ -276,7 +285,7 @@ export function checkBeam(
   } else {
     st.push(`L_p = 1.59·r_y·√(E/F_y) = ${Lp.toFixed(0)} mm → L_p,eff = L_p·${lpFactor} = ${LpEff.toFixed(0)} mm`);
   }
-  st.push(`L_r = 1.28·r_y·X_1/F_L = ${LrEff.toFixed(0)} mm` +
+  st.push(`L_r = r_y·(X_1/F_L)·√(1+√(1+X_2·F_L²)) = ${LrEff.toFixed(0)} mm` +
     (lrFactor !== 1.0 ? ` (base = ${Lr.toFixed(0)} mm, factor = ${lrFactor})` : ''));
   st.push(`L_b = ${effectiveLb} mm, C_b = ${Cb}`);
 
@@ -290,7 +299,9 @@ export function checkBeam(
   } else {
     st.push(`L_b > L_r,eff → PLT elástico`);
     st.push(`X_1 = π/S_x·√(E·G·J·A/2) = ${X1.toFixed(0)} MPa`);
-    st.push(`M_cr = 1.28·C_b·S_x·X_1/(L_b/r_y) = ${(Mcr_raw / 1e6).toFixed(1)} kN·m (CIRSOC F.1.13.a)`);
+    st.push(
+      `M_cr = C_b·S_x·X_1·(r_y/L_b)·√(2+X_1²·X_2·(r_y/L_b)²) = ${(Mcr_raw / 1e6).toFixed(1)} kN·m`,
+    );
     st.push(`M_n = min(M_cr, M_p) = ${(Mn / 1e6).toFixed(1)} kN·m`);
   }
   st.push(
