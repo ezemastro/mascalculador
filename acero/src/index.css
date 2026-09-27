@@ -35,6 +35,9 @@ body {
 }
 
 input[type="number"],
+input[type="text"],
+input:not([type]),
+input[readonly],
 select {
   background: var(--color-surface-alt);
   border: 1px solid var(--color-border);
@@ -46,16 +49,53 @@ select {
   outline: none;
   transition: border-color 0.2s;
   min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Celdas no editables (solo lectura / deshabilitadas): más planas y
+   apagadas para distinguirlas de los campos que el usuario completa. */
+input[readonly],
+input:disabled {
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+  border-color: var(--color-border);
+}
+
+input[readonly]:focus,
+input:disabled:focus {
+  border-color: var(--color-border);
+  box-shadow: none;
 }
 
 input[type="number"]:focus,
+input[type="text"]:focus,
 select:focus {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 2px rgba(124, 138, 255, 0.2);
 }
 
-input[type="number"]::placeholder {
+input[type="number"]::placeholder,
+input[type="text"]::placeholder {
   color: var(--color-text-muted);
+}
+
+/* Anchos máximos: los formularios de cálculo no necesitan cajas enormes.
+ * Se achica el espacio vacío, no la tipografía. */
+input[type="number"],
+input[type="text"],
+input:not([type]),
+input[readonly] {
+  max-width: 11rem;
+}
+
+select {
+  max-width: 18rem;
+}
+
+/* Login / registro: campos a ancho completo del formulario. */
+.auth-field {
+  max-width: 100%;
 }
 
 button {
