@@ -676,24 +676,23 @@ const BASE_SUBTYPE_LABELS: Record<string, string> = {
 };
 
 const BASES_COLUMNS: PlanillaColumn[] = [
-  { key: "elem", label: "Elemento", width: "11%" },
+  { key: "elem", label: "Elemento", width: "8%" },
   { key: "tipo", label: "Tipo", width: "9%" },
-  { key: "dims", label: "Lx×Ly×h (cm)" },
-  { key: "qa", label: "σadm (kN/m²)", align: "right" },
+  { key: "dims", label: "Lx×Ly×h (cm)", width: "9%" },
+  { key: "qa", label: "σadm / Df (kN/m² / m)", align: "right" },
   { key: "loads", label: "D/L (kN)" },
   { key: "mat", label: "f'c/fy (MPa)" },
   { key: "pu", label: "Pu (kN)", align: "right" },
   { key: "qu", label: "qu (kN/m²)", align: "right" },
   { key: "mu", label: "Mu máx (kN·m)", align: "right" },
-  { key: "armX", label: "Aª X" },
-  { key: "armY", label: "Aª Y" },
+  { key: "armX", label: "Aª X", width: "8%" },
+  { key: "armY", label: "Aª Y", width: "8%" },
   {
     key: "vigaTensor",
     label: "Viga fund. / tensor",
     width: "17%",
     multiline: true,
   },
-  { key: "ok", label: "Verifica", align: "center" },
 ];
 
 /** Verificación de rozamiento en texto (— si el guardado es viejo). */
@@ -807,17 +806,11 @@ function buildBaseRow(save: SavedBeam): string[] {
   );
   const armX = baseRebar(result.nb_x, result.db, result.sep_x);
   const armY = baseRebar(result.nb_y, result.db, result.sep_y);
-  const ok =
-    result.punchOK !== false &&
-    result.beamShearOK !== false &&
-    result.sepCheckOK !== false &&
-    result.heelOK !== false &&
-    !result.tensorPending;
   return [
     save.name,
     tipo,
-    `${result.Lx ?? 0}×${result.Ly ?? 0}×${result.h ?? 0}`,
-    fmt1(input.qa ?? 0),
+    `${result.Lx ?? 0}×${result.Ly ?? 0}×${fmt1(result.h ?? 0)}`,
+    `${fmt1(input.qa ?? 0)} / ${fmt1(input.Df ?? 0)}`,
     `${fmt2(input.PD ?? 0)}/${fmt2(input.PL ?? 0)}`,
     `${input.fc ?? 0}/${input.fy ?? 0}`,
     fmt1(result.Pu ?? 0),
@@ -826,7 +819,6 @@ function buildBaseRow(save: SavedBeam): string[] {
     armX,
     armY,
     buildVigaTensorCell(input, result),
-    ok ? "✓" : "✗",
   ];
 }
 
