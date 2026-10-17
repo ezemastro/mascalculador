@@ -281,9 +281,11 @@ function step1_Dimensions(input: BaseInput): {
     );
     Ly = Math.max(2 * Lx, Math.ceil((input.cy + 20) / 5) * 5);
   } else {
-    // Base cuadrada por defecto (centrada / esquina)
-    Lx = Math.max(side, input.cx + 20);
-    Ly = Math.max(side, input.cy + 20);
+    // Base cuadrada por defecto (centrada / esquina): el lado debe cubrir el
+    // área requerida y el borde libre mínimo (20 cm) en ambas direcciones.
+    const sideCuadrada = Math.max(side, input.cx + 20, input.cy + 20);
+    Lx = sideCuadrada;
+    Ly = sideCuadrada;
   }
   return { Areq, Lx, Ly };
 }
