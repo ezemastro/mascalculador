@@ -695,10 +695,11 @@ const BASES_COLUMNS: PlanillaColumn[] = [
   },
 ];
 
-/** Verificación de rozamiento en texto (— si el guardado es viejo). */
+/** Verificación de rozamiento en texto (— si el guardado es viejo).
+ *  La comparación del motor es contra la tracción de servicio Ts (PD+PL). */
 function rozCheckText(ok: boolean | undefined): string {
   if (ok == null) return "—";
-  return ok ? "≥ Tu ✓" : "< Tu ✗";
+  return ok ? "≥ Ts ✓" : "< Ts ✗";
 }
 
 /** Resultados del sistema de equilibrio (viga de fundación, vigas de
@@ -708,7 +709,9 @@ function buildVigaTensorCell(
   result: Partial<BaseResult>,
 ): string {
   const mu = input.mu ?? 0.4;
-  const roz = fmt1((input.PD ?? 0) * mu);
+  // Roce disponible con cargas de servicio (N = PD+PL). Si el guardado trae el
+  // valor del motor se usa ese; si no, se recalcula.
+  const roz = fmt1(result.FricRf ?? ((input.PD ?? 0) + (input.PL ?? 0)) * mu);
   const rozCheck = rozCheckText(result.FrictionOK);
 
   if (input.subType === "viga-de-fundacion") {
@@ -736,13 +739,13 @@ function buildVigaTensorCell(
       return [
         `Tensor X: H ${input.Hx ?? "—"} · Tux ${fmt1(result.Tux ?? 0)} → As ${fmt2(result.As_tensorX ?? 0)} cm²`,
         `Tensor Y: H ${input.Hy ?? "—"} · Tuy ${fmt1(result.Tuy ?? 0)} → As ${fmt2(result.As_tensorY ?? 0)} cm²`,
-        `Rozamiento PD·μ ${roz} kN ${rozCheck}`,
+        `Rozamiento (PD+PL)·μ ${roz} kN ${rozCheck}`,
       ].join("\n");
     }
     return [
       `Tensor: H ${input.H ?? "—"} · Tu ${fmt1(result.Tu ?? 0)} kN → As ${fmt2(result.As_tensor ?? 0)} cm²`,
       `Sección sugerida ${Math.round(result.h_tensor ?? 0)}×${Math.round(result.h_tensor ?? 0)} cm`,
-      `Rozamiento PD·μ ${roz} kN ${rozCheck}`,
+      `Rozamiento (PD+PL)·μ ${roz} kN ${rozCheck}`,
     ].join("\n");
   }
 

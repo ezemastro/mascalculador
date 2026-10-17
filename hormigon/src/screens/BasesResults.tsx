@@ -676,12 +676,14 @@ export default function BasesResults({
   const asyNec = Math.max(result.Asy, result.AsMin);
   const cover = input.cover ?? 7;
 
-  // Rozamiento base-suelo (mismo default que bases-calc: μ = 0.40)
+  // Rozamiento base-suelo — comparación con cargas de servicio (PD+PL) en
+  // ambos lados; los valores vienen del motor (FricRf/FricTs*).
   const muFric = input.mu ?? 0.4;
-  const rfFric = input.PD * muFric;
-  const tuFric = isEsquina
-    ? Math.max(result.Tux ?? 0, result.Tuy ?? 0)
-    : result.Tu;
+  const nServFric = input.PD + input.PL;
+  const rfFric = result.FricRf ?? nServFric * muFric;
+  const tsFric = result.FricTs ?? 0;
+  const tsFricX = result.FricTsX ?? 0;
+  const tsFricY = result.FricTsY ?? 0;
 
   // ─── Save handler ───
   async function handleSave() {
@@ -931,16 +933,17 @@ export default function BasesResults({
                   label="Rozamiento (deslizamiento)"
                   value={
                     isEsquina
-                      ? `Tracción Tu,x = ${fmt(result.Tux ?? 0, 1)} · Tu,y = ${fmt(
-                          result.Tuy ?? 0,
+                      ? `Tracción Ts,x = ${fmt(tsFricX, 1)} · Ts,y = ${fmt(
+                          tsFricY,
                           1,
                         )} kN`
-                      : `Tracción Tu = ${fmt(tuFric, 1)} kN`
+                      : `Tracción Ts = ${fmt(tsFric, 1)} kN`
                   }
                   sub={
                     <span>
-                      Roce disponible PD·μ = {fmt(input.PD, 1)}·{fmt(muFric, 2)}{" "}
-                      = {fmt(rfFric, 1)} kN <Badge ok={result.FrictionOK} />
+                      Roce disponible (PD+PL)·μ = {fmt(nServFric, 1)}·
+                      {fmt(muFric, 2)} = {fmt(rfFric, 1)} kN{" "}
+                      <Badge ok={result.FrictionOK} />
                     </span>
                   }
                 />

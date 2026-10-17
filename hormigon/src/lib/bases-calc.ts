@@ -149,8 +149,13 @@ export interface BaseResult {
   vigAvsMin: number; // cm²/m — Av/s mínimo normativo
   vigSmax: number; // cm — separación máxima de estribos
   // Medianera — tensor
-  Tu: number; // kN — tracción en tensor
-  FrictionOK: boolean; // verificación rozamiento
+  Tu: number; // kN — tracción en tensor (diseño, carga última)
+  FrictionOK: boolean; // verificación rozamiento (comparación con cargas de servicio PD+PL)
+  FricN?: number; // kN — carga vertical de servicio (PD+PL) que comprime la base
+  FricRf?: number; // kN — roce disponible = FricN·μ
+  FricTs?: number; // kN — tracción de servicio (tensor simple)
+  FricTsX?: number; // kN — tracción de servicio en X (esquina)
+  FricTsY?: number; // kN — tracción de servicio en Y (esquina)
   As_tensor: number; // cm² — armadura tensor
   h_tensor: number; // cm — altura bloque tensor
   // Esquina — excentricidades y momentos volcadores
@@ -1469,9 +1474,14 @@ function designTensor(input: BaseInput): BaseResult {
   st.push(`    Mu = ${f1(Pu)} · ${f1(e)} = ${f1(Mu)} kN·cm`);
 
   const Tu = tensorPending ? 0 : Mu / H;
-  const Rf = input.PD * mu;
+  // Rozamiento: la comparación usa cargas de servicio en ambos lados —
+  // N = PD+PL comprime la base (roce disponible) y también genera la
+  // tracción de servicio Ts = N·e/H. La armadura sigue con la última (Tu).
+  const Nserv = input.PD + input.PL;
+  const Ts = tensorPending ? 0 : (Nserv * e) / H;
+  const Rf = Nserv * mu;
   const fy_kNcm2 = input.fy * 0.1;
-  const FrictionOK = Rf >= Tu;
+  const FrictionOK = Rf >= Ts;
   const As_tensor = tensorPending ? 0 : Tu / (0.9 * fy_kNcm2);
   const h_tensor = Math.max(Lx / 5, 20);
   if (tensorPending) {
@@ -1482,24 +1492,29 @@ function designTensor(input: BaseInput): BaseResult {
   } else {
     st.push(`T2. Altura del tensor H = ${H} cm (dato)`);
     st.push(
-      `T3. Tracción de diseño: Tu = Mu / H = ${f1(Mu)} / ${H} = ${f1(Tu)} kN`,
+      `T3. Tracción de diseño (flexión, carga última): Tu = Mu / H = ${f1(Mu)} / ${H} = ${f1(Tu)} kN`,
     );
-    st.push(`T4. Rozamiento (impide el deslizamiento de la zapata):`);
+    st.push(
+      `T4. Rozamiento (impide el deslizamiento de la zapata) — con cargas de servicio:`,
+    );
     st.push(
       `    μ = ${fmt(mu, 2)} — coeficiente de rozamiento base-suelo (dato)`,
     );
     st.push(
-      `    PD = ${f1(input.PD)} kN — carga vertical permanente que comprime la base`,
+      `    N = PD + PL = ${f1(input.PD)} + ${f1(input.PL)} = ${f1(Nserv)} kN — carga vertical que comprime la base`,
     );
     st.push(
-      `    Rf = PD·μ = ${f1(input.PD)}·${fmt(mu, 2)} = ${f1(Rf)} kN (roce disponible)`,
+      `    Rf = N·μ = ${f1(Nserv)}·${fmt(mu, 2)} = ${f1(Rf)} kN (roce disponible)`,
     );
     st.push(
-      `    Verificación: Rf ≥ Tu → ${f1(Rf)} ≥ ${f1(Tu)} kN ${FrictionOK ? "✓" : "✗ — ADVERTENCIA"}`,
+      `    Ts = N·e / H = ${f1(Nserv)}·${f1(e)} / ${H} = ${f1(Ts)} kN (tracción del tensor con cargas de servicio)`,
+    );
+    st.push(
+      `    Verificación: Rf ≥ Ts → ${f1(Rf)} ≥ ${f1(Ts)} kN ${FrictionOK ? "✓" : "✗ — ADVERTENCIA"}`,
     );
     if (!FrictionOK)
       wr.push(
-        "La fuerza de rozamiento es menor que la tracción en el tensor. Aumentar PD o μ.",
+        "La fuerza de rozamiento es menor que la tracción en el tensor. Aumentar la carga vertical (PD+PL) o μ.",
       );
     const Tn = Tu / 0.9;
     st.push(
@@ -1534,6 +1549,9 @@ function designTensor(input: BaseInput): BaseResult {
     d_viga: 0,
     Tu,
     FrictionOK,
+    FricN: Nserv,
+    FricRf: Rf,
+    FricTs: Ts,
     As_tensor,
     h_tensor,
     eX: 0,
@@ -1686,6 +1704,9 @@ function designEsquina(input: BaseInput): BaseResult {
   let h_tensorX = 0;
   let h_tensorY = 0;
   let FrictionOK = true;
+  let FricRf = 0;
+  let FricTsX = 0;
+  let FricTsY = 0;
   let tronco_N = 0;
   let tronco_Mx = 0;
   let tronco_My = 0;
@@ -1809,13 +1830,20 @@ function designEsquina(input: BaseInput): BaseResult {
     Tux = tensorPending ? 0 : MuX_volc / Hx;
     Tuy = tensorPending ? 0 : MuY_volc / Hy;
     st.push(
-      `E3. Tracciones de diseño: Tux = MuX / Hx = ${f1(MuX_volc)} / ${Hx} = ${f1(Tux)} kN`,
+      `E3. Tracciones de diseño (flexión, carga última): Tux = MuX / Hx = ${f1(MuX_volc)} / ${Hx} = ${f1(Tux)} kN`,
     );
     st.push(`    Tuy = MuY / Hy = ${f1(MuY_volc)} / ${Hy} = ${f1(Tuy)} kN`);
     st.push("");
 
-    const Rf = input.PD * mu;
-    FrictionOK = Rf >= Tux && Rf >= Tuy;
+    // Rozamiento: comparación con cargas de servicio en ambos lados (N = PD+PL).
+    const Nserv = input.PD + input.PL;
+    const Tsx = tensorPending ? 0 : (Nserv * eX) / Hx;
+    const Tsy = tensorPending ? 0 : (Nserv * eY) / Hy;
+    const Rf = Nserv * mu;
+    FrictionOK = Rf >= Tsx && Rf >= Tsy;
+    FricRf = Rf;
+    FricTsX = Tsx;
+    FricTsY = Tsy;
     const fy_kNcm2 = fy * 0.1;
     As_tensorX = tensorPending ? 0 : Tux / (0.9 * fy_kNcm2);
     As_tensorY = tensorPending ? 0 : Tuy / (0.9 * fy_kNcm2);
@@ -1827,22 +1855,27 @@ function designEsquina(input: BaseInput): BaseResult {
         "Faltan las alturas de los tensores (Hx, Hy) para dimensionarlos.",
       );
     } else {
-      st.push(`E4. Rozamiento (impide el deslizamiento de la zapata):`);
+      st.push(
+        `E4. Rozamiento (impide el deslizamiento de la zapata) — con cargas de servicio:`,
+      );
       st.push(
         `    μ = ${fmt(mu, 2)} — coeficiente de rozamiento base-suelo (dato)`,
       );
       st.push(
-        `    PD = ${f1(input.PD)} kN — carga vertical permanente que comprime la base`,
+        `    N = PD + PL = ${f1(input.PD)} + ${f1(input.PL)} = ${f1(Nserv)} kN — carga vertical que comprime la base`,
       );
       st.push(
-        `    Rf = PD·μ = ${f1(input.PD)}·${fmt(mu, 2)} = ${f1(Rf)} kN (roce disponible)`,
+        `    Rf = N·μ = ${f1(Nserv)}·${fmt(mu, 2)} = ${f1(Rf)} kN (roce disponible)`,
       );
       st.push(
-        `    Verificación: Rf ≥ Tux y Rf ≥ Tuy → ${f1(Rf)} ≥ ${f1(Tux)} / ${f1(Tuy)} kN ${FrictionOK ? "✓" : "✗ — ADVERTENCIA"}`,
+        `    Ts,x = N·eX / Hx = ${f1(Nserv)}·${f1(eX)} / ${Hx} = ${f1(Tsx)} kN | Ts,y = N·eY / Hy = ${f1(Nserv)}·${f1(eY)} / ${Hy} = ${f1(Tsy)} kN`,
+      );
+      st.push(
+        `    Verificación: Rf ≥ Ts,x y Rf ≥ Ts,y → ${f1(Rf)} ≥ ${f1(Tsx)} / ${f1(Tsy)} kN ${FrictionOK ? "✓" : "✗ — ADVERTENCIA"}`,
       );
       if (!FrictionOK) {
         wr.push(
-          "La fuerza de rozamiento es menor que la tracción en el tensor (en una o ambas direcciones). Aumentar PD o μ.",
+          "La fuerza de rozamiento es menor que la tracción en el tensor (en una o ambas direcciones). Aumentar la carga vertical (PD+PL) o μ.",
         );
       }
       const Tnx = Tux / 0.9;
@@ -1919,6 +1952,10 @@ function designEsquina(input: BaseInput): BaseResult {
     tronco_Vx,
     tronco_Vy,
     FrictionOK,
+    FricN: input.PD + input.PL,
+    FricRf,
+    FricTsX,
+    FricTsY,
     tensorPending,
     steps: mergedSteps,
     warnings: mergedWarnings,
