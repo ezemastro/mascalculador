@@ -1968,11 +1968,15 @@ export function suggestBaseHeight(
 /**
  * Sugerencia de dimensiones (Areq, Lx, Ly) y anchos de apoyo (bx, by)
  * para el predimensionado en el formulario. No modifica el input.
+ * `Lx`/`Ly` son los efectivos (adoptados si existen); `LxSug`/`LySug` son
+ * los puramente predimensionados (para mostrar en el cartel de sugerencia).
  */
 export function suggestBaseDims(input: BaseInput): {
   Areq: number;
   Lx: number;
   Ly: number;
+  LxSug: number;
+  LySug: number;
   bx: number;
   by: number;
 } {
@@ -1980,7 +1984,15 @@ export function suggestBaseDims(input: BaseInput): {
   const Lx = input.Lx ?? dims.Lx;
   const Ly = input.Ly ?? dims.Ly;
   const { bx, by } = supportWidths(input);
-  return { Areq: dims.Areq, Lx, Ly, bx, by };
+  return {
+    Areq: dims.Areq,
+    Lx,
+    Ly,
+    LxSug: dims.Lx,
+    LySug: dims.Ly,
+    bx,
+    by,
+  };
 }
 
 /**

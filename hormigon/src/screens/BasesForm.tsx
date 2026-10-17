@@ -261,6 +261,8 @@ export default function BasesForm() {
       Areq: dims.Areq,
       Lx: dims.Lx,
       Ly: dims.Ly,
+      LxSug: dims.LxSug,
+      LySug: dims.LySug,
       bx: dims.bx,
       by: dims.by,
       hSug: hgt.h,
@@ -1271,8 +1273,8 @@ export default function BasesForm() {
                 A<sub>req</sub> = {geo.Areq.toFixed(0)} cm²
               </span>
               <span className="font-semibold text-primary">
-                Base sugerida: L<sub>x</sub> {geo.Lx} × L<sub>y</sub> {geo.Ly}{" "}
-                cm
+                Base sugerida: L<sub>x</sub> {geo.LxSug} × L<sub>y</sub>{" "}
+                {geo.LySug} cm
               </span>
               <span className="text-text-muted">
                 d: rigidez {geo.dRig.toFixed(1)} cm · flexión{" "}
