@@ -7,7 +7,6 @@ import type {
   DirectionResult,
 } from "@mascalculador/shared";
 import { calculateBeamEnvelope } from "./beam-envelope";
-import { designConcreteDetailed } from "./concrete-design";
 import { computeDeflections } from "./deflection";
 import { CONCRETE_DENSITY } from "./constants";
 import type { BaseInput, BaseResult } from "./bases-calc";
@@ -160,7 +159,6 @@ const VIGA_COLUMNS: PlanillaColumn[] = [
   { key: "stirrup", label: "Estribos", width: "10%" },
   { key: "flechaLL", label: "ΔLL / L·360 (mm)", align: "right" },
   { key: "flechaT", label: "Δtotal / L·240 (mm)", align: "right" },
-  { key: "ok", label: "Verifica", align: "center" },
 ];
 
 /**
@@ -183,18 +181,12 @@ function buildVigaRows(save: SavedBeam): string[][] {
   const cover = d.cover ?? 0;
   const fc = d.fc ?? 0;
   const fy = d.fy ?? 0;
-  const directSupport = d.directSupport ?? true;
   const loads = d.concreteLoads ?? [];
   const supportWidths = d.supportWidths ?? [];
 
   const selfWeight = d.includeSelfWeight
     ? ((bw * h) / 1e6) * CONCRETE_DENSITY
     : 0;
-  const qu =
-    loads
-      .filter((l) => l.type === "distributed")
-      .reduce((sum, l) => sum + 1.2 * (l.D ?? 0) + 1.6 * (l.L ?? 0), 0) +
-    (selfWeight > 0 ? 1.2 * selfWeight : 0);
 
   const envelope = calculateBeamEnvelope(
     spans,
@@ -202,8 +194,6 @@ function buildVigaRows(save: SavedBeam): string[][] {
     loads,
     selfWeight,
   );
-
-  const supportWidthAt = (i: number): number => supportWidths[i] ?? 300;
 
   const qtyArr = nArr(d.barQty, n, 3);
   const diamArr = nArr(d.barDiam, n, 16);
@@ -217,58 +207,12 @@ function buildVigaRows(save: SavedBeam): string[][] {
 
   const spanMu: number[] = [];
   const spanVu: number[] = [];
-  const spanOK: boolean[] = [];
   const spanReinf: string[] = [];
   const spanStirrup: string[] = [];
 
   for (let i = 0; i < n; i++) {
-    const Mu = envelope.spanMuPos[i];
-    const Vu = envelope.spanVu[i];
-    spanMu.push(Mu);
-    spanVu.push(Vu);
-    const c = supportWidthAt(i);
-    const req = designConcreteDetailed({
-      bw,
-      h,
-      d: 0,
-      dp: 0,
-      cover,
-      fc,
-      fy,
-      Mu,
-      Vu,
-      qu,
-      c,
-      directSupport,
-      As: 0,
-      Av: 0,
-      nLegs: 0,
-      s: 0,
-    });
-    const asT = (qtyArr[i] || 0) * barArea(diamArr[i]);
-    const asC = (compQtyArr[i] || 0) * barArea(compDiamArr[i]);
-    const chk = designConcreteDetailed({
-      bw,
-      h,
-      d: 0,
-      dp: 0,
-      cover,
-      fc,
-      fy,
-      Mu,
-      Vu,
-      qu,
-      c,
-      directSupport,
-      As: asT + asC,
-      Av: barArea(stirrupDiamArr[i]),
-      nLegs: stirrupLegsArr[i] || 2,
-      s: stirrupSpacingArr[i] || 200,
-    });
-    const flexOK =
-      asT >= Math.max(req.AsReq, req.AsMin) &&
-      (req.AspReq > 0 ? asC >= req.AspReq : true);
-    spanOK.push(flexOK && chk.shearOK);
+    spanMu.push(envelope.spanMuPos[i]);
+    spanVu.push(envelope.spanVu[i]);
     spanReinf.push(rebar(qtyArr[i], diamArr[i]));
     spanStirrup.push(
       stirrupText(stirrupDiamArr[i], stirrupSpacingArr[i], stirrupLegsArr[i]),
@@ -277,32 +221,12 @@ function buildVigaRows(save: SavedBeam): string[][] {
 
   // Apoyos con armadura superior: interiores + extremos empotrados (voladizos),
   // por índice absoluto de apoyo. Se reportan por lado en cada tramo adyacente.
-  const sups = new Map<number, { ok: boolean; text: string }>();
+  const sups = new Map<number, string>();
   for (let idx = 0; idx < n + 1; idx++) {
     if (supportTypes[idx] === "free") continue;
     const Mneg = envelope.supportMuNeg[idx] ?? 0;
     if (Mneg <= 1e-6) continue;
-    const req = designConcreteDetailed({
-      bw,
-      h,
-      d: 0,
-      dp: 0,
-      cover,
-      fc,
-      fy,
-      Mu: Mneg,
-      Vu: 0,
-      qu,
-      c: supportWidthAt(idx),
-      directSupport,
-      As: 0,
-      Av: 0,
-      nLegs: 0,
-      s: 0,
-    });
-    const asProv = supQtyArr[idx] * barArea(supDiamArr[idx]);
-    const ok = asProv >= Math.max(req.AsReq, req.AsMin) && req.AspReq <= 0;
-    sups.set(idx, { ok, text: rebar(supQtyArr[idx], supDiamArr[idx]) });
+    sups.set(idx, rebar(supQtyArr[idx], supDiamArr[idx]));
   }
 
   const loadText =
@@ -365,7 +289,6 @@ function buildVigaRows(save: SavedBeam): string[][] {
       i < n - 1 || supportTypes[n] === "fixed"
         ? (envelope.supportMuNeg[i + 1] ?? 0)
         : 0;
-    const ok0 = spanOK[i] && (supL?.ok ?? true) && (supR?.ok ?? true);
     const fSp = defl?.spans[i];
     const flechaLL = fSp
       ? `${fmt2(fSp.deltaLL)} / ${fmt2(fSp.limLL)}${fSp.okLL ? " ✓" : " ✗"}`
@@ -373,7 +296,6 @@ function buildVigaRows(save: SavedBeam): string[][] {
     const flechaT = fSp
       ? `${fmt2(fSp.deltaTotal)} / ${fmt2(fSp.limTotal)}${fSp.okTotal ? " ✓" : " ✗"}`
       : "—";
-    const ok = ok0 && (!fSp || (fSp.okLL && fSp.okTotal));
 
     return [
       n === 1 ? save.name : `${save.name} · T${i + 1}`,
@@ -386,12 +308,11 @@ function buildVigaRows(save: SavedBeam): string[][] {
         : "—",
       spanVu[i].toFixed(1),
       spanReinf[i],
-      supL ? supL.text : "—",
-      supR ? supR.text : "—",
+      supL ?? "—",
+      supR ?? "—",
       spanStirrup[i],
       flechaLL,
       flechaT,
-      ok ? "✓" : "✗",
     ];
   });
 }
@@ -456,7 +377,6 @@ const LOSA_COLUMNS: PlanillaColumn[] = [
   { key: "mn", label: "M⁻ apoyo (kN·m/m)", align: "right" },
   { key: "armX", label: "Armadura X", width: "15%" },
   { key: "armY", label: "Armadura Y", width: "15%" },
-  { key: "ok", label: "Verifica", align: "center" },
 ];
 
 function buildLosaRow(save: SavedBeam): string[] {
@@ -472,24 +392,8 @@ function buildLosaRow(save: SavedBeam): string[] {
   const dirY: DirectionResult | undefined =
     (result.y?.Mu ?? 0) > 0 ? result.y : result.distY;
 
-  // Verificación: provista >= requerida y separación <= s_máx, por dirección
-  // (mismo criterio que la pantalla de resultados).
-  const verifDir = (
-    dir: DirectionResult | undefined,
-    adopted: number | undefined,
-    diam: number | undefined,
-  ): boolean => {
-    if (!dir) return false;
-    if (adopted == null || adopted <= 0) return false;
-    const sep = diam ? Math.round(((BAR_AREA[diam] ?? 0) * 100) / adopted) : 0;
-    return adopted >= dir.AsReq && sep > 0 && sep <= dir.sMax / 10;
-  };
-
   const armX = slabArmadura(input.dBarX, result.adoptedAsX);
   const armY = slabArmadura(input.dBarY, result.adoptedAsY);
-  const ok =
-    verifDir(dirX, result.adoptedAsX, input.dBarX) &&
-    verifDir(dirY, result.adoptedAsY, input.dBarY);
 
   const mPos = Math.max(dirX?.Mu ?? 0, dirY?.Mu ?? 0);
   const mNeg = Math.max(
@@ -510,7 +414,6 @@ function buildLosaRow(save: SavedBeam): string[] {
     mNeg > 0 ? mNeg.toFixed(1) : "—",
     armX,
     armY,
-    ok ? "✓" : "✗",
   ];
 }
 
@@ -575,7 +478,6 @@ const COLUMNA_COLUMNS: PlanillaColumn[] = [
   { key: "astprov", label: "Ast prov (cm²)", align: "right" },
   { key: "arm", label: "Armadura", width: "17%" },
   { key: "stirrup", label: "Estribos" },
-  { key: "ok", label: "Verifica", align: "center" },
 ];
 
 function buildColumnaRow(save: SavedBeam): string[] {
@@ -631,7 +533,6 @@ function buildColumnaRow(save: SavedBeam): string[] {
     astProv.toFixed(2),
     armText,
     `Ø${full.phiStirrup} c/${full.sStirrup}`,
-    astProv >= astReq && full.lambdaOK ? "✓" : "✗",
   ];
 }
 
@@ -962,7 +863,6 @@ const MURO_COLUMNS: PlanillaColumn[] = [
   { key: "vu", label: "Vu/φVc (kN/m)", align: "right" },
   { key: "arm", label: "Armadura vertical int.", width: "17%" },
   { key: "sigma", label: "σmax/σadm (kPa)", align: "right" },
-  { key: "ok", label: "Verifica", align: "center" },
 ];
 
 /** Armadura de un grupo del muro: Ø, separación y As provista. */
@@ -979,11 +879,6 @@ function buildMuroRow(save: SavedBeam): string[] {
   if (!data?.input || !data?.result) throw new Error("Datos incompletos");
   const input = data.input;
   const r = data.result;
-  const ok =
-    r.sigmaOK !== false &&
-    r.shearOK !== false &&
-    r.axialOK !== false &&
-    r.rigidOK !== false;
   return [
     save.name,
     `${fmt2(input.H ?? 0)}×${fmt2(input.e_muro ?? 0)}`,
@@ -992,7 +887,6 @@ function buildMuroRow(save: SavedBeam): string[] {
     `${fmt1(r.Vu ?? 0)}/${fmt1(r.phiVc ?? 0)}`,
     muroRebar(r.vertInt),
     `${Math.round(r.sigma_max ?? 0)}/${Math.round(r.sigma_adm_kPa ?? 0)}`,
-    ok ? "✓" : "✗",
   ];
 }
 
@@ -1031,7 +925,6 @@ const PILECAP_COLUMNS: PlanillaColumn[] = [
   { key: "pu", label: "Pu (kN)", align: "right" },
   { key: "rp", label: "Rp (kN/pilote)", align: "right" },
   { key: "arm", label: "Tirante", width: "15%" },
-  { key: "ok", label: "Verifica", align: "center" },
 ];
 
 const PILECAP_TIPO_LABELS: Record<string, string> = {
@@ -1059,7 +952,6 @@ function buildPileCapRow(save: SavedBeam): string[] {
     fmt1(r.Pu ?? 0),
     fmt1(r.Rp ?? 0),
     `${r.barN ?? "—"}Ø${r.barD ?? "—"} · ${fmt2(r.AsProv ?? 0)} cm²`,
-    r.allOK ? "✓" : "✗",
   ];
 }
 
@@ -1098,7 +990,6 @@ const CABEZAL_VIGA_COLUMNS: PlanillaColumn[] = [
   { key: "ru", label: "Ru (kN)", align: "right" },
   { key: "arm", label: "As sup/inf (cm²)", align: "right" },
   { key: "corte", label: "Vu/φVc (kN)", align: "right" },
-  { key: "ok", label: "Verifica", align: "center" },
 ];
 
 function buildCabezalVigaRow(save: SavedBeam): string[] {
@@ -1128,9 +1019,6 @@ function buildCabezalVigaRow(save: SavedBeam): string[] {
       hViga: input.hViga,
       cover: input.cover,
     });
-  const corteOK =
-    (result.vigVuVol ?? 0) <= (result.vigPhiVc ?? 0) &&
-    (result.vigVuTramo ?? 0) <= (result.vigPhiVc ?? 0);
   return [
     save.name,
     `${Math.round(input.Lx ?? 0)}×${Math.round(input.Ly ?? 0)}`,
@@ -1140,7 +1028,6 @@ function buildCabezalVigaRow(save: SavedBeam): string[] {
     fmt1(result.Ru ?? 0),
     `${fmt2(result.As_sup ?? 0)}/${fmt2(result.As_inf ?? 0)}`,
     `${fmt1(result.vigVuVol ?? 0)}/${fmt1(result.vigPhiVc ?? 0)}`,
-    corteOK ? "✓" : "✗",
   ];
 }
 
