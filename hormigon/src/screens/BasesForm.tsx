@@ -14,6 +14,7 @@ import {
   saveLastBasesFormState,
   shouldAskObraOnSave,
   type BasesFormState,
+  type BaseTensorAdopcion,
 } from "../lib/storage";
 import { pickObraIfNeeded } from "../components/ObraPicker";
 import { registerAssistantForm } from "../lib/assistant/form-bus";
@@ -606,6 +607,37 @@ export default function BasesForm() {
       if (typeof f.cover === "number") next.cover = f.cover;
       if (typeof f.columnName === "string") setColumnName(f.columnName);
       if (typeof f.columnId === "string") setColumnId(f.columnId);
+      // Adopción manual de armaduras: viaja plana en el save (tanto en los
+      // hechos desde resultados como desde el formulario).
+      next.diamX = typeof d.diamX === "number" ? d.diamX : undefined;
+      next.qtyX = typeof d.qtyX === "number" ? d.qtyX : undefined;
+      next.diamY = typeof d.diamY === "number" ? d.diamY : undefined;
+      next.qtyY = typeof d.qtyY === "number" ? d.qtyY : undefined;
+      next.vigaSupQty =
+        typeof d.vigaSupQty === "number" ? d.vigaSupQty : undefined;
+      next.vigaSupDiam =
+        typeof d.vigaSupDiam === "number" ? d.vigaSupDiam : undefined;
+      next.vigaInfQty =
+        typeof d.vigaInfQty === "number" ? d.vigaInfQty : undefined;
+      next.vigaInfDiam =
+        typeof d.vigaInfDiam === "number" ? d.vigaInfDiam : undefined;
+      next.estVolLegs =
+        typeof d.estVolLegs === "number" ? d.estVolLegs : undefined;
+      next.estVolDiam =
+        typeof d.estVolDiam === "number" ? d.estVolDiam : undefined;
+      next.estVolSep =
+        typeof d.estVolSep === "number" ? d.estVolSep : undefined;
+      next.estTramoLegs =
+        typeof d.estTramoLegs === "number" ? d.estTramoLegs : undefined;
+      next.estTramoDiam =
+        typeof d.estTramoDiam === "number" ? d.estTramoDiam : undefined;
+      next.estTramoSep =
+        typeof d.estTramoSep === "number" ? d.estTramoSep : undefined;
+      const asAdopt = (v: unknown): BaseTensorAdopcion | undefined =>
+        v && typeof v === "object" ? (v as BaseTensorAdopcion) : undefined;
+      next.tensorAdopt = asAdopt(d.tensorAdopt);
+      next.tensorAdoptX = asAdopt(d.tensorAdoptX);
+      next.tensorAdoptY = asAdopt(d.tensorAdoptY);
       return next;
     });
   }
@@ -626,6 +658,27 @@ export default function BasesForm() {
   // ------------------------------------------------------------------
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // La adopción manual de armaduras viaja plana (fuera de input), igual que
+    // en la navegación ← Volver de resultados.
+    const adopcion = {
+      diamX: state.diamX,
+      qtyX: state.qtyX,
+      diamY: state.diamY,
+      qtyY: state.qtyY,
+      vigaSupQty: state.vigaSupQty,
+      vigaSupDiam: state.vigaSupDiam,
+      vigaInfQty: state.vigaInfQty,
+      vigaInfDiam: state.vigaInfDiam,
+      estVolLegs: state.estVolLegs,
+      estVolDiam: state.estVolDiam,
+      estVolSep: state.estVolSep,
+      estTramoLegs: state.estTramoLegs,
+      estTramoDiam: state.estTramoDiam,
+      estTramoSep: state.estTramoSep,
+      tensorAdopt: state.tensorAdopt,
+      tensorAdoptX: state.tensorAdoptX,
+      tensorAdoptY: state.tensorAdoptY,
+    };
     navigate("/bases-results", {
       state: {
         input: {
@@ -633,6 +686,7 @@ export default function BasesForm() {
           columnId: columnId ?? undefined,
           columnName: columnName ?? undefined,
         },
+        ...adopcion,
         loadedSaveId: loadedSaveId ?? undefined,
         loadedSaveName: loadedSaveName ?? undefined,
       },

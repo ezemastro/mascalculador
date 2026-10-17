@@ -275,6 +275,15 @@ export function loadLastCartelFormState(): CartelFormState | null {
 
 // ---- Especificas de hormigon (bases) ----
 
+/** Adopción manual de la sección y armadura del tensor (una por dirección:
+ *  el tensor simple, o X/Y en bases de esquina). */
+export interface BaseTensorAdopcion {
+  b?: number; // cm — lado b de la sección
+  h?: number; // cm — lado h de la sección
+  qty?: number; // cantidad de barras
+  diam?: number; // mm
+}
+
 export interface BasesFormState {
   qa: number;
   Df: number;
@@ -310,6 +319,25 @@ export interface BasesFormState {
   rebD?: number;
   columnId?: string;
   columnName?: string;
+  // Adopción manual de armaduras (viaja plana junto al input y se persiste
+  // en el guardado, igual que las armaduras del resto de los módulos).
+  diamX?: number;
+  qtyX?: number;
+  diamY?: number;
+  qtyY?: number;
+  vigaSupQty?: number;
+  vigaSupDiam?: number;
+  vigaInfQty?: number;
+  vigaInfDiam?: number;
+  estVolLegs?: number;
+  estVolDiam?: number;
+  estVolSep?: number;
+  estTramoLegs?: number;
+  estTramoDiam?: number;
+  estTramoSep?: number;
+  tensorAdopt?: BaseTensorAdopcion;
+  tensorAdoptX?: BaseTensorAdopcion;
+  tensorAdoptY?: BaseTensorAdopcion;
 }
 
 export function saveLastBasesFormState(state: BasesFormState): void {

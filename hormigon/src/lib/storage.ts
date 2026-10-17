@@ -18,6 +18,7 @@ export type {
   ColumnFormState,
   CartelFormState,
   BasesFormState,
+  BaseTensorAdopcion,
   CabezalFormState,
   PileCapFormState,
   ConcreteLastFormState,

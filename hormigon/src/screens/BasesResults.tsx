@@ -5,6 +5,7 @@ import { MainLayout, PrintButton } from "@mascalculador/shared";
 import { designBase, designVigaCabezal } from "../lib/bases-calc";
 import type { BaseInput } from "../lib/bases-calc";
 import { saveBeam, updateSave } from "../lib/storage";
+import type { BaseTensorAdopcion } from "../lib/storage";
 import { pickObraIfNeeded } from "../components/ObraPicker";
 import { computoBase } from "../lib/computo";
 import ComputoSection from "../components/ComputoSection";
@@ -29,6 +30,15 @@ interface LocationState {
   estTramoLegs?: number;
   estTramoDiam?: number;
   estTramoSep?: number;
+  /** Adopción de la armadura de la zapata (direcciones X e Y). */
+  diamX?: number;
+  qtyX?: number;
+  diamY?: number;
+  qtyY?: number;
+  /** Adopción de la sección/armadura del tensor (simple o X/Y). */
+  tensorAdopt?: BaseTensorAdopcion;
+  tensorAdoptX?: BaseTensorAdopcion;
+  tensorAdoptY?: BaseTensorAdopcion;
 }
 
 // ---------------------------------------------------------------------------
@@ -179,17 +189,23 @@ function TensorEditor({
   sugSide,
   tu,
   fy,
+  adopt,
+  onAdopt,
 }: {
   label: string;
   asNec: number;
   sugSide: number;
   tu: number; // kN — tracción de diseño
   fy: number; // MPa
+  adopt?: BaseTensorAdopcion;
+  onAdopt: (a: BaseTensorAdopcion) => void;
 }) {
-  const [b, setB] = useState<number>(sugSide);
-  const [h, setH] = useState<number>(sugSide);
-  const [qty, setQty] = useState(4);
-  const [diam, setDiam] = useState(12);
+  const b = adopt?.b ?? sugSide;
+  const h = adopt?.h ?? sugSide;
+  const qty = adopt?.qty ?? 4;
+  const diam = adopt?.diam ?? 12;
+  const set = (patch: Partial<BaseTensorAdopcion>) =>
+    onAdopt({ b, h, qty, diam, ...patch });
   const asProv = qty * aBar(diam);
   const rho = (asProv / (b * h)) * 100; // %
   const okAs = asProv >= asNec;
@@ -223,7 +239,9 @@ function TensorEditor({
             min="1"
             value={b || ""}
             onChange={(e) =>
-              setB(e.target.value ? Math.max(1, Number(e.target.value)) : 1)
+              set({
+                b: e.target.value ? Math.max(1, Number(e.target.value)) : 1,
+              })
             }
           />
         </label>
@@ -235,7 +253,9 @@ function TensorEditor({
             min="1"
             value={h || ""}
             onChange={(e) =>
-              setH(e.target.value ? Math.max(1, Number(e.target.value)) : 1)
+              set({
+                h: e.target.value ? Math.max(1, Number(e.target.value)) : 1,
+              })
             }
           />
         </label>
@@ -243,7 +263,7 @@ function TensorEditor({
           <span className="text-xs text-text-muted">Ø (mm)</span>
           <select
             value={diam}
-            onChange={(e) => setDiam(Number(e.target.value))}
+            onChange={(e) => set({ diam: Number(e.target.value) })}
           >
             {[8, 10, 12, 16, 20, 25].map((d) => (
               <option key={d} value={d}>
@@ -257,7 +277,7 @@ function TensorEditor({
           <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={() => setQty(Math.max(2, qty - 1))}
+              onClick={() => set({ qty: Math.max(2, qty - 1) })}
               className="w-8 h-8 rounded-lg bg-surface border border-border hover:bg-surface-alt text-text font-bold"
             >
               −
@@ -266,12 +286,14 @@ function TensorEditor({
               type="number"
               min={2}
               value={qty}
-              onChange={(e) => setQty(Math.max(2, Number(e.target.value) || 2))}
+              onChange={(e) =>
+                set({ qty: Math.max(2, Number(e.target.value) || 2) })
+              }
               className="w-14 text-center"
             />
             <button
               type="button"
-              onClick={() => setQty(qty + 1)}
+              onClick={() => set({ qty: qty + 1 })}
               className="w-8 h-8 rounded-lg bg-surface border border-border hover:bg-surface-alt text-text font-bold"
             >
               +
@@ -503,10 +525,10 @@ export default function BasesResults({
   );
 
   // Armadura adoptada (losas, dirección X e Y)
-  const [diamX, setDiamX] = useState(12);
-  const [qtyX, setQtyX] = useState(8);
-  const [diamY, setDiamY] = useState(12);
-  const [qtyY, setQtyY] = useState(8);
+  const [diamX, setDiamX] = useState(locState?.diamX ?? 12);
+  const [qtyX, setQtyX] = useState(locState?.qtyX ?? 8);
+  const [diamY, setDiamY] = useState(locState?.diamY ?? 12);
+  const [qtyY, setQtyY] = useState(locState?.qtyY ?? 8);
 
   // Armadura y estribos adoptados para la viga de fundación
   const [vigaSupQty, setVigaSupQty] = useState(locState?.vigaSupQty ?? 4);
@@ -516,12 +538,8 @@ export default function BasesResults({
   const [estVolLegs, setEstVolLegs] = useState(locState?.estVolLegs ?? 2);
   const [estVolDiam, setEstVolDiam] = useState(locState?.estVolDiam ?? 8);
   const [estVolSep, setEstVolSep] = useState(locState?.estVolSep ?? 10);
-  const [estTramoLegs, setEstTramoLegs] = useState(
-    locState?.estTramoLegs ?? 2,
-  );
-  const [estTramoDiam, setEstTramoDiam] = useState(
-    locState?.estTramoDiam ?? 8,
-  );
+  const [estTramoLegs, setEstTramoLegs] = useState(locState?.estTramoLegs ?? 2);
+  const [estTramoDiam, setEstTramoDiam] = useState(locState?.estTramoDiam ?? 8);
   const [estTramoSep, setEstTramoSep] = useState(locState?.estTramoSep ?? 15);
 
   // Datos del tensor (se completan acá si se eligió tensor)
@@ -537,6 +555,17 @@ export default function BasesResults({
   const [tensorMu, setTensorMu] = useState<number | undefined>(
     input?.mu ?? undefined,
   );
+
+  // Adopción de la sección/armadura del tensor (se persiste en el guardado)
+  const [tensorAdopt, setTensorAdopt] = useState<
+    BaseTensorAdopcion | undefined
+  >(locState?.tensorAdopt);
+  const [tensorAdoptX, setTensorAdoptX] = useState<
+    BaseTensorAdopcion | undefined
+  >(locState?.tensorAdoptX);
+  const [tensorAdoptY, setTensorAdoptY] = useState<
+    BaseTensorAdopcion | undefined
+  >(locState?.tensorAdoptY);
 
   // ─── Compute result (must be before any early return — rules of hooks) ───
   const fullInput = useMemo<BaseInput | null>(() => {
@@ -659,7 +688,12 @@ export default function BasesResults({
     const data: Record<string, unknown> = {
       input: fullInput,
       result,
-      // Adopción de armadura de la viga de fundación elegida en pantalla
+      // Armadura adoptada de la zapata (Aª X / Aª Y)
+      diamX,
+      qtyX,
+      diamY,
+      qtyY,
+      // Adopción de la viga de fundación elegida en pantalla
       vigaSupQty,
       vigaSupDiam,
       vigaInfQty,
@@ -670,6 +704,10 @@ export default function BasesResults({
       estTramoLegs,
       estTramoDiam,
       estTramoSep,
+      // Adopción de la sección/armadura del tensor
+      tensorAdopt,
+      tensorAdoptX,
+      tensorAdoptY,
     };
     // Si venimos de una base guardada, actualizamos la misma (mismo id/nombre)
     if (savedId) {
@@ -755,6 +793,10 @@ export default function BasesResults({
                 navigate(formPath, {
                   state: {
                     ...(fullInput as unknown as Record<string, unknown>),
+                    diamX,
+                    qtyX,
+                    diamY,
+                    qtyY,
                     vigaSupQty,
                     vigaSupDiam,
                     vigaInfQty,
@@ -765,6 +807,9 @@ export default function BasesResults({
                     estTramoLegs,
                     estTramoDiam,
                     estTramoSep,
+                    tensorAdopt,
+                    tensorAdoptX,
+                    tensorAdoptY,
                     loadedSaveId: savedId,
                     loadedSaveName: savedName,
                   },
@@ -1108,6 +1153,8 @@ export default function BasesResults({
                     sugSide={Math.round(result.h_tensorX ?? 20)}
                     tu={result.Tux ?? 0}
                     fy={input.fy}
+                    adopt={tensorAdoptX}
+                    onAdopt={setTensorAdoptX}
                   />
                   <TensorEditor
                     label="Tensor Y"
@@ -1115,6 +1162,8 @@ export default function BasesResults({
                     sugSide={Math.round(result.h_tensorY ?? 20)}
                     tu={result.Tuy ?? 0}
                     fy={input.fy}
+                    adopt={tensorAdoptY}
+                    onAdopt={setTensorAdoptY}
                   />
                 </>
               ) : (
@@ -1124,6 +1173,8 @@ export default function BasesResults({
                   sugSide={Math.round(result.h_tensor ?? 20)}
                   tu={result.Tu}
                   fy={input.fy}
+                  adopt={tensorAdopt}
+                  onAdopt={setTensorAdopt}
                 />
               )}
             </div>
