@@ -357,13 +357,22 @@ const EDGE_COND: Record<string, string> = {
 };
 
 function slabArmadura(
-  diam: number | undefined,
+  inputDiam: number | undefined,
+  adoptedDiam: number | undefined,
+  adoptedSepCm: number | undefined,
   adoptedAs: number | undefined,
 ): string {
-  if (!diam || !adoptedAs || adoptedAs <= 0) return "—";
-  const sep = Math.round(((BAR_AREA[diam] ?? 0) * 100) / adoptedAs);
-  const area = ((BAR_AREA[diam] ?? 0) / 100).toFixed(2);
-  return `Ø${diam} c/${sep} (${area} cm²/m)`;
+  const d = adoptedDiam && adoptedDiam > 0 ? adoptedDiam : inputDiam;
+  if (!d) return "—";
+  const sep =
+    adoptedSepCm && adoptedSepCm > 0
+      ? Math.round(adoptedSepCm)
+      : adoptedAs && adoptedAs > 0
+        ? Math.round(((BAR_AREA[d] ?? 0) * 100) / adoptedAs)
+        : 0;
+  if (!sep) return "—";
+  const area = ((BAR_AREA[d] ?? 0) / 100).toFixed(2);
+  return `Ø${d} c/${sep} (${area} cm²/m)`;
 }
 
 const LOSA_COLUMNS: PlanillaColumn[] = [
@@ -392,8 +401,18 @@ function buildLosaRow(save: SavedBeam): string[] {
   const dirY: DirectionResult | undefined =
     (result.y?.Mu ?? 0) > 0 ? result.y : result.distY;
 
-  const armX = slabArmadura(input.dBarX, result.adoptedAsX);
-  const armY = slabArmadura(input.dBarY, result.adoptedAsY);
+  const armX = slabArmadura(
+    input.dBarX,
+    result.adoptedDiamX,
+    result.adoptedSepXCm,
+    result.adoptedAsX,
+  );
+  const armY = slabArmadura(
+    input.dBarY,
+    result.adoptedDiamY,
+    result.adoptedSepYCm,
+    result.adoptedAsY,
+  );
 
   const mPos = Math.max(dirX?.Mu ?? 0, dirY?.Mu ?? 0);
   const mNeg = Math.max(
@@ -786,11 +805,21 @@ function edgeArmadura(
   edge: number | undefined,
 ): string {
   if (!result || edge == null || !input) return "—";
-  const diam = edge <= 1 ? input.dBarX : input.dBarY;
-  const adopted = (edge <= 1 ? result.adoptedAsX : result.adoptedAsY) ?? 0;
+  const isX = edge <= 1;
+  const inputDiam = isX ? input.dBarX : input.dBarY;
+  const adoptedDiam = isX ? result.adoptedDiamX : result.adoptedDiamY;
+  const adoptedSep = isX ? result.adoptedSepXCm : result.adoptedSepYCm;
+  const adoptedAs = isX ? result.adoptedAsX : result.adoptedAsY;
+
+  const diam = adoptedDiam && adoptedDiam > 0 ? adoptedDiam : inputDiam;
   if (!diam) return "—";
-  if (adopted <= 0) return `Ø${diam} (sin As adoptada)`;
-  const sep = Math.round(((BAR_AREA[diam] ?? 0) * 100) / adopted);
+  let sep = 0;
+  if (adoptedSep && adoptedSep > 0) {
+    sep = Math.round(adoptedSep);
+  } else if (adoptedAs && adoptedAs > 0) {
+    sep = Math.round(((BAR_AREA[diam] ?? 0) * 100) / adoptedAs);
+  }
+  if (sep <= 0) return `Ø${diam} (sin As adoptada)`;
   return `Ø${diam} c/${sep} cm`;
 }
 

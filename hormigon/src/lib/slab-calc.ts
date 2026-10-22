@@ -93,6 +93,14 @@ export interface SlabResult {
   adoptedAsX?: number;
   /** Adopted span reinforcement in Y direction (user-selected), mm²/m — 0 if not adopted. */
   adoptedAsY?: number;
+  /** Adopted span bar diameter in X direction (mm), user-selected. */
+  adoptedDiamX?: number;
+  /** Adopted span bar spacing in X direction (cm), user-selected. */
+  adoptedSepXCm?: number;
+  /** Adopted span bar diameter in Y direction (mm), user-selected. */
+  adoptedDiamY?: number;
+  /** Adopted span bar spacing in Y direction (cm), user-selected. */
+  adoptedSepYCm?: number;
   /** Support reinforcement design at edge 0 (Izquierdo), if continuous. */
   supportX0?: DirectionResult;
   /** Support reinforcement design at edge 1 (Derecho), if continuous. */

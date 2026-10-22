@@ -89,14 +89,32 @@ export function computoLosaFromSave(save: SavedBeam): Computo | null {
   const input = data.input;
   const result = data.result;
   if (!input || !result) return null;
+  // Prefer the persisted adopted bar (diameter + spacing); fall back to the
+  // legacy area-derived spacing for saves that only stored adoptedAs*.
+  const diamX =
+    result.adoptedDiamX && result.adoptedDiamX > 0
+      ? result.adoptedDiamX
+      : (input.dBarX ?? 0);
+  const sepXCm =
+    result.adoptedSepXCm && result.adoptedSepXCm > 0
+      ? result.adoptedSepXCm
+      : sepFromAdopted(diamX, result.adoptedAsX);
+  const diamY =
+    result.adoptedDiamY && result.adoptedDiamY > 0
+      ? result.adoptedDiamY
+      : (input.dBarY ?? 0);
+  const sepYCm =
+    result.adoptedSepYCm && result.adoptedSepYCm > 0
+      ? result.adoptedSepYCm
+      : sepFromAdopted(diamY, result.adoptedAsY);
   return computoLosa({
     lx: input.lx ?? 0,
     ly: input.ly ?? 0,
     hMm: result.h ?? 0,
-    diamX: input.dBarX ?? 0,
-    sepXCm: sepFromAdopted(input.dBarX, result.adoptedAsX),
-    diamY: input.dBarY ?? 0,
-    sepYCm: sepFromAdopted(input.dBarY, result.adoptedAsY),
+    diamX,
+    sepXCm,
+    diamY,
+    sepYCm,
   });
 }
 

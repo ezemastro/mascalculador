@@ -389,12 +389,32 @@ export function saveSlabInput(
   );
 }
 
+/**
+ * Busca el payload guardado de una losa por id recorriendo la obra activa y
+ * todo el directorio de obras (mismo criterio que `updateSave`). Devuelve el
+ * `data` crudo (`{ input, result? }`) o null si no existe en ninguna obra.
+ */
+function findSavedData(id: string): Partial<shared.SavedSlabData> | null {
+  const obraIds = Array.from(
+    new Set([currentObraId, ...readObras().map((o) => o.id)]),
+  );
+  for (const obraId of obraIds) {
+    const found = getElementSaves(obraId).find((s) => s.id === id);
+    if (found) {
+      return (found.data as unknown as Partial<shared.SavedSlabData>) ?? null;
+    }
+  }
+  return null;
+}
+
 export function updateSlabInput(
   id: string,
   input: shared.SlabInput,
 ): shared.SavedBeam | null {
-  const data = { input };
-  return updateSave(id, data as unknown as Record<string, unknown>);
+  const existing = findSavedData(id) as Partial<shared.SavedSlabData> | null;
+  const data: Record<string, unknown> = { input };
+  if (existing?.result) data.result = existing.result;
+  return updateSave(id, data);
 }
 
 export function loadSlab(id: string): shared.SavedSlabData | null {

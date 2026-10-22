@@ -11,7 +11,12 @@ import {
 } from "../lib/slab-calc";
 import { hasSlabDL, slabReactionToBeamLoad } from "../lib/slab-to-beam";
 import type { SlabEdge } from "../lib/slab-to-beam";
-import { saveSlab, updateSlab } from "../lib/storage";
+import {
+  saveSlab,
+  updateSlab,
+  loadSlab,
+  type SavedSlabData,
+} from "../lib/storage";
 import { pickObraIfNeeded } from "../components/ObraPicker";
 import type { SlabInput } from "../lib/slab-calc";
 import { computoLosa } from "../lib/computo";
@@ -68,6 +73,64 @@ const BAR_AREA: Record<number, number> = {
   16: 201,
   20: 314,
 };
+
+/**
+ * Resolves the initial adopted reinforcement (diameter in mm + spacing in cm)
+ * for one axis, with this priority:
+ *   1. router state (s.adoptedDiamX / s.adoptedSepX and Y equivalents) when both are > 0;
+ *   2. saved payload new fields (result.adoptedDiamX + result.adoptedSepXCm, and Y) > 0;
+ *   3. legacy saved payload with only adoptedAs: diameter from the saved
+ *      input (or router state), spacing derived from the area (clamped 1..50) —
+ *      preserves today's print behavior for old saves;
+ *   4. fallback: form dBarX/dBarY as diameter, 15 cm spacing.
+ */
+function resolveInitialAdoption(
+  axis: "X" | "Y",
+  state: SlabState | null,
+  saved: SavedSlabData | null,
+): { diam: number; sep: number } {
+  const stateDiam = axis === "X" ? state?.adoptedDiamX : state?.adoptedDiamY;
+  const stateSep = axis === "X" ? state?.adoptedSepX : state?.adoptedSepY;
+  if (stateDiam && stateSep && stateDiam > 0 && stateSep > 0) {
+    return {
+      diam: stateDiam,
+      sep: Math.min(50, Math.max(1, Math.round(stateSep))),
+    };
+  }
+
+  const result = saved?.result;
+  const savedInput = saved?.input;
+  const inputDiam =
+    axis === "X"
+      ? (state?.dBarX ?? 0) || (savedInput?.dBarX ?? 0)
+      : (state?.dBarY ?? 0) || (savedInput?.dBarY ?? 0);
+
+  const adoptedDiam =
+    axis === "X" ? result?.adoptedDiamX : result?.adoptedDiamY;
+  const adoptedSepCm =
+    axis === "X" ? result?.adoptedSepXCm : result?.adoptedSepYCm;
+  if (adoptedDiam && adoptedSepCm && adoptedDiam > 0 && adoptedSepCm > 0) {
+    return {
+      diam: adoptedDiam,
+      sep: Math.min(50, Math.max(1, Math.round(adoptedSepCm))),
+    };
+  }
+
+  const legacyAs = axis === "X" ? result?.adoptedAsX : result?.adoptedAsY;
+  if (legacyAs && legacyAs > 0) {
+    const diam =
+      (axis === "X"
+        ? (savedInput?.dBarX ?? state?.dBarX)
+        : (savedInput?.dBarY ?? state?.dBarY)) ?? 10;
+    const sep = Math.min(
+      50,
+      Math.max(1, Math.round(((BAR_AREA[diam] ?? 0) * 100) / legacyAs)),
+    );
+    return { diam, sep };
+  }
+
+  return { diam: inputDiam || 10, sep: 15 };
+}
 
 function SupportSection({
   label,
@@ -221,6 +284,29 @@ export default function SlabResults() {
     [s],
   );
 
+  // Payload de guardado/impresión (mismos campos que persiste "Guardar")
+  const savedSlab = useMemo<SavedSlabData | null>(
+    () => (s?.loadedSaveId ? loadSlab(s.loadedSaveId) : null),
+    [s?.loadedSaveId],
+  );
+
+  // Seed adopted reinforcement (diameter mm + spacing cm) from router state or
+  // the stored save, so reopening a saved slab restores the user's choice.
+  const initX = resolveInitialAdoption("X", s, savedSlab);
+  const initY = resolveInitialAdoption("Y", s, savedSlab);
+  const [diamX, setDiamX] = useState(initX.diam);
+  const [sepX, setSepX] = useState(initX.sep);
+  const [diamY, setDiamY] = useState(initY.diam);
+  const [sepY, setSepY] = useState(initY.sep);
+
+  // Track save state (starts from router state, updates on save)
+  const [savedId, setSavedId] = useState<string | null>(
+    s?.loadedSaveId ?? null,
+  );
+  const [savedName, setSavedName] = useState<string | null>(
+    s?.loadedSaveName ?? null,
+  );
+
   if (!s)
     return (
       <MainLayout>
@@ -244,8 +330,6 @@ export default function SlabResults() {
     dBarX,
     dBarY,
     includeSelfWeight,
-    loadedSaveId,
-    loadedSaveName,
   } = s;
 
   const supportError = validateSlabSupports([edgeX0, edgeXL, edgeY0, edgeYL]);
@@ -338,22 +422,11 @@ export default function SlabResults() {
     },
   ];
 
-  // Adopted reinforcement state (persisted when saving)
-  // sep values are in cm
-  const [diamX, setDiamX] = useState(6);
-  const [sepX, setSepX] = useState(15);
-  const [diamY, setDiamY] = useState(6);
-  const [sepY, setSepY] = useState(15);
+  // Adopted reinforcement area (derived from the seeded diameter/spacing)
   const adoptedAsX =
     sepX > 0 ? Math.round(((BAR_AREA[diamX] || 0) * 100) / sepX) : 0;
   const adoptedAsY =
     sepY > 0 ? Math.round(((BAR_AREA[diamY] || 0) * 100) / sepY) : 0;
-
-  // Track save state (starts from router state, updates on save)
-  const [savedId, setSavedId] = useState<string | null>(loadedSaveId ?? null);
-  const [savedName, setSavedName] = useState<string | null>(
-    loadedSaveName ?? null,
-  );
 
   return (
     <MainLayout>
@@ -389,6 +462,10 @@ export default function SlabResults() {
                     ...result,
                     adoptedAsX,
                     adoptedAsY,
+                    adoptedDiamX: diamX,
+                    adoptedSepXCm: sepX,
+                    adoptedDiamY: diamY,
+                    adoptedSepYCm: sepY,
                   });
                   return;
                 }
@@ -404,6 +481,10 @@ export default function SlabResults() {
                       ...result,
                       adoptedAsX,
                       adoptedAsY,
+                      adoptedDiamX: diamX,
+                      adoptedSepXCm: sepX,
+                      adoptedDiamY: diamY,
+                      adoptedSepYCm: sepY,
                     },
                     target,
                   );
@@ -426,6 +507,10 @@ export default function SlabResults() {
                     ...s,
                     loadedSaveId: savedId,
                     loadedSaveName: savedName,
+                    adoptedDiamX: diamX,
+                    adoptedSepX: sepX,
+                    adoptedDiamY: diamY,
+                    adoptedSepY: sepY,
                   },
                 })
               }

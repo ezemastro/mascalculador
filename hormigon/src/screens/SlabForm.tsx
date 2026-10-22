@@ -66,6 +66,14 @@ export interface SlabState {
   /** Id del guardado cargado, si viene de uno existente */
   loadedSaveId?: string | null;
   loadedSaveName?: string | null;
+  /** Adopted span bar diameter in X direction (mm), carried to results. */
+  adoptedDiamX?: number;
+  /** Adopted span bar spacing in X direction (cm), carried to results. */
+  adoptedSepX?: number;
+  /** Adopted span bar diameter in Y direction (mm), carried to results. */
+  adoptedDiamY?: number;
+  /** Adopted span bar spacing in Y direction (cm), carried to results. */
+  adoptedSepY?: number;
 }
 
 const EDGE_OPTIONS: { value: EdgeCondition; label: string }[] = [
@@ -209,6 +217,29 @@ export default function SlabForm() {
   const [loadedSaveName, setLoadedSaveName] = useState<string | null>(
     state?.loadedSaveName ?? null,
   );
+  // Adopted reinforcement carried from results back into the form so it can be
+  // forwarded again on the next submit. Not rendered — purely a pass-through.
+  const [loadedAdoption, setLoadedAdoption] = useState<{
+    diamX: number;
+    sepX: number;
+    diamY: number;
+    sepY: number;
+  } | null>(() => {
+    if (
+      state?.adoptedDiamX &&
+      state?.adoptedSepX &&
+      state.adoptedDiamX > 0 &&
+      state.adoptedSepX > 0
+    ) {
+      return {
+        diamX: state.adoptedDiamX,
+        sepX: state.adoptedSepX,
+        diamY: state.adoptedDiamY ?? state.adoptedDiamX,
+        sepY: state.adoptedSepY ?? state.adoptedSepX,
+      };
+    }
+    return null;
+  });
   const [supportError, setSupportError] = useState<string | null>(null);
 
   // Clear the support validation error whenever the edge conditions change
@@ -551,6 +582,10 @@ export default function SlabForm() {
         includeSelfWeight,
         loadedSaveId,
         loadedSaveName,
+        adoptedDiamX: loadedAdoption?.diamX,
+        adoptedSepX: loadedAdoption?.sepX,
+        adoptedDiamY: loadedAdoption?.diamY,
+        adoptedSepY: loadedAdoption?.sepY,
       } as SlabState,
     });
   }
@@ -690,6 +725,7 @@ export default function SlabForm() {
         onLoad={(data, save) => {
           setLoadedSaveId(save.id);
           setLoadedSaveName(save.name);
+          setLoadedAdoption(null);
           const input = (data as unknown as { input: SlabInput }).input;
           if (!input) return;
           if (typeof input.lx === "number") setLx(input.lx);
