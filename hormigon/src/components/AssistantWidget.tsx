@@ -177,12 +177,13 @@ export default function AssistantWidget(props: {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          title="Asistente"
-          className="no-print fixed bottom-5 right-5 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-primary text-white shadow-lg transition-transform hover:scale-105 active:scale-95"
+          title="Abrir asistente virtual"
+          aria-label="Abrir asistente virtual"
+          className="no-print fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-full bg-primary px-4 py-3 text-sm font-semibold text-white shadow-lg transition-transform hover:scale-105 active:scale-95"
         >
           <svg
-            width="22"
-            height="22"
+            width="20"
+            height="20"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -193,13 +194,16 @@ export default function AssistantWidget(props: {
           >
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
+          Asistente virtual
         </button>
       )}
 
       {open && (
         <div className="no-print fixed bottom-20 right-5 z-50 flex h-[70vh] max-h-[560px] w-[92vw] max-w-[380px] flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-xl">
           <div className="flex items-center justify-between border-b border-border px-4 py-2">
-            <span className="text-sm font-semibold text-text">Asistente</span>
+            <span className="text-sm font-semibold text-text">
+              Asistente virtual
+            </span>
             <div className="flex items-center gap-2">
               <button
                 type="button"
