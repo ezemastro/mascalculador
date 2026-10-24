@@ -345,7 +345,9 @@ app.post("/api/auth/register", (req, res) => {
   const trimmed = String(username).trim();
   if (!USERNAME_RE.test(trimmed)) {
     return res.status(400).json({
-      error: "el nombre debe tener 3 a 30 caracteres (letras, números o _)",
+      error: /\s/.test(trimmed)
+        ? "el nombre no puede tener espacios (usá letras, números o _)"
+        : "el nombre debe tener 3 a 30 caracteres (letras, números o _)",
     });
   }
   if (typeof password !== "string" || password.length < 8) {

@@ -7,6 +7,87 @@ function getResetToken(): string | null {
   return params.get("reset");
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Error de registro con el motivo concreto (espacios, largo, caracteres). */
+function validateRegister(
+  username: string,
+  email: string,
+  password: string,
+): string | null {
+  if (!username) return "Ingresá un nombre de usuario.";
+  if (/\s/.test(username)) {
+    return "El nombre de usuario no puede tener espacios. Usá letras, números o guión bajo (_).";
+  }
+  if (username.length < 3) {
+    return "El nombre de usuario debe tener al menos 3 caracteres.";
+  }
+  if (username.length > 30) {
+    return "El nombre de usuario no puede superar los 30 caracteres.";
+  }
+  if (!/^[A-Za-z0-9_]+$/.test(username)) {
+    return "El nombre de usuario solo puede tener letras, números y guión bajo (_); sin acentos ni símbolos.";
+  }
+  if (!EMAIL_RE.test(email)) return "Ingresá un email válido.";
+  if (password.length < 8) {
+    return "La contraseña debe tener al menos 8 caracteres.";
+  }
+  return null;
+}
+
+function PasswordToggle({
+  visible,
+  onToggle,
+}: {
+  visible: boolean;
+  onToggle: () => void;
+}) {
+  const label = visible ? "Ocultar contraseña" : "Mostrar contraseña";
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-label={label}
+      title={label}
+      className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1.5 text-text-muted hover:text-text focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+    >
+      {visible ? (
+        <svg
+          aria-hidden="true"
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+          <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+          <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+          <line x1="2" x2="22" y1="2" y2="22" />
+        </svg>
+      ) : (
+        <svg
+          aria-hidden="true"
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 export default function AuthScreen({
   onAuthenticated,
 }: {
@@ -21,12 +102,15 @@ export default function AuthScreen({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     setMessage(null);
+    const trimmedUsername = username.trim();
     try {
       if (mode === "forgot") {
         const res = await fetch("/api/auth/forgot", {
@@ -65,10 +149,19 @@ export default function AuthScreen({
         return;
       }
 
+      if (mode === "register") {
+        const invalid = validateRegister(
+          trimmedUsername,
+          email.trim(),
+          password,
+        );
+        if (invalid) throw new Error(invalid);
+      }
+
       const payload =
         mode === "register"
-          ? { username, email, password }
-          : { username, password };
+          ? { username: trimmedUsername, email: email.trim(), password }
+          : { username: trimmedUsername, password };
       const res = await fetch(`/api/auth/${mode}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -109,16 +202,23 @@ export default function AuthScreen({
         </p>
         <form onSubmit={handleSubmit} className="space-y-3">
           {(mode === "login" || mode === "register") && (
-            <input
-              className={inputClass}
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Nombre de usuario"
-              autoComplete="username"
-              minLength={3}
-              maxLength={30}
-              required
-            />
+            <div className="space-y-1">
+              <input
+                className={inputClass}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Nombre de usuario"
+                autoComplete="username"
+                maxLength={30}
+                required
+              />
+              {mode === "register" && (
+                <p className="text-[11px] leading-snug text-text-muted">
+                  Sin espacios: 3 a 30 caracteres, solo letras, números o guión
+                  bajo (_).
+                </p>
+              )}
+            </div>
           )}
           {mode === "forgot" && (
             <input
@@ -143,35 +243,53 @@ export default function AuthScreen({
             />
           )}
           {(mode === "login" || mode === "register" || mode === "reset") && (
-            <input
-              className={inputClass}
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={mode === "reset" ? "Nueva contraseña" : "Contraseña"}
-              autoComplete={
-                mode === "login" ? "current-password" : "new-password"
-              }
-              minLength={8}
-              required
-            />
+            <div className="relative">
+              <input
+                className={`${inputClass} pr-10`}
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={
+                  mode === "reset" ? "Nueva contraseña" : "Contraseña"
+                }
+                autoComplete={
+                  mode === "login" ? "current-password" : "new-password"
+                }
+                minLength={8}
+                required
+              />
+              <PasswordToggle
+                visible={showPassword}
+                onToggle={() => setShowPassword((prev) => !prev)}
+              />
+            </div>
           )}
           {mode === "reset" && (
-            <input
-              className={inputClass}
-              type="password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              placeholder="Repetí la contraseña"
-              autoComplete="new-password"
-              minLength={8}
-              required
-            />
+            <div className="relative">
+              <input
+                className={`${inputClass} pr-10`}
+                type={showConfirm ? "text" : "password"}
+                value={confirm}
+                onChange={(e) => setConfirm(e.target.value)}
+                placeholder="Repetí la contraseña"
+                autoComplete="new-password"
+                minLength={8}
+                required
+              />
+              <PasswordToggle
+                visible={showConfirm}
+                onToggle={() => setShowConfirm((prev) => !prev)}
+              />
+            </div>
           )}
           {mode === "reset" && password && confirm && password !== confirm && (
             <p className="text-xs text-danger">Las contraseñas no coinciden</p>
           )}
-          {error && <p className="text-xs text-danger">{error}</p>}
+          {error && (
+            <p role="alert" className="text-xs text-danger">
+              {error}
+            </p>
+          )}
           {message && <p className="text-xs text-success">{message}</p>}
           <button
             type="submit"
