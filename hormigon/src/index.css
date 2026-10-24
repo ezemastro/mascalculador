@@ -393,6 +393,20 @@ button:focus-visible {
   text-align: center;
 }
 
+.planilla-sheet .slab-plan {
+  display: block;
+  margin: 0 auto;
+  max-width: 72px;
+  height: auto;
+}
+
+.planilla-sheet .beam-scheme {
+  display: block;
+  margin: 0 auto;
+  max-width: 96px;
+  height: auto;
+}
+
 .planilla-sheet tbody tr {
   break-inside: avoid;
 }

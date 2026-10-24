@@ -5,8 +5,10 @@ import type {
   SlabInput,
   SlabResult,
   DirectionResult,
+  EdgeCondition,
 } from "@mascalculador/shared";
 import { calculateBeamEnvelope } from "./beam-envelope";
+import { designSlab } from "./slab-calc";
 import { computeDeflections } from "./deflection";
 import { CONCRETE_DENSITY } from "./constants";
 import type { BaseInput, BaseResult } from "./bases-calc";
@@ -29,10 +31,28 @@ export interface PlanillaSheet {
   subtitle?: string;
   columns: PlanillaColumn[];
   /** Celdas pre-formateadas, alineadas con `columns`. Una fila por tramo. */
-  rows: string[][];
+  rows: PlanillaCell[][];
   countLabel: string;
   notes?: string[];
 }
+
+/** Celda rica que pide un dibujo de planta de losa en la planilla. */
+export interface SlabPlanCell {
+  kind: "slab-plan";
+  lx: number;
+  ly: number;
+  edges: [EdgeCondition, EdgeCondition, EdgeCondition, EdgeCondition];
+}
+
+/** Celda rica que pide el esquema estático de un tramo de viga. */
+export interface BeamSchemeCell {
+  kind: "beam-scheme";
+  left: SupportType;
+  right: SupportType;
+}
+
+/** Celda de planilla: texto plano, planta de losa o esquema de viga. */
+export type PlanillaCell = string | SlabPlanCell | BeamSchemeCell;
 
 // ---- Vigas H° A° (tipo "hormigon") ----
 
@@ -107,7 +127,7 @@ function fmtLoad(
   beamLength: number,
 ): string {
   if (l.type === "point") {
-    return `P ${fmt2(l.D ?? 0)}/${fmt2(l.L ?? 0)} kN @${fmt1(l.position ?? 0)} m`;
+    return `P ${fmt2(l.D ?? 0)}/${fmt2(l.L ?? 0)} kN x=${fmt1(l.position ?? 0)} m`;
   }
   return `q ${fmt2(l.D ?? 0)}/${fmt2(l.L ?? 0)} kN/m (${fmt1(l.start ?? 0)}→${fmt1(l.end ?? beamLength)} m)`;
 }
@@ -146,7 +166,8 @@ interface VigaSaveData {
 }
 
 const VIGA_COLUMNS: PlanillaColumn[] = [
-  { key: "elem", label: "Elemento", width: "10%" },
+  { key: "elem", label: "Elemento", width: "8%" },
+  { key: "scheme", label: "Esquema", width: "11%", align: "center" },
   { key: "section", label: "Sección (cm)" },
   { key: "mat", label: "f'c/fy (MPa)" },
   { key: "loads", label: "Cargas D/L", width: "19%" },
@@ -156,7 +177,7 @@ const VIGA_COLUMNS: PlanillaColumn[] = [
   { key: "reinft", label: "Aª inferior" },
   { key: "reinfL", label: "Aª sup izq" },
   { key: "reinfR", label: "Aª sup der" },
-  { key: "stirrup", label: "Estribos", width: "10%" },
+  { key: "stirrup", label: "Estribos", width: "7%" },
   { key: "flechaLL", label: "ΔLL / L·360 (mm)", align: "right" },
   { key: "flechaT", label: "Δtotal / L·240 (mm)", align: "right" },
 ];
@@ -168,7 +189,7 @@ const VIGA_COLUMNS: PlanillaColumn[] = [
  * reporta por lado: apoyo izquierdo/derecho del tramo. Lanza si el guardado
  * está corrupto.
  */
-function buildVigaRows(save: SavedBeam): string[][] {
+function buildVigaRows(save: SavedBeam): PlanillaCell[][] {
   const d = save.data as unknown as VigaSaveData;
   const spans = d.spans;
   if (!Array.isArray(spans) || spans.length === 0) {
@@ -290,15 +311,18 @@ function buildVigaRows(save: SavedBeam): string[][] {
         ? (envelope.supportMuNeg[i + 1] ?? 0)
         : 0;
     const fSp = defl?.spans[i];
-    const flechaLL = fSp
-      ? `${fmt2(fSp.deltaLL)} / ${fmt2(fSp.limLL)}${fSp.okLL ? " ✓" : " ✗"}`
-      : "—";
+    const flechaLL = fSp ? `${fmt2(fSp.deltaLL)} / ${fmt2(fSp.limLL)}` : "—";
     const flechaT = fSp
-      ? `${fmt2(fSp.deltaTotal)} / ${fmt2(fSp.limTotal)}${fSp.okTotal ? " ✓" : " ✗"}`
+      ? `${fmt2(fSp.deltaTotal)} / ${fmt2(fSp.limTotal)}`
       : "—";
 
     return [
       n === 1 ? save.name : `${save.name} · T${i + 1}`,
+      {
+        kind: "beam-scheme",
+        left: supportTypes[i] ?? "simple",
+        right: supportTypes[i + 1] ?? "simple",
+      },
       section,
       mat,
       loadText,
@@ -319,7 +343,7 @@ function buildVigaRows(save: SavedBeam): string[][] {
 
 /** Construye la planilla de vigas a partir de los guardados provistos. */
 export function buildVigaSheet(sources: SavedBeam[]): PlanillaSheet {
-  const rows: string[][] = [];
+  const rows: PlanillaCell[][] = [];
   const failed: string[] = [];
   for (const save of sources) {
     try {
@@ -377,6 +401,7 @@ function slabArmadura(
 
 const LOSA_COLUMNS: PlanillaColumn[] = [
   { key: "elem", label: "Elemento", width: "11%" },
+  { key: "plan", label: "Planta", width: "13%", align: "center" },
   { key: "dims", label: "Lx×Ly (m)" },
   { key: "edges", label: "Bordes (I/D/A/Ab)" },
   { key: "loads", label: "D/L (kN/m²)" },
@@ -388,15 +413,33 @@ const LOSA_COLUMNS: PlanillaColumn[] = [
   { key: "armY", label: "Armadura Y", width: "15%" },
 ];
 
-function buildLosaRow(save: SavedBeam): string[] {
+function buildLosaRow(save: SavedBeam): PlanillaCell[] {
   const data = save.data as unknown as {
     input?: Partial<SlabInput>;
     result?: Partial<SlabResult>;
   };
   const input = data.input;
-  const result = data.result;
-  if (!input || !result) throw new Error("Sin datos");
+  if (!input) throw new Error("Sin datos");
+  // Los guardados desde el formulario solo tienen `input`; la planilla es una
+  // memoria de cálculo, así que resolvemos el diseño con el mismo motor.
+  const result = data.result ?? designSlab(input as SlabInput);
   const edges = input.edges ?? [];
+  const edgesTuple: [
+    EdgeCondition,
+    EdgeCondition,
+    EdgeCondition,
+    EdgeCondition,
+  ] =
+    edges.length === 4
+      ? (edges as [EdgeCondition, EdgeCondition, EdgeCondition, EdgeCondition])
+      : ["simple", "simple", "simple", "simple"];
+  const planCell: SlabPlanCell = {
+    kind: "slab-plan",
+    lx: input.lx ?? 0,
+    ly: input.ly ?? 0,
+    edges: edgesTuple,
+  };
+
   const dirX: DirectionResult | undefined = result.x;
   const dirY: DirectionResult | undefined =
     (result.y?.Mu ?? 0) > 0 ? result.y : result.distY;
@@ -424,6 +467,7 @@ function buildLosaRow(save: SavedBeam): string[] {
 
   return [
     save.name,
+    planCell,
     `${input.lx ?? 0} × ${input.ly ?? 0}`,
     edges.map((c: string) => `${EDGE_COND[c] ?? c}`).join(" / "),
     `${fmt1(input.D ?? 0)}/${fmt1(input.L ?? 0)}`,
@@ -438,7 +482,7 @@ function buildLosaRow(save: SavedBeam): string[] {
 
 /** Planilla de losas (una fila por losa). */
 export function buildLosaSheet(sources: SavedBeam[]): PlanillaSheet {
-  const rows: string[][] = [];
+  const rows: PlanillaCell[][] = [];
   const failed: string[] = [];
   for (const save of sources) {
     try {
@@ -453,10 +497,12 @@ export function buildLosaSheet(sources: SavedBeam[]): PlanillaSheet {
     columns: LOSA_COLUMNS,
     rows,
     countLabel: `Cantidad de losas: ${rows.length}`,
-    notes:
-      failed.length > 0
+    notes: [
+      ...(failed.length > 0
         ? [`No se pudieron procesar: ${failed.join(", ")}`]
-        : undefined,
+        : []),
+      "Referencia: triángulo = apoyo articulado; borde tramado = continuidad; línea de trazos = borde libre.",
+    ],
   };
 }
 
@@ -619,7 +665,7 @@ const BASES_COLUMNS: PlanillaColumn[] = [
  *  La comparación del motor es contra la tracción de servicio Ts (PD+PL). */
 function rozCheckText(ok: boolean | undefined): string {
   if (ok == null) return "—";
-  return ok ? "≥ Ts ✓" : "< Ts ✗";
+  return ok ? "≥ Ts" : "< Ts";
 }
 
 /** Resultados del sistema de equilibrio (viga de fundación, vigas de
