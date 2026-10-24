@@ -138,6 +138,8 @@ export const LIVE_LOAD_USES: { label: string; value: number }[] = [
   { label: "Habitación de hospital", value: 2 },
   { label: "Quirófano / laboratorio (hospital)", value: 3 },
   { label: "Marquesina y estructura de entrada", value: 3.5 },
+  // Valor manual: la UI muestra un campo editable en lugar del valor fijo.
+  { label: "Otros", value: 0 },
 ];
 
 export function deadLoadValue(item: DeadLoadItem): number {

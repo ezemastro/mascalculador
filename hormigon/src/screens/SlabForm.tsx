@@ -1066,13 +1066,29 @@ export default function SlabForm() {
                       >
                         {LIVE_LOAD_USES.map((u) => (
                           <option key={u.label} value={u.label}>
-                            {u.label} — {u.value} kN/m²
+                            {u.label === "Otros"
+                              ? "Otros — valor manual"
+                              : `${u.label} — ${u.value} kN/m²`}
                           </option>
                         ))}
                       </select>
-                      <span className="text-sm font-semibold text-text">
-                        = {it.value.toFixed(2)} kN/m²
-                      </span>
+                      {it.label === "Otros" ? (
+                        <>
+                          <DecimalInput
+                            value={it.value ?? 0}
+                            onChange={(v) =>
+                              updateLiveItem(it.id, { value: v })
+                            }
+                            className="w-20"
+                            decimals={2}
+                          />
+                          <span className="text-xs text-text-muted">kN/m²</span>
+                        </>
+                      ) : (
+                        <span className="text-sm font-semibold text-text">
+                          = {it.value.toFixed(2)} kN/m²
+                        </span>
+                      )}
                       <button
                         type="button"
                         onClick={() => removeLive(it.id)}
