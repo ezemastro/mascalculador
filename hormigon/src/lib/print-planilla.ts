@@ -6,12 +6,13 @@ import type {
   SlabResult,
   DirectionResult,
   EdgeCondition,
+  BaseTensorAdopcion,
 } from "@mascalculador/shared";
 import { calculateBeamEnvelope } from "./beam-envelope";
 import { designSlab } from "./slab-calc";
 import { computeDeflections } from "./deflection";
 import { CONCRETE_DENSITY } from "./constants";
-import type { BaseInput, BaseResult } from "./bases-calc";
+import type { BaseInput, BaseResult, BaseType } from "./bases-calc";
 import { designBase, designVigaCabezal } from "./bases-calc";
 import { designRCColumn } from "./rc-column-calc";
 import type { MuroInput, MuroResult, MuroBarSelection } from "./muro-calc";
@@ -51,8 +52,23 @@ export interface BeamSchemeCell {
   right: SupportType;
 }
 
-/** Celda de planilla: texto plano, planta de losa o esquema de viga. */
-export type PlanillaCell = string | SlabPlanCell | BeamSchemeCell;
+/** Celda rica que pide el dibujo en planta de una base (columna dentro del
+ *  zapato) en la planilla. */
+export interface BasePlanCell {
+  kind: "base-plan";
+  type: BaseType;
+  Lx: number;
+  Ly: number;
+  cx: number;
+  cy: number;
+}
+
+/** Celda de planilla: texto plano, planta de losa, esquema de viga o planta de base. */
+export type PlanillaCell =
+  | string
+  | SlabPlanCell
+  | BeamSchemeCell
+  | BasePlanCell;
 
 // ---- Vigas H° A° (tipo "hormigon") ----
 
@@ -642,30 +658,85 @@ const BASE_SUBTYPE_LABELS: Record<string, string> = {
 };
 
 const BASES_COLUMNS: PlanillaColumn[] = [
-  { key: "elem", label: "Elemento", width: "8%" },
-  { key: "tipo", label: "Tipo", width: "9%" },
-  { key: "dims", label: "Lx×Ly×h (cm)", width: "9%" },
+  { key: "elem", label: "Elemento", width: "7%" },
+  { key: "tipo", label: "Tipo", width: "8%" },
+  { key: "plan", label: "Planta", width: "10%", align: "center" },
+  { key: "dims", label: "Lx×Ly×h (cm)", width: "8%" },
   { key: "qa", label: "σadm / Df (kN/m² / m)", align: "right" },
   { key: "loads", label: "D/L (kN)" },
   { key: "mat", label: "f'c/fy (MPa)" },
   { key: "pu", label: "Pu (kN)", align: "right" },
   { key: "qu", label: "qu (kN/m²)", align: "right" },
   { key: "mu", label: "Mu máx (kN·m)", align: "right" },
-  { key: "armX", label: "Aª X", width: "8%" },
-  { key: "armY", label: "Aª Y", width: "8%" },
+  { key: "armX", label: "Aª X", width: "7%" },
+  { key: "armY", label: "Aª Y", width: "7%" },
   {
     key: "vigaTensor",
     label: "Viga fund. / tensor",
-    width: "17%",
+    width: "22%",
     multiline: true,
   },
 ];
 
-/** Verificación de rozamiento en texto (— si el guardado es viejo).
- *  La comparación del motor es contra la tracción de servicio Ts (PD+PL). */
-function rozCheckText(ok: boolean | undefined): string {
-  if (ok == null) return "—";
-  return ok ? "≥ Ts" : "< Ts";
+/** Adopción manual de armaduras de la base, persistida en el guardado
+ *  (data root). Todos los campos son opcionales: si faltan, la celda cae a las
+ *  áreas / Av/s requeridos del resultado. */
+interface BasesAdopcion {
+  vigaSupQty?: number;
+  vigaSupDiam?: number;
+  vigaInfQty?: number;
+  vigaInfDiam?: number;
+  estVolLegs?: number;
+  estVolDiam?: number;
+  estVolSep?: number;
+  estTramoLegs?: number;
+  estTramoDiam?: number;
+  estTramoSep?: number;
+  tensorAdopt?: BaseTensorAdopcion;
+  tensorAdoptX?: BaseTensorAdopcion;
+  tensorAdoptY?: BaseTensorAdopcion;
+}
+
+/** Armadura adoptada (cantidad + Ø) o área requerida en cm². */
+function adoptedRebar(
+  qty: number | undefined,
+  diam: number | undefined,
+  asReq: number,
+): string {
+  return qty != null && qty > 0 && diam
+    ? `${qty}Ø${diam}`
+    : `${fmt2(asReq)} cm²`;
+}
+
+/** Estribo adoptado (Ø c/separación + patas) o Av/s requerido. */
+function adoptedStirrup(
+  diam: number | undefined,
+  sep: number | undefined,
+  legs: number | undefined,
+  avsReq: number,
+): string {
+  if (diam != null && sep != null && sep > 0) {
+    const legsTxt = legs != null ? ` ${legs}r` : "";
+    return `Ø${diam} c/${Math.round(sep)}${legsTxt}`;
+  }
+  return `Av/s ${fmt2(avsReq)} cm²/m`;
+}
+
+/** Una línea de tensor (simple o una dirección de esquina). */
+function tensorLine(
+  tu: number,
+  asReq: number,
+  hTensor: number,
+  adopt: BaseTensorAdopcion | undefined,
+  label: string,
+): string {
+  const b = adopt?.b && adopt.b > 0 ? adopt.b : Math.round(hTensor);
+  const h = adopt?.h && adopt.h > 0 ? adopt.h : Math.round(hTensor);
+  const bar =
+    adopt && adopt.qty && adopt.qty > 0 && adopt.diam
+      ? `${adopt.qty}Ø${adopt.diam}`
+      : `${fmt2(asReq)} cm²`;
+  return `${label} ${b}×${h} · Tu ${fmt1(tu)} kN · ${bar}`;
 }
 
 /** Resultados del sistema de equilibrio (viga de fundación, vigas de
@@ -673,20 +744,41 @@ function rozCheckText(ok: boolean | undefined): string {
 function buildVigaTensorCell(
   input: Partial<BaseInput>,
   result: Partial<BaseResult>,
+  adopt: BasesAdopcion = {},
 ): string {
-  const mu = input.mu ?? 0.4;
-  // Roce disponible con cargas de servicio (N = PD+PL). Si el guardado trae el
-  // valor del motor se usa ese; si no, se recalcula.
-  const roz = fmt1(result.FricRf ?? ((input.PD ?? 0) + (input.PL ?? 0)) * mu);
-  const rozCheck = rozCheckText(result.FrictionOK);
-
   if (input.subType === "viga-de-fundacion") {
+    const b = fmt1(result.b_viga ?? 0);
+    const h = fmt1(result.h_viga ?? 0);
+    const maxVu = Math.max(result.vigVuVol ?? 0, result.vigVuTramo ?? 0);
+    const sup = adoptedRebar(
+      adopt.vigaSupQty,
+      adopt.vigaSupDiam,
+      result.As_sup ?? 0,
+    );
+    const inf = adoptedRebar(
+      adopt.vigaInfQty,
+      adopt.vigaInfDiam,
+      result.As_inf ?? 0,
+    );
+    const stirVol = adoptedStirrup(
+      adopt.estVolDiam,
+      adopt.estVolSep,
+      adopt.estVolLegs,
+      result.vigAvsReqVol ?? 0,
+    );
+    const stirTramo = adoptedStirrup(
+      adopt.estTramoDiam,
+      adopt.estTramoSep,
+      adopt.estTramoLegs,
+      result.vigAvsReqTramo ?? 0,
+    );
+    // `Mnv` es el momento nominal de la viga (M_u / 0.9); `result.Mu` es el
+    // volcador Pu·e, no el momento máximo del tramo.
+    const muViga = result.Mnv != null ? fmt1((result.Mnv * 0.9) / 100) : "—";
     return [
-      `Viga ${fmt1(result.b_viga ?? 0)}×${fmt1(result.h_viga ?? 0)} · d ${fmt1(result.d_viga ?? 0)} cm`,
-      `e ${fmt1(result.e ?? 0)} · Mu ${fmt1((result.Mu ?? 0) / 100)} kN·m · Ru ${fmt1(result.Ru ?? 0)} kN`,
-      `As sup ${fmt2(result.As_sup ?? 0)} · As inf ${fmt2(result.As_inf ?? 0)} cm²`,
-      `Vu vol/tramo ${fmt1(result.vigVuVol ?? 0)}/${fmt1(result.vigVuTramo ?? 0)} kN · φVc ${fmt1(result.vigPhiVc ?? 0)} kN`,
-      `Av/s vol ${fmt2(result.vigAvsReqVol ?? 0)} · tramo ${fmt2(result.vigAvsReqTramo ?? 0)} cm²/m · s máx ${fmt1(result.vigSmax ?? 0)} cm`,
+      `V ${b}×${h} · Mu ${muViga} kN·m · Vu ${fmt1(maxVu)} kN`,
+      `As sup ${sup} · As inf ${inf}`,
+      `Est vol ${stirVol} · tramo ${stirTramo}`,
     ].join("\n");
   }
 
@@ -703,16 +795,29 @@ function buildVigaTensorCell(
     if (result.tensorPending) return "Pendiente de datos del tensor";
     if (input.type === "esquina") {
       return [
-        `Tensor X: H ${input.Hx ?? "—"} · Tux ${fmt1(result.Tux ?? 0)} → As ${fmt2(result.As_tensorX ?? 0)} cm²`,
-        `Tensor Y: H ${input.Hy ?? "—"} · Tuy ${fmt1(result.Tuy ?? 0)} → As ${fmt2(result.As_tensorY ?? 0)} cm²`,
-        `Rozamiento (PD+PL)·μ ${roz} kN ${rozCheck}`,
+        tensorLine(
+          result.Tux ?? 0,
+          result.As_tensorX ?? 0,
+          result.h_tensorX ?? 0,
+          adopt.tensorAdoptX,
+          "Tx",
+        ),
+        tensorLine(
+          result.Tuy ?? 0,
+          result.As_tensorY ?? 0,
+          result.h_tensorY ?? 0,
+          adopt.tensorAdoptY,
+          "Ty",
+        ),
       ].join("\n");
     }
-    return [
-      `Tensor: H ${input.H ?? "—"} · Tu ${fmt1(result.Tu ?? 0)} kN → As ${fmt2(result.As_tensor ?? 0)} cm²`,
-      `Sección sugerida ${Math.round(result.h_tensor ?? 0)}×${Math.round(result.h_tensor ?? 0)} cm`,
-      `Rozamiento (PD+PL)·μ ${roz} kN ${rozCheck}`,
-    ].join("\n");
+    return tensorLine(
+      result.Tu ?? 0,
+      result.As_tensor ?? 0,
+      result.h_tensor ?? 0,
+      adopt.tensorAdopt,
+      "T",
+    );
   }
 
   return "—";
@@ -745,11 +850,12 @@ function isCompleteBaseInput(x: Partial<BaseInput>): x is BaseInput {
   );
 }
 
-function buildBaseRow(save: SavedBeam): string[] {
+function buildBaseRow(save: SavedBeam): PlanillaCell[] {
   const data = save.data as unknown as {
     input?: Partial<BaseInput>;
     result?: Partial<BaseResult>;
-  } & Partial<BaseInput>;
+  } & Partial<BaseInput> &
+    BasesAdopcion;
   if (!data || typeof data !== "object") throw new Error("Sin datos");
   if (data.result && !data.input) throw new Error("Datos incompletos");
   // Los guardados desde resultados traen { input, result }; los hechos desde
@@ -775,9 +881,18 @@ function buildBaseRow(save: SavedBeam): string[] {
   );
   const armX = baseRebar(result.nb_x, result.db, result.sep_x);
   const armY = baseRebar(result.nb_y, result.db, result.sep_y);
+  const planCell: BasePlanCell = {
+    kind: "base-plan",
+    type: (input.type ?? "centrada") as BaseType,
+    Lx: result.Lx ?? 0,
+    Ly: result.Ly ?? 0,
+    cx: input.cx ?? 0,
+    cy: input.cy ?? 0,
+  };
   return [
     save.name,
     tipo,
+    planCell,
     `${result.Lx ?? 0}×${result.Ly ?? 0}×${fmt1(result.h ?? 0)}`,
     `${fmt1(input.qa ?? 0)} / ${fmt1(input.Df ?? 0)}`,
     `${fmt2(input.PD ?? 0)}/${fmt2(input.PL ?? 0)}`,
@@ -787,13 +902,13 @@ function buildBaseRow(save: SavedBeam): string[] {
     muMax.toFixed(1),
     armX,
     armY,
-    buildVigaTensorCell(input, result),
+    buildVigaTensorCell(input, result, data),
   ];
 }
 
 /** Planilla de bases (una fila por base). */
 export function buildBasesSheet(sources: SavedBeam[]): PlanillaSheet {
-  const rows: string[][] = [];
+  const rows: PlanillaCell[][] = [];
   const failed: string[] = [];
   for (const save of sources) {
     try {

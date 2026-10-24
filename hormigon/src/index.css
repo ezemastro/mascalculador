@@ -407,6 +407,13 @@ button:focus-visible {
   height: auto;
 }
 
+.planilla-sheet .base-plan {
+  display: block;
+  margin: 0 auto;
+  max-width: 76px;
+  height: auto;
+}
+
 .planilla-sheet tbody tr {
   break-inside: avoid;
 }

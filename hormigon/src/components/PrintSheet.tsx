@@ -1,6 +1,7 @@
 import type { PlanillaSheet } from "../lib/print-planilla";
 import PrintSlabPlan from "./PrintSlabPlan";
 import PrintBeamScheme from "./PrintBeamScheme";
+import PrintBasePlan from "./PrintBasePlan";
 import { getActiveObraName } from "../lib/storage";
 
 function cellClass(align: string | undefined, multiline: boolean): string {
@@ -74,6 +75,14 @@ export default function PrintSheet({ sheet }: { sheet: PlanillaSheet }) {
                       lx={cell.lx}
                       ly={cell.ly}
                       edges={cell.edges}
+                    />
+                  ) : cell.kind === "base-plan" ? (
+                    <PrintBasePlan
+                      type={cell.type}
+                      Lx={cell.Lx}
+                      Ly={cell.Ly}
+                      cx={cell.cx}
+                      cy={cell.cy}
                     />
                   ) : (
                     <PrintBeamScheme left={cell.left} right={cell.right} />
