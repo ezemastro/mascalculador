@@ -280,7 +280,7 @@ button:focus-visible {
 }
 
 /* ---- Planilla municipal (impresión) ----
- * #print-root es el portal donde PrintDialog monta la hoja; en pantalla
+ * #print-root es el contenedor donde se monta la hoja para imprimir; en pantalla
  * permanece oculto y solo aparece cuando se imprime la planilla. */
 
 #print-root {

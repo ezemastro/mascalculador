@@ -2,11 +2,7 @@ import { type ReactNode } from "react";
 import { Link, useOutletContext } from "react-router";
 import ScreenHeader from "../components/ScreenHeader";
 import ObraMenu from "../components/ObraMenu";
-import {
-  PRINT_ITEMS,
-  PrintDialogHost,
-  usePrintMenu,
-} from "../components/GlobalPrintMenu";
+import { PRINT_ITEMS, usePrintMenu } from "../components/GlobalPrintMenu";
 import type { SavedObra } from "../lib/storage";
 
 /** Contexto que el Layout expone por el Outlet (obra activa). */
@@ -175,11 +171,10 @@ function ModuleCard({ to, name, description, icon }: ModuleDef) {
   );
 }
 
-/** Tarjeta Imprimir: abre el menú de planillas y el diálogo de impresión
- *  (misma lógica que el botón Imprimir de la barra superior). */
+/** Tarjeta Imprimir: abre el menú de planillas y, al elegir un tipo, imprime
+ *  directamente (misma lógica que el botón Imprimir de la barra superior). */
 function ImprimirCard() {
-  const { menuOpen, setMenuOpen, dialog, openItem, closeDialog, rootRef } =
-    usePrintMenu();
+  const { menuOpen, setMenuOpen, openItem, rootRef } = usePrintMenu();
 
   return (
     <div ref={rootRef} className="relative">
@@ -242,8 +237,6 @@ function ImprimirCard() {
           ))}
         </div>
       )}
-
-      <PrintDialogHost dialog={dialog} onClose={closeDialog} />
     </div>
   );
 }

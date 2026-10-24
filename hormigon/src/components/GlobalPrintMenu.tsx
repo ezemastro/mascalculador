@@ -1,6 +1,6 @@
 /* eslint-disable react-refresh/only-export-components -- el hook usePrintMenu, PRINT_ITEMS y buildSheets se comparten con HomeScreen */
 import { useEffect, useRef, useState } from "react";
-import PrintDialog from "./PrintDialog";
+import { printSheets } from "../lib/print-sheets";
 import {
   buildBasesSheet,
   buildCabezalVigaSheet,
@@ -76,15 +76,10 @@ export function buildSheets(kind: PrintKind): PlanillaSheet[] | null {
   }
 }
 
-/** Estado compartido del menú de impresión: abrir/cerrar el menú y el
- *  diálogo de planilla. Lo usan el botón de la barra superior y la tarjeta
- *  Imprimir de la página de inicio. */
+/** Estado compartido del menú de impresión: abrir/cerrar el menú. Lo usan el
+ *  botón de la barra superior y la tarjeta Imprimir de la página de inicio. */
 export function usePrintMenu() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [dialog, setDialog] = useState<{
-    kind: PrintKind;
-    title: string;
-  } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -107,44 +102,21 @@ export function usePrintMenu() {
 
   function openItem(kind: PrintKind) {
     setMenuOpen(false);
-    const label =
-      PRINT_ITEMS.find((i) => i.kind === kind)?.label.toLowerCase() ?? kind;
-    setDialog({ kind, title: `Imprimir planilla de ${label}` });
+    printSheets(() => buildSheets(kind));
   }
 
   return {
     menuOpen,
     setMenuOpen,
-    dialog,
     openItem,
-    closeDialog: () => setDialog(null),
     rootRef,
   };
 }
 
-/** Diálogo de planilla conectado al estado de usePrintMenu. */
-export function PrintDialogHost({
-  dialog,
-  onClose,
-}: {
-  dialog: { kind: PrintKind; title: string } | null;
-  onClose: () => void;
-}) {
-  return (
-    <PrintDialog
-      open={dialog !== null}
-      onClose={onClose}
-      title={dialog?.title ?? ""}
-      buildSheets={() => (dialog ? buildSheets(dialog.kind) : null)}
-    />
-  );
-}
-
-/** Botón Imprimir de la barra superior (junto a Salir): despliega las 4
- *  opciones de planilla y abre el diálogo de impresión correspondiente. */
+/** Botón Imprimir de la barra superior (junto a Salir): despliega las opciones
+ *  de planilla e imprime directamente la elegida. */
 export default function GlobalPrintMenu() {
-  const { menuOpen, setMenuOpen, dialog, openItem, closeDialog, rootRef } =
-    usePrintMenu();
+  const { menuOpen, setMenuOpen, openItem, rootRef } = usePrintMenu();
 
   return (
     <div ref={rootRef} className="relative">
@@ -195,8 +167,6 @@ export default function GlobalPrintMenu() {
           ))}
         </div>
       )}
-
-      <PrintDialogHost dialog={dialog} onClose={closeDialog} />
     </div>
   );
 }

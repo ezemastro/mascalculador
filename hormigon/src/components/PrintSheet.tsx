@@ -13,7 +13,7 @@ function cellClass(align: string | undefined, multiline: boolean): string {
 }
 
 /** Hoja A4 horizontal con la planilla municipal. Se renderiza solo en
- *  impresión (el portal vive en #print-root, oculto en pantalla). */
+ *  impresión (se monta en #print-root, oculto en pantalla). */
 export default function PrintSheet({ sheet }: { sheet: PlanillaSheet }) {
   const today = new Date().toLocaleDateString();
   return (
