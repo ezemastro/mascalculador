@@ -160,6 +160,10 @@ export default function ConcreteResults() {
   const nSpans = s?.spans.length ?? 1;
   const nSupports = nSpans + 1;
 
+  // Modo de zona de viga placa (legacy: si falta, flangeType ? "spans" : "none").
+  const flangeMode: "none" | "spans" | "supports" =
+    s?.flangeMode ?? (s?.flangeType ? "spans" : "none");
+
   // ---- Estado de armaduras por tramo (arrays; acepta escalares de guardados viejos) ----
   const [barQty, setBarQty] = useState<number[]>(() => {
     const v = s?.barQty;
@@ -175,15 +179,11 @@ export default function ConcreteResults() {
   });
   const [compBarQty, setCompBarQty] = useState<number[]>(() => {
     const v = s?.compBarQty;
-    return v != null ? (Array.isArray(v) ? v : arr(nSpans, v)) : arr(nSpans, 0);
+    return v != null ? (Array.isArray(v) ? v : arr(nSpans, v)) : arr(nSpans, 2);
   });
   const [compBarDiam, setCompBarDiam] = useState<number[]>(() => {
     const v = s?.compBarDiam;
-    return v != null
-      ? Array.isArray(v)
-        ? v
-        : arr(nSpans, v)
-      : arr(nSpans, 12);
+    return v != null ? (Array.isArray(v) ? v : arr(nSpans, v)) : arr(nSpans, 6);
   });
   const [stirrupLegs, setStirrupLegs] = useState<number[]>(() => {
     const v = s?.stirrupLegs;
@@ -206,17 +206,17 @@ export default function ConcreteResults() {
   // extremos empotrados (voladizos); los guardados viejos (solo interiores)
   // se migran al inicializar.
   const [supBarQty, setSupBarQty] = useState<number[]>(() => {
-    const migrated = migrateSupArray(s?.supBarQty, nSupports, 3);
+    const migrated = migrateSupArray(s?.supBarQty, nSupports, 2);
     if (migrated) return migrated;
     return (s?.supportTypes ?? arr(nSupports, "simple")).map((t) =>
-      t === "free" ? 0 : 3,
+      t === "free" ? 0 : 2,
     );
   });
   const [supBarDiam, setSupBarDiam] = useState<number[]>(() => {
-    const migrated = migrateSupArray(s?.supBarDiam, nSupports, 16);
+    const migrated = migrateSupArray(s?.supBarDiam, nSupports, 6);
     if (migrated) return migrated;
     return (s?.supportTypes ?? arr(nSupports, "simple")).map((t) =>
-      t === "free" ? 0 : 16,
+      t === "free" ? 0 : 6,
     );
   });
   const [supportWidths] = useState<number[]>(() => s?.supportWidths ?? []);
@@ -254,7 +254,8 @@ export default function ConcreteResults() {
   // Viga placa: la losa ya está en las cargas → solo el nervio sobresaliente
   // bw·(h − h_f).
   const selfWeight = s?.includeSelfWeight
-    ? ((s.bw * (s.flangeType ? Math.max(s.h - (s.flangeHf ?? 0), 0) : s.h)) /
+    ? ((s.bw *
+        (flangeMode !== "none" ? Math.max(s.h - (s.flangeHf ?? 0), 0) : s.h)) /
         1e6) *
       CONCRETE_DENSITY
     : 0;
@@ -292,17 +293,18 @@ export default function ConcreteResults() {
       const Vu = envelope.spanVu[i];
       const c = ensure(supportWidths, supportPositions.length, 300)[i]; // mm
       // Viga placa: ancho efectivo de colaboración por tramo (CIRSOC 201-05
-      // Art. 8.10). Solo aplica a momento positivo.
-      const flange = s.flangeType
-        ? flangeEffectiveWidth({
-            bw: s.bw,
-            hf: s.flangeHf ?? 0,
-            type: s.flangeType,
-            clearLeft: s.flangeClearLeft ?? 0,
-            clearRight: s.flangeClearRight ?? 0,
-            span: s.spans[i],
-          })
-        : null;
+      // Art. 8.10). Solo en modo "spans" y a momento positivo.
+      const flange =
+        flangeMode === "spans"
+          ? flangeEffectiveWidth({
+              bw: s.bw,
+              hf: s.flangeHf ?? 0,
+              type: s.flangeType ?? "T",
+              clearLeft: s.flangeClearLeft ?? 0,
+              clearRight: s.flangeClearRight ?? 0,
+              span: s.spans[i],
+            })
+          : null;
       const crReq = designConcreteDetailed({
         bw: s.bw,
         h: s.h,
@@ -325,7 +327,7 @@ export default function ConcreteResults() {
       });
       return { Mu, Vu, c, crReq, flange };
     });
-  }, [s, envelope, qu, supportWidths, directSupport]);
+  }, [s, envelope, qu, supportWidths, directSupport, flangeMode]);
 
   // Verificación de corte por tramo (en vivo, con armaduras colocadas)
   const shearChecks = useMemo(() => {
@@ -335,8 +337,8 @@ export default function ConcreteResults() {
         (ensure(barQty, nSpans, 3)[i] || 0) *
         (BAR_AREA[ensure(barDiam, nSpans, 16)[i]] || 0);
       const AsC =
-        (ensure(compBarQty, nSpans, 0)[i] || 0) *
-        (BAR_AREA[ensure(compBarDiam, nSpans, 12)[i]] || 0);
+        (ensure(compBarQty, nSpans, 2)[i] || 0) *
+        (BAR_AREA[ensure(compBarDiam, nSpans, 6)[i]] || 0);
       const Av1 = BAR_AREA[ensure(stirrupDiam, nSpans, 8)[i]] || 0;
       const sSpacing = ensure(stirrupSpacing, nSpans, 200)[i] || 200; // mm
       const sLegs = ensure(stirrupLegs, nSpans, 2)[i] || 2;
@@ -381,8 +383,8 @@ export default function ConcreteResults() {
     const asBottomSpan = ensure(barQty, nSpans, 3).map(
       (q, i) => q * (BAR_AREA[ensure(barDiam, nSpans, 16)[i]] || 0),
     );
-    const asTopSpan = ensure(compBarQty, nSpans, 0).map(
-      (q, i) => q * (BAR_AREA[ensure(compBarDiam, nSpans, 12)[i]] || 0),
+    const asTopSpan = ensure(compBarQty, nSpans, 2).map(
+      (q, i) => q * (BAR_AREA[ensure(compBarDiam, nSpans, 6)[i]] || 0),
     );
     const asTopSup = supBarQty.map(
       (q, i) => q * (BAR_AREA[supBarDiam[i]] || 0),
@@ -437,6 +439,11 @@ export default function ConcreteResults() {
       fy: s?.fy ?? 0,
       includeSelfWeight: s?.includeSelfWeight,
       directSupport,
+      flangeMode,
+      flangeType: s?.flangeType,
+      flangeHf: s?.flangeHf,
+      flangeClearLeft: s?.flangeClearLeft,
+      flangeClearRight: s?.flangeClearRight,
       barQty,
       barDiam,
       compBarQty,
@@ -454,6 +461,7 @@ export default function ConcreteResults() {
     [
       s,
       directSupport,
+      flangeMode,
       barQty,
       barDiam,
       compBarQty,
@@ -892,12 +900,12 @@ export default function ConcreteResults() {
                 <span className="text-xs text-text-muted">Cantidad</span>
                 <input
                   type="text"
-                  value={ensure(compBarQty, nSpans, 0)[i] || ""}
+                  value={ensure(compBarQty, nSpans, 2)[i] || ""}
                   onChange={(e) => {
                     const raw = sanitizeDecimal(e.target.value);
                     const num = parseFloat(raw);
                     setCompBarQty(
-                      patchArr(compBarQty, i, 0, isNaN(num) ? 0 : num),
+                      patchArr(compBarQty, i, 2, isNaN(num) ? 0 : num),
                     );
                   }}
                   className="w-20"
@@ -906,10 +914,10 @@ export default function ConcreteResults() {
               <label className="flex flex-col gap-1">
                 <span className="text-xs text-text-muted">Diámetro</span>
                 <select
-                  value={ensure(compBarDiam, nSpans, 12)[i]}
+                  value={ensure(compBarDiam, nSpans, 6)[i]}
                   onChange={(e) =>
                     setCompBarDiam(
-                      patchArr(compBarDiam, i, 12, Number(e.target.value)),
+                      patchArr(compBarDiam, i, 6, Number(e.target.value)),
                     )
                   }
                 >
@@ -1066,6 +1074,29 @@ export default function ConcreteResults() {
             const Mneg = supportMuNeg[supportIdx] ?? 0;
             const c = ensure(supportWidths, nSupports, 300)[supportIdx];
 
+            // En modo "supports", la losa colabora en compresión en el momento
+            // negativo del apoyo (T invertida). Ancho efectivo con el tramo
+            // adyacente más corto (CIRSOC 201-05 Art. 8.10).
+            const supportFlangeB =
+              flangeMode === "supports" && s.flangeType
+                ? (() => {
+                    const adjacent = [supportIdx - 1, supportIdx].filter(
+                      (i) => i >= 0 && i < nSpans,
+                    );
+                    const minSpan = adjacent.length
+                      ? Math.min(...adjacent.map((i) => s.spans[i]))
+                      : 0;
+                    return flangeEffectiveWidth({
+                      bw: s.bw,
+                      hf: s.flangeHf ?? 0,
+                      type: s.flangeType,
+                      clearLeft: s.flangeClearLeft ?? 0,
+                      clearRight: s.flangeClearRight ?? 0,
+                      span: minSpan,
+                    }).b;
+                  })()
+                : null;
+
             // Diseño a flexión por momento negativo (tracción superior)
             const supDesign = designConcreteDetailed({
               bw,
@@ -1084,16 +1115,33 @@ export default function ConcreteResults() {
               Av: 0,
               nLegs: 0,
               s: 0,
+              flange:
+                supportFlangeB !== null
+                  ? { hf: s.flangeHf ?? 0, b: supportFlangeB }
+                  : undefined,
             });
 
             // En armadura doble, AsReq ya incluye AspReq: la tracción total es AsReq
             const supAsReqT = supDesign.AsReq;
             const supAsReqC = supDesign.AspReq;
 
-            const qty = ensure(supBarQty, nSupports, 3)[supportIdx];
-            const diam = ensure(supBarDiam, nSupports, 16)[supportIdx];
+            const qty = ensure(supBarQty, nSupports, 2)[supportIdx];
+            const diam = ensure(supBarDiam, nSupports, 6)[supportIdx];
             const supAsProv = (qty || 0) * (BAR_AREA[diam] || 0);
-            const supCompAs = 0;
+            // La armadura inferior de los tramos adyacentes trabaja como A_s'
+            // (compresión) frente al momento negativo del apoyo.
+            const adjacentSpans = [supportIdx - 1, supportIdx].filter(
+              (i) => i >= 0 && i < nSpans,
+            );
+            const supCompAs = adjacentSpans.length
+              ? Math.min(
+                  ...adjacentSpans.map((i) => {
+                    const q = ensure(barQty, nSpans, 3)[i] || 0;
+                    const db = ensure(barDiam, nSpans, 16)[i] || 0;
+                    return q * (BAR_AREA[db] || 0);
+                  }),
+                )
+              : 0;
 
             const supTensionOK =
               supAsProv >= Math.max(supAsReqT, supDesign.AsMin);
@@ -1116,10 +1164,20 @@ export default function ConcreteResults() {
                     <span>
                       {" "}
                       + A<sub>s</sub>' = {(supAsReqC / 100).toFixed(2)} cm²
-                      (compresión)
+                      (compresión; disp. {(supCompAs / 100).toFixed(2)} cm² con
+                      armadura inferior)
                     </span>
                   )}
                 </p>
+                {supDesign.flangeEN && (
+                  <p className="text-xs text-text-muted mb-2">
+                    Viga placa en el apoyo: b ={" "}
+                    {((supDesign.flangeB ?? 0) / 1000).toFixed(2)} m
+                    {supDesign.flangeEN === "placa"
+                      ? " — eje neutro en la placa"
+                      : " — eje neutro en el nervio"}
+                  </p>
+                )}
                 <div className="flex flex-wrap gap-3 items-end mb-2">
                   <span className="text-xs text-text-muted font-semibold w-16">
                     Superior
@@ -1178,9 +1236,11 @@ export default function ConcreteResults() {
                 <div
                   className={`p-2 rounded-lg text-sm font-bold ${supOK ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}
                 >
-                  {supOK ? "✓ Verifica flexión" : "✗ No verifica flexión"} —{" "}
-                  {(supAsProv / 100).toFixed(2)} vs{" "}
-                  {(Math.max(supAsReqT, supDesign.AsMin) / 100).toFixed(2)} cm²
+                  {supOK
+                    ? "✓ Verifica flexión"
+                    : !supTensionOK
+                      ? `✗ No verifica tracción — ${(supAsProv / 100).toFixed(2)} vs ${(Math.max(supAsReqT, supDesign.AsMin) / 100).toFixed(2)} cm²`
+                      : `✗ No verifica compresión — A_s' ${(supCompAs / 100).toFixed(2)} vs ${(supAsReqC / 100).toFixed(2)} cm² (armadura inferior)`}
                 </div>
                 <details className="mt-2">
                   <summary className="cursor-pointer text-xs text-text-muted hover:text-text">

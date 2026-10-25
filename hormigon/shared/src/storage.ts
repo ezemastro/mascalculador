@@ -588,6 +588,10 @@ export interface ConcreteLastFormState {
   flangeHf?: number;
   flangeClearLeft?: number;
   flangeClearRight?: number;
+  // Modo de zona de viga placa: none = todo rectangular; spans = losa en
+  // momentos positivos de tramo; supports = losa en momentos negativos de
+  // apoyo. Legacy: si falta, flangeType ? "spans" : "none".
+  flangeMode?: "none" | "spans" | "supports";
 }
 
 export function saveLastConcreteFormState(state: ConcreteLastFormState): void {

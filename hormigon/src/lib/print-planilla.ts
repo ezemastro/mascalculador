@@ -179,6 +179,12 @@ interface VigaSaveData {
   sustainedPct?: number;
   timeFactor?: number;
   ieMethod?: "branson" | "bischoff";
+  // Viga placa — modo de zona y geometría de la losa colaborante.
+  flangeMode?: "none" | "spans" | "supports";
+  flangeType?: "T" | "L" | null;
+  flangeHf?: number;
+  flangeClearLeft?: number;
+  flangeClearRight?: number;
 }
 
 const VIGA_COLUMNS: PlanillaColumn[] = [
@@ -221,8 +227,11 @@ function buildVigaRows(save: SavedBeam): PlanillaCell[][] {
   const loads = d.concreteLoads ?? [];
   const supportWidths = d.supportWidths ?? [];
 
+  const flangeMode = d.flangeMode ?? (d.flangeType ? "spans" : "none");
   const selfWeight = d.includeSelfWeight
-    ? ((bw * h) / 1e6) * CONCRETE_DENSITY
+    ? ((bw * (flangeMode !== "none" ? Math.max(h - (d.flangeHf ?? 0), 0) : h)) /
+        1e6) *
+      CONCRETE_DENSITY
     : 0;
 
   const envelope = calculateBeamEnvelope(
@@ -239,8 +248,8 @@ function buildVigaRows(save: SavedBeam): PlanillaCell[][] {
   const stirrupDiamArr = nArr(d.stirrupDiam, n, 8);
   const stirrupSpacingArr = nArr(d.stirrupSpacing, n, 200);
   const stirrupLegsArr = nArr(d.stirrupLegs, n, 2);
-  const supQtyArr = migrateSup(d.supBarQty, n + 1, 3);
-  const supDiamArr = migrateSup(d.supBarDiam, n + 1, 16);
+  const supQtyArr = migrateSup(d.supBarQty, n + 1, 2);
+  const supDiamArr = migrateSup(d.supBarDiam, n + 1, 6);
 
   const spanMu: number[] = [];
   const spanVu: number[] = [];

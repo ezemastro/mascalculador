@@ -149,6 +149,12 @@ interface VigaSaveData {
   stirrupSpacing?: number[] | number;
   supBarQty?: number[] | number;
   supBarDiam?: number[] | number;
+  // Viga placa — modo de zona y geometría de la losa colaborante.
+  flangeMode?: "none" | "spans" | "supports";
+  flangeType?: "T" | "L" | null;
+  flangeHf?: number;
+  flangeClearLeft?: number;
+  flangeClearRight?: number;
 }
 
 export function computoVigaFromSave(save: SavedBeam): Computo | null {
@@ -158,8 +164,11 @@ export function computoVigaFromSave(save: SavedBeam): Computo | null {
   const supportTypes = d.supportTypes ?? arr(n + 1, "simple");
   const bw = d.bw ?? 0;
   const h = d.h ?? 0;
+  const flangeMode = d.flangeMode ?? (d.flangeType ? "spans" : "none");
   const selfWeight = d.includeSelfWeight
-    ? ((bw * h) / 1e6) * CONCRETE_DENSITY
+    ? ((bw * (flangeMode !== "none" ? Math.max(h - (d.flangeHf ?? 0), 0) : h)) /
+        1e6) *
+      CONCRETE_DENSITY
     : 0;
   const envelope = calculateBeamEnvelope(
     d.spans,
@@ -180,10 +189,10 @@ export function computoVigaFromSave(save: SavedBeam): Computo | null {
     coverMm: d.cover ?? 0,
     barQty: nArr(d.barQty, n, 3),
     barDiam: nArr(d.barDiam, n, 16),
-    compBarQty: nArr(d.compBarQty, n, 0),
-    compBarDiam: nArr(d.compBarDiam, n, 12),
-    supBarQty: migrateSup(d.supBarQty, n + 1, 3),
-    supBarDiam: migrateSup(d.supBarDiam, n + 1, 16),
+    compBarQty: nArr(d.compBarQty, n, 2),
+    compBarDiam: nArr(d.compBarDiam, n, 6),
+    supBarQty: migrateSup(d.supBarQty, n + 1, 2),
+    supBarDiam: migrateSup(d.supBarDiam, n + 1, 6),
     designSupportIdx,
     supportTypes,
     stirrupLegs: nArr(d.stirrupLegs, n, 2),

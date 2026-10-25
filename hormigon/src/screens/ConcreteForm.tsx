@@ -81,6 +81,10 @@ export interface ConcreteState {
   flangeHf?: number;
   flangeClearLeft?: number;
   flangeClearRight?: number;
+  // Modo de zona de viga placa: none = todo rectangular; spans = losa
+  // colabora en momentos positivos de tramo; supports = losa colabora en
+  // momentos negativos de apoyo. Legacy: si falta, flangeType ? "spans" : "none".
+  flangeMode?: "none" | "spans" | "supports";
 }
 
 export default function ConcreteForm() {
@@ -199,6 +203,11 @@ export default function ConcreteForm() {
   const [flangeClearRight, setFlangeClearRight] = useState(
     state?.flangeClearRight ?? lastForm?.flangeClearRight ?? 3000,
   );
+  const [flangeMode, setFlangeMode] = useState<"none" | "spans" | "supports">(
+    state?.flangeMode ??
+      lastForm?.flangeMode ??
+      ((state?.flangeType ?? lastForm?.flangeType) ? "spans" : "none"),
+  );
 
   // Armaduras elegidas en resultados (se pasan de vuelta al calcular)
   const savedReinf = useRef<Record<string, unknown>>({});
@@ -229,6 +238,7 @@ export default function ConcreteForm() {
       flangeHf,
       flangeClearLeft,
       flangeClearRight,
+      flangeMode,
     });
   }, [
     spanLengths,
@@ -246,6 +256,7 @@ export default function ConcreteForm() {
     flangeHf,
     flangeClearLeft,
     flangeClearRight,
+    flangeMode,
   ]);
 
   // Abreviaturas y alias del glosario que acepta el asistente para apoyos de
@@ -283,6 +294,7 @@ export default function ConcreteForm() {
       flangeHf,
       flangeClearLeft,
       flangeClearRight,
+      flangeMode,
       loadedSaveId,
       loadedSaveName: loadedSaveName ?? null,
     };
@@ -311,7 +323,8 @@ export default function ConcreteForm() {
 - fc: hormigón en MPa; solo 20, 25, 30 o 35. fy: acero en MPa; 420 o 500.
 - includeSelfWeight, directSupport: boolean.
 - supportWidths: (opcional) array de ancho de apoyos en mm, largo = tramos + 1.
-- flangeType: "T" | "L" | null — dimensionar como viga placa. T = losa a ambos lados, L = un solo lado, null (o "") desactiva. Con viga placa, h es el alto TOTAL (nervio + losa).
+- flangeType: "T" | "L" | null — forma de la viga placa (losa colaborante). T = losa a ambos lados, L = un solo lado, null (o "") desactiva. Solo aplica si flangeMode != "none". Con viga placa, h es el alto TOTAL (nervio + losa).
+- flangeMode: "none" | "spans" | "supports" — zona de viga placa. "none" = todo rectangular; "spans" = la losa colabora en los momentos positivos de tramo (comportamiento actual); "supports" = la losa colabora en los momentos negativos de apoyo (T invertida). Si flangeMode != "none" y flangeType es null, se asume "T".
 - flangeHf_cm: espesor de losa en cm (viga placa, > 0).
 - flangeClearLeft_cm, flangeClearRight_cm: separación libre en cm entre la cara del nervio y la cara del alma vecina (T usa ambos lados; L solo la izquierda).`,
       getState: () => assistantStateRef.current,
@@ -498,9 +511,13 @@ export default function ConcreteForm() {
                 .toLowerCase();
               if (v === "t" || v === "te" || v === "viga t") {
                 setFlangeType("T");
+                if ((assistantStateRef.current.flangeMode ?? "none") === "none")
+                  setFlangeMode("spans");
                 applied.push("flangeType");
               } else if (v === "l" || v === "ele" || v === "viga l") {
                 setFlangeType("L");
+                if ((assistantStateRef.current.flangeMode ?? "none") === "none")
+                  setFlangeMode("spans");
                 applied.push("flangeType");
               } else if (
                 v === "" ||
@@ -511,10 +528,44 @@ export default function ConcreteForm() {
                 raw === false
               ) {
                 setFlangeType(null);
+                setFlangeMode("none");
                 applied.push("flangeType");
               } else {
                 errors.push('flangeType: "T", "L" o null');
               }
+              break;
+            }
+            case "flangeMode": {
+              const v = String(raw ?? "")
+                .trim()
+                .toLowerCase();
+              let mode: "none" | "spans" | "supports" | null = null;
+              if (
+                v === "none" ||
+                v === "rectangular" ||
+                v === "todo rectangular"
+              )
+                mode = "none";
+              else if (v === "spans" || v === "tramos" || v === "tramos placa")
+                mode = "spans";
+              else if (
+                v === "supports" ||
+                v === "apoyos" ||
+                v === "apoyos placa"
+              )
+                mode = "supports";
+              if (mode === null) {
+                errors.push('flangeMode: "none", "spans" o "supports"');
+                break;
+              }
+              setFlangeMode(mode);
+              if (mode !== "none") {
+                if (assistantStateRef.current.flangeType == null)
+                  setFlangeType("T");
+              } else if (assistantStateRef.current.flangeType != null) {
+                setFlangeType(null);
+              }
+              applied.push("flangeMode");
               break;
             }
             case "flangeHf_cm":
@@ -564,6 +615,7 @@ export default function ConcreteForm() {
           flangeHf: s.flangeHf,
           flangeClearLeft: s.flangeClearLeft,
           flangeClearRight: s.flangeClearRight,
+          flangeMode: s.flangeMode,
         };
         try {
           if (s.loadedSaveId) {
@@ -597,10 +649,11 @@ export default function ConcreteForm() {
   const selfWeightD = useMemo(
     () =>
       includeSelfWeight
-        ? ((bw * (flangeType ? Math.max(h - flangeHf, 0) : h)) / 1e6) *
+        ? ((bw * (flangeMode !== "none" ? Math.max(h - flangeHf, 0) : h)) /
+            1e6) *
           CONCRETE_DENSITY
         : 0,
-    [bw, h, includeSelfWeight, flangeType, flangeHf],
+    [bw, h, includeSelfWeight, flangeMode, flangeHf],
   );
 
   function setSpanCountAndAdjust(count: number) {
@@ -693,6 +746,7 @@ export default function ConcreteForm() {
       flangeHf,
       flangeClearLeft,
       flangeClearRight,
+      flangeMode,
       // Conservar armaduras/resultados guardados al corregir la viga
       ...savedReinf.current,
     };
@@ -732,6 +786,7 @@ export default function ConcreteForm() {
     setFlangeHf(120);
     setFlangeClearLeft(3000);
     setFlangeClearRight(3000);
+    setFlangeMode("none");
     setLoadedSaveId(null);
     setLoadedSaveName(null);
     savedReinf.current = {};
@@ -756,6 +811,7 @@ export default function ConcreteForm() {
         flangeHf,
         flangeClearLeft,
         flangeClearRight,
+        flangeMode,
         loadedSaveId,
         loadedSaveName,
         // Armaduras de un guardado cargado...
@@ -840,6 +896,12 @@ export default function ConcreteForm() {
             setFlangeType(d.flangeType);
           else if (d.flangeType === null || d.flangeType === undefined)
             setFlangeType(null);
+          if (
+            d.flangeMode === "none" ||
+            d.flangeMode === "spans" ||
+            d.flangeMode === "supports"
+          )
+            setFlangeMode(d.flangeMode);
           if (typeof d.flangeHf === "number") setFlangeHf(d.flangeHf);
           if (typeof d.flangeClearLeft === "number")
             setFlangeClearLeft(d.flangeClearLeft);
@@ -1341,24 +1403,47 @@ export default function ConcreteForm() {
               </select>
             </label>
           </div>
-          <label className="flex flex-row items-center gap-2 mt-4">
-            <input
-              type="checkbox"
-              checked={!!flangeType}
-              onChange={(e) => setFlangeType(e.target.checked ? "T" : null)}
-              className="w-4 h-4"
-            />
-            <span className="text-xs text-text-muted">
-              Dimensionar como viga placa
+          <label className="flex flex-col gap-1.5 mt-4">
+            <span className="text-xs text-text-muted font-medium">
+              Viga placa
             </span>
+            <select
+              value={flangeMode}
+              onChange={(e) => {
+                const mode = e.target.value as "none" | "spans" | "supports";
+                setFlangeMode(mode);
+                if (mode !== "none") {
+                  if (flangeType === null) setFlangeType("T");
+                } else if (flangeType !== null) {
+                  setFlangeType(null);
+                }
+              }}
+              className="w-60"
+            >
+              <option value="none">Todo rectangular</option>
+              <option value="spans">Tramos placa</option>
+              <option value="supports">Apoyos placa</option>
+            </select>
           </label>
-          {flangeType && (
+          {flangeMode === "spans" && (
+            <p className="text-xs text-text-muted mt-2">
+              La losa colabora en compresión en los momentos positivos (losa
+              superior).
+            </p>
+          )}
+          {flangeMode === "supports" && (
+            <p className="text-xs text-text-muted mt-2">
+              La losa colabora en compresión en los momentos negativos (losa
+              inferior / T invertida); los voladizos entran como apoyos.
+            </p>
+          )}
+          {flangeMode !== "none" && (
             <div className="mt-3 rounded-lg border border-border bg-surface-alt/50 p-4">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 items-end">
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-text-muted">Sección</span>
                   <select
-                    value={flangeType}
+                    value={flangeType ?? "T"}
                     onChange={(e) => setFlangeType(e.target.value as "T" | "L")}
                   >
                     <option value="T">T — losa a ambos lados</option>
