@@ -488,17 +488,7 @@ export default function ConcreteResults() {
 
   if (!envelope || !spanResults || !shearChecks || !defl) return null;
 
-  const {
-    spans,
-    supportTypes,
-    concreteLoads,
-    bw,
-    h,
-    cover,
-    fc,
-    fy,
-    includeSelfWeight,
-  } = s;
+  const { spans, supportTypes, bw, h, cover, fc, fy, includeSelfWeight } = s;
   const L = spans.reduce((a, b) => a + b, 0);
 
   const supportPositions: number[] = [0];
@@ -708,27 +698,6 @@ export default function ConcreteResults() {
               {includeSelfWeight ? "Incluido" : "No incluido"}
             </p>
           </div>
-        </div>
-        <div className="mt-3 pt-3 border-t border-border space-y-1">
-          {concreteLoads.length === 0 && (
-            <p className="text-sm text-text-muted">
-              Sin cargas aplicadas — solo peso propio.
-            </p>
-          )}
-          {concreteLoads.map((cl, i) => (
-            <p key={i} className="text-sm">
-              <span className="text-text-muted">
-                {cl.type === "point"
-                  ? `Puntual @ ${cl.position}m`
-                  : `Distribuida ${cl.start}m → ${cl.end}m`}
-                :
-              </span>{" "}
-              <strong>
-                D = {cl.D.toFixed(2)} / L = {cl.L.toFixed(2)} kN
-                {cl.type === "distributed" ? "/m" : ""}
-              </strong>
-            </p>
-          ))}
         </div>
       </section>
 
