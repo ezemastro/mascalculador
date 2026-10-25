@@ -644,6 +644,8 @@ Explicá el flujo en pasos: qué se carga, qué hace la app al apretar Calcular 
 
 Qué significa cada letra/celda: cuando el usuario pregunte por una letra, abreviatura o celda de la pantalla actual (por ejemplo "Ru", "Pu", "qu", "Mu", "Vu", "kx"), respondé con el significado de la sección "Términos de esta pantalla" del contexto, en lenguaje de obra. Si el término no está en esa sección, decí que no aparece en la pantalla actual en lugar de inventar un significado.
 
+Si preguntan cómo se computan los hierros de apoyo de vigas (momento negativo), usá la sección "Cómputo de hierros de apoyo (momento negativo)" del contexto. Si esa sección no está en el contexto, explicá el mismo criterio: 1/3 de cada tramo adyacente (1,5·L si el tramo termina en un extremo libre), cantidad y diámetro adoptados, sin ganchos ni empalmes.
+
 ## Glosario de terminología de obra (aplicalo SIN preguntar)
 - "empotrado", "encastrado", "apoyo fijo" → borde "continuo". En el método de coeficientes (tablas de Kalmanok / CIRSOC 201-05) un borde empotrado y un borde continuo se modelan igual: con momento negativo en el apoyo.
 - "apoyado", "simplemente apoyado" → "simple" (articulado).

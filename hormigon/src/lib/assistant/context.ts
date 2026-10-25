@@ -106,6 +106,27 @@ const SCREEN_TERMS: Record<string, string> = {
 - Verificaciones: esbeltez, aplastamiento, armado mínimo.`,
 };
 
+// Criterio de cómputo de la armadura de apoyo (momento negativo) de vigas.
+// Se agrega al contexto en las pantallas donde el usuario puede preguntarlo.
+const SUPPORT_BAR_TAKEOFF = `## Cómputo de hierros de apoyo (momento negativo)
+Cómo lo calcula la app:
+- Entran los apoyos no libres con momento negativo M⁻ > 0: interiores y extremos empotrados. Los articulados (M⁻ = 0) y los libres no generan hierro de apoyo.
+- El largo de cada barra en un apoyo es la suma de lo que aporta cada tramo adyacente:
+  - tramo normal: L/3;
+  - tramo que termina en un extremo libre (voladizo): 1,5·L.
+  Un apoyo de extremo empotrado tiene una sola contribución (no hay tramo del otro lado).
+- La cantidad y el diámetro son los adoptados para ese apoyo. Si el guardado es viejo y no tiene esos datos, la app usa 3Ø16.
+- Es un largo teórico de colocación: no suma ganchos, anclajes ni empalmes.
+- La barra se cuenta una vez por apoyo, con el largo que cubre los dos lados; el acero total = cantidad × largo.
+- Ejemplo: tramos de 6 m y 4 m en un apoyo interior → 6/3 + 4/3 = 3,33 m por barra; con 4Ø16, 13,33 m de Ø16. Un voladizo de 2 m → 1,5×2 = 3 m.`;
+
+const SUPPORT_BAR_TAKEOFF_PATHS = new Set([
+  "/concrete",
+  "/concrete-results",
+  "/results",
+  "/computos",
+]);
+
 // Guía de uso en lenguaje de obra para explicarle al usuario cada pantalla.
 // Es lo que el asistente debe usar cuando le preguntan cómo se usa el módulo
 // (nunca la tabla de campos internos).
@@ -193,6 +214,10 @@ export function buildAssistantContext(pathname: string): string {
       "## Términos de esta pantalla (para explicar qué significa cada letra)",
       terms,
     );
+  }
+
+  if (SUPPORT_BAR_TAKEOFF_PATHS.has(pathname)) {
+    lines.push("", SUPPORT_BAR_TAKEOFF);
   }
 
   const slabs = safeNames(() => getSavedSlabs());
