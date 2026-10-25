@@ -13,8 +13,11 @@
 //   recubrimiento supuesto 2.5 cm y gancho 10·Ø.
 // - Base: barras X/Y a cara vista (Lx/Ly); el hormigón se computa como prisma
 //   del talón (Lx·Ly·h_talón) más el troncopiramidal de la paleta (fórmula
-//   exacta, ver computoBase); el acero de vigas y tensores queda fuera (la
-//   adopción de barras se hace en pantalla, no está en el diseño).
+//   exacta, ver computoBase). El cómputo incluye además el hormigón y el
+//   acero de las vigas de fundación/equilibrio y de los tensores cuando se
+//   pasan (barras superior/inferior de la viga, estribos por zona y, en los
+//   tensores, barras longitudinales + estribos Ø6 c/20), usando las
+//   dimensiones y armaduras adoptadas en pantalla.
 
 export interface ComputoAceroRow {
   /** Diámetro nominal en mm. */
@@ -54,6 +57,94 @@ export const COLUMN_COVER_CM = 2.5;
 
 /** Gancho de estribo: 10·Ø por extremo. */
 const HOOK_D = 10;
+
+/** Área de barra en cm² a partir del diámetro nominal (mm). */
+export function barAreaCm2(diam: number): number {
+  return (BAR_AREA_MM2[diam] ?? 0) / 100;
+}
+
+/** Grupo de barras longitudinales adoptado: Ø (mm) y cantidad. */
+export interface ComputoBarSpec {
+  diam: number;
+  qty: number;
+}
+
+/** Estribo adoptado: Ø (mm), separación (cm), ramas y recubrimiento (cm). */
+export interface ComputoStirrupSpec {
+  diam: number;
+  sepCm: number;
+  legs?: number;
+  coverCm: number;
+}
+
+/** Viga de fundación/equilibrio de una base (con armadura adoptada). */
+export interface ComputoBaseBeam {
+  bCm: number;
+  hCm: number;
+  lengthCm: number;
+  /** Barras superiores (corren todo el largo). */
+  sup?: ComputoBarSpec;
+  /** Barras inferiores / perchas (corren todo el largo). */
+  inf?: ComputoBarSpec;
+  /** Estribos de la zona de voladizo (dentro de la zapata). */
+  stirrupVol?: ComputoStirrupSpec;
+  /** Estribos de la zona de tramo (resto de la luz). */
+  stirrupTramo?: ComputoStirrupSpec;
+  /** Largo de la zona de voladizo (cm). */
+  volLengthCm?: number;
+  /** Largo de la zona de tramo (cm). */
+  tramoLengthCm?: number;
+}
+
+/** Tensor de una base (con armadura adoptada). */
+export interface ComputoBaseTensor {
+  bCm: number;
+  hCm: number;
+  lengthCm: number;
+  bars?: ComputoBarSpec;
+  /** Ø de estribos (mm). Por defecto 6. */
+  stirrupDiam?: number;
+  /** Separación de estribos (cm). Por defecto 20. */
+  stirrupSepCm?: number;
+  /** Recubrimiento de estribos (cm). Por defecto COLUMN_COVER_CM. */
+  coverCm?: number;
+  /** Ramas de estribos. Por defecto 2. */
+  legs?: number;
+}
+
+/** Perímetro de un estribo cerrado (mm): 2·(w+hh) + 2·10·Ø + travesaños. */
+function stirrupPerimeterMm(
+  bCm: number,
+  hCm: number,
+  coverCm: number,
+  diam: number,
+  legs: number,
+): number {
+  const c = coverCm * 10;
+  const w = bCm * 10 - 2 * c;
+  const hh = hCm * 10 - 2 * c;
+  let per = 2 * (w + hh) + 2 * HOOK_D * diam;
+  const ties = Math.max(0, (legs - 2) / 2);
+  per += ties * (hh + 2 * HOOK_D * diam);
+  return per;
+}
+
+/** Agrega los estribos de una zona (cerrados, con ganchos). */
+function addStirrupZone(
+  acc: ComputoAcc,
+  bCm: number,
+  hCm: number,
+  lengthCm: number,
+  spec: ComputoStirrupSpec,
+): void {
+  const diam = spec.diam;
+  const sepCm = spec.sepCm;
+  if (!diam || sepCm <= 0 || lengthCm <= 0) return;
+  const legs = spec.legs ?? 2;
+  const per = stirrupPerimeterMm(bCm, hCm, spec.coverCm, diam, legs);
+  const count = Math.floor(lengthCm / sepCm) + 1;
+  acc.bar(diam, count, per / 1000);
+}
 
 function kgPerM(diam: number): number {
   return ((Math.PI * diam * diam) / 4) * STEEL_KG_PER_MM2_M;
@@ -208,8 +299,10 @@ export function computoColumna(p: {
   return acc.finish();
 }
 
-/** Cómputo de una base: losa + viga(s) de fundación/equilibrio (hormigón);
- *  acero de la losa por dirección. */
+/** Cómputo de una base: losa (hormigón + malla X/Y) + vigas de
+ *  fundación/equilibrio (hormigón, barras sup/inf y estribos por zona) +
+ *  tensores (hormigón, barras longitudinales y estribos). Las vigas y
+ *  tensores son opcionales: si no traen armadura, solo suman hormigón. */
 /** Cantidad de lados con paleta por eje según el tipo de base:
  *  centrada (2,2), medianera-x (2,1 — columna al borde en Y), medianera-y
  *  (1,2 — columna al borde en X), esquina (1,1 — columna en el vértice). */
@@ -236,7 +329,8 @@ export function computoBase(p: {
   qtyX: number;
   diamY: number; // mm
   qtyY: number;
-  vigas: Array<{ bCm: number; hCm: number; lengthCm: number }>;
+  vigas: ComputoBaseBeam[];
+  tensores?: ComputoBaseTensor[];
 }): Computo {
   const acc = new ComputoAcc();
   const { heelCm, kxCm, kyCm } = p;
@@ -271,6 +365,32 @@ export function computoBase(p: {
   }
   for (const v of p.vigas) {
     acc.concrete((v.bCm / 100) * (v.hCm / 100) * (v.lengthCm / 100));
+    // Barras longitudinales: corren todo el largo de la viga.
+    if (v.sup) acc.bar(v.sup.diam, v.sup.qty, v.lengthCm / 100);
+    if (v.inf) acc.bar(v.inf.diam, v.inf.qty, v.lengthCm / 100);
+    // Estribos por zona (voladizo dentro de la zapata y tramo restante).
+    const L = Math.max(0, v.lengthCm);
+    const clamp = (x: number) => Math.max(0, Math.min(x, L));
+    const volL = v.volLengthCm === undefined ? 0 : clamp(v.volLengthCm);
+    const tramoL = v.tramoLengthCm === undefined ? L : clamp(v.tramoLengthCm);
+    if (v.stirrupVol) addStirrupZone(acc, v.bCm, v.hCm, volL, v.stirrupVol);
+    if (v.stirrupTramo)
+      addStirrupZone(acc, v.bCm, v.hCm, tramoL, v.stirrupTramo);
+  }
+  for (const t of p.tensores ?? []) {
+    const b = Math.max(0, t.bCm);
+    const h = Math.max(0, t.hCm);
+    const L = Math.max(0, t.lengthCm);
+    if (b <= 0 || h <= 0 || L <= 0) continue;
+    acc.concrete((b / 100) * (h / 100) * (L / 100));
+    if (t.bars) acc.bar(t.bars.diam, t.bars.qty, L / 100);
+    const stirrup: ComputoStirrupSpec = {
+      diam: t.stirrupDiam ?? 6,
+      sepCm: t.stirrupSepCm ?? 20,
+      legs: t.legs ?? 2,
+      coverCm: t.coverCm ?? COLUMN_COVER_CM,
+    };
+    addStirrupZone(acc, b, h, L, stirrup);
   }
   acc.bar(p.diamX, p.qtyX, p.lxCm / 100);
   acc.bar(p.diamY, p.qtyY, p.lyCm / 100);

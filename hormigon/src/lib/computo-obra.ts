@@ -11,7 +11,7 @@
 //   (una barra más por borde, mismo criterio que la malla).
 // - Compatibilización en esquina (bordes de ejes distintos): dos juegos
 //   independientes, uno por borde.
-import type { SupportType } from "@mascalculador/shared";
+import type { SupportType, BaseTensorAdopcion } from "@mascalculador/shared";
 import {
   computoLosa,
   computoViga,
@@ -20,8 +20,13 @@ import {
   computoMuro,
   ComputoAcc,
   BAR_AREA_MM2,
+  barAreaCm2,
+  COLUMN_COVER_CM,
   sumComputos,
   type Computo,
+  type ComputoBarSpec,
+  type ComputoBaseBeam,
+  type ComputoBaseTensor,
 } from "./computo";
 import { calculateBeamEnvelope } from "./beam-envelope";
 import { designRCColumn } from "./rc-column-calc";
@@ -252,16 +257,70 @@ export function computoColumnaFromSave(save: SavedBeam): Computo | null {
 
 const MEDIANERA_TYPES = new Set(["medianera", "medianera-x", "medianera-y"]);
 
+/** Cantidad de barras para cubrir un As (cm²) con un Ø dado, con mínimo 2. */
+function barsForArea(asCm2: number, diam = 12): ComputoBarSpec {
+  const area = barAreaCm2(diam);
+  const qty = area > 0 ? Math.max(2, Math.ceil(asCm2 / area)) : 0;
+  return { qty, diam };
+}
+
+/** Construye el cómputo de un tensor desde el guardado (o null si no aplica). */
+function buildTensor(
+  lengthCm: number | undefined,
+  adopt: BaseTensorAdopcion | undefined,
+  sugSide: number | undefined,
+  asCm2: number | undefined,
+): ComputoBaseTensor | null {
+  if (!(lengthCm && lengthCm > 0)) return null;
+  const sug = Math.round(sugSide ?? 0);
+  const bCm = adopt?.b ?? sug;
+  const hCm = adopt?.h ?? sug;
+  if (!(bCm > 0) || !(hCm > 0)) return null;
+  const bars = adopt?.qty
+    ? { qty: adopt.qty, diam: adopt.diam ?? 12 }
+    : barsForArea(asCm2 ?? 0, 12);
+  return {
+    bCm,
+    hCm,
+    lengthCm,
+    bars,
+    stirrupDiam: 6,
+    stirrupSepCm: 20,
+    coverCm: COLUMN_COVER_CM,
+    legs: 2,
+  };
+}
+
 export function computoBaseFromSave(save: SavedBeam): Computo | null {
   const data = save.data as {
     input?: Partial<BaseInput>;
     result?: Partial<BaseResult>;
+    // Adopción de armaduras guardada en la raíz del guardado (BaseResults).
+    diamX?: number;
+    qtyX?: number;
+    diamY?: number;
+    qtyY?: number;
+    vigaSupQty?: number;
+    vigaSupDiam?: number;
+    vigaInfQty?: number;
+    vigaInfDiam?: number;
+    estVolLegs?: number;
+    estVolDiam?: number;
+    estVolSep?: number;
+    estTramoLegs?: number;
+    estTramoDiam?: number;
+    estTramoSep?: number;
+    tensorAdopt?: BaseTensorAdopcion;
+    tensorAdoptX?: BaseTensorAdopcion;
+    tensorAdoptY?: BaseTensorAdopcion;
   };
   const input = data.input;
   const result = data.result;
   if (!input || !result) return null;
-  const vigas: Array<{ bCm: number; hCm: number; lengthCm: number }> = [];
+
+  const vigas: ComputoBaseBeam[] = [];
   if (input.type === "esquina" && input.subType === "viga-de-equilibrio") {
+    // Vigas de equilibrio: sin editores de adopción → solo hormigón.
     vigas.push(
       {
         bCm: result.b_vigaX ?? 0,
@@ -278,12 +337,72 @@ export function computoBaseFromSave(save: SavedBeam): Computo | null {
     MEDIANERA_TYPES.has(input.type ?? "") &&
     input.subType === "viga-de-fundacion"
   ) {
+    const L = input.Lcol ?? 0;
+    // Zona de voladizo = dimensión de la zapata a lo largo de la viga.
+    const volRaw = input.type === "medianera-x" ? result.Ly : result.Lx;
+    const clamp = (x: number) => Math.max(0, Math.min(x, L));
+    const volL = clamp(volRaw ?? 0);
+    const tramoL = clamp(L - (volRaw ?? 0));
+    const cover = input.cover ?? 7;
+    // Barras adoptadas; fallback a la propuesta del diseño (As sup/inf).
+    const sup = data.vigaSupQty
+      ? { qty: data.vigaSupQty, diam: data.vigaSupDiam ?? 12 }
+      : barsForArea(result.As_sup ?? 0, 12);
+    const inf = data.vigaInfQty
+      ? { qty: data.vigaInfQty, diam: data.vigaInfDiam ?? 12 }
+      : barsForArea(result.As_inf ?? 0, 12);
     vigas.push({
       bCm: result.b_viga ?? 0,
       hCm: result.h_viga ?? 0,
-      lengthCm: input.Lcol ?? 0,
+      lengthCm: L,
+      sup,
+      inf,
+      stirrupVol: {
+        diam: data.estVolDiam ?? 8,
+        sepCm: data.estVolSep ?? 10,
+        legs: data.estVolLegs ?? 2,
+        coverCm: cover,
+      },
+      stirrupTramo: {
+        diam: data.estTramoDiam ?? 8,
+        sepCm: data.estTramoSep ?? 15,
+        legs: data.estTramoLegs ?? 2,
+        coverCm: cover,
+      },
+      volLengthCm: volL,
+      tramoLengthCm: tramoL,
     });
   }
+
+  // Tensores (medianera: uno; esquina: X e Y).
+  const tensores: ComputoBaseTensor[] = [];
+  if (input.subType === "tensor") {
+    if (MEDIANERA_TYPES.has(input.type ?? "")) {
+      const t = buildTensor(
+        input.Lcol,
+        data.tensorAdopt,
+        result.h_tensor,
+        result.As_tensor,
+      );
+      if (t) tensores.push(t);
+    } else if (input.type === "esquina") {
+      const tx = buildTensor(
+        input.LcolX,
+        data.tensorAdoptX,
+        result.h_tensorX,
+        result.As_tensorX,
+      );
+      if (tx) tensores.push(tx);
+      const ty = buildTensor(
+        input.LcolY,
+        data.tensorAdoptY,
+        result.h_tensorY,
+        result.As_tensorY,
+      );
+      if (ty) tensores.push(ty);
+    }
+  }
+
   return computoBase({
     lxCm: result.Lx ?? 0,
     lyCm: result.Ly ?? 0,
@@ -292,13 +411,14 @@ export function computoBaseFromSave(save: SavedBeam): Computo | null {
     kxCm: result.kx,
     kyCm: result.ky,
     paletaType: input.type,
-    // Armadura según la propuesta del diseño (la adopción manual de la
-    // pantalla de resultados no se guarda).
-    diamX: result.db ?? 0,
-    qtyX: result.nb_x ?? 0,
-    diamY: result.db ?? 0,
-    qtyY: result.nb_y ?? 0,
+    // Armadura adoptada en pantalla; la propuesta del diseño es fallback
+    // para guardados viejos sin adopción.
+    diamX: data.diamX ?? result.db ?? 0,
+    qtyX: data.qtyX ?? result.nb_x ?? 0,
+    diamY: data.diamY ?? result.db ?? 0,
+    qtyY: data.qtyY ?? result.nb_y ?? 0,
     vigas,
+    tensores,
   });
 }
 
