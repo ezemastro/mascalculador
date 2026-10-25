@@ -82,6 +82,11 @@ export default function RCColumnResults() {
     );
   }
 
+  return <RCColumnResultsInner state={state} />;
+}
+
+function RCColumnResultsInner({ state }: { state: RCColumnState }) {
+  const navigate = useNavigate();
   const {
     fc,
     fy,
@@ -125,10 +130,7 @@ export default function RCColumnResults() {
   // ─── Initial armado proposal ───
   const astNeeded = resultBase.Ast;
 
-  const proposedArmado = useMemo(
-    () => proposeArmado(astNeeded, resultBase.dirX, resultBase.dirY),
-    [astNeeded, resultBase.dirX, resultBase.dirY],
-  );
+  const proposedArmado = useMemo(() => proposeArmado(astNeeded), [astNeeded]);
 
   // ─── Interactive armado state ───
   const [nEsquinas, setNEsquinas] = useState<number>(
@@ -156,6 +158,19 @@ export default function RCColumnResults() {
   function updateArmado(setter: (v: number) => void, v: number) {
     setter(v);
     setArmaduraConfirmada(false);
+  }
+
+  // ─── Estribos adoptados (editables; propuesta auto del motor por defecto) ───
+  const [phiStirrup, setPhiStirrup] = useState<number>(
+    state.phiStirrup ?? resultBase.phiStirrup,
+  );
+  const [sStirrup, setSStirrup] = useState<number>(
+    state.sStirrup ?? resultBase.sStirrup,
+  );
+
+  function resetStirrups() {
+    setPhiStirrup(result.phiStirrup);
+    setSStirrup(result.sStirrup);
   }
 
   // Identidad del guardado (arranca del router state, se actualiza al guardar)
@@ -224,15 +239,24 @@ export default function RCColumnResults() {
 
   const result = resultRecalculado;
   const astProviso = armaduraManual.astTotal;
-  const astReqX = resultBase.dirX.Ast;
-  const astReqY = resultBase.dirY.Ast;
-  const astProvX = armaduraManual.astXface * 2;
-  const astProvY = armaduraManual.astYface * 2;
-  const astVerifX = astProvX >= astReqX;
-  const astVerifY = astProvY >= astReqY;
+  const astReqX = resultBase.dirX.AstReq;
+  const astReqY = resultBase.dirY.AstReq;
+  // Verificación por dirección y por cara, igual que el motor: la As adoptada
+  // por cara es la mitad de las esquinas + la mitad de las barras de esa
+  // dirección. Las barras de la otra dirección no participan.
+  const astProvFaceX = armaduraManual.astXface;
+  const astProvFaceY = armaduraManual.astYface;
+  const astReqFaceX = astReqX / 2;
+  const astReqFaceY = astReqY / 2;
+  const astVerifX = astProvFaceX >= astReqFaceX;
+  const astVerifY = astProvFaceY >= astReqFaceY;
   const astVerifica = astVerifX && astVerifY;
-  const faltanX = Math.max(0, astReqX - astProvX);
-  const faltanY = Math.max(0, astReqY - astProvY);
+  const faltanX = Math.max(0, astReqFaceX - astProvFaceX);
+  const faltanY = Math.max(0, astReqFaceY - astProvFaceY);
+  // Cobertura global: resistencia (flexo-compresión) + esbeltez límite.
+  const dirXOK = result.dirX.passes && result.dirX.lambda <= 100;
+  const dirYOK = result.dirY.passes && result.dirY.lambda <= 100;
+  const globalOK = dirXOK && dirYOK;
 
   // Payload de guardado/impresión: los mismos campos que persiste el botón
   // "Guardar" (referencia única para no divergir).
@@ -263,6 +287,8 @@ export default function RCColumnResults() {
       dbEsquinas,
       dbCarasX,
       dbCarasY,
+      phiStirrup,
+      sStirrup,
     }),
     [
       fc,
@@ -290,6 +316,8 @@ export default function RCColumnResults() {
       dbEsquinas,
       dbCarasX,
       dbCarasY,
+      phiStirrup,
+      sStirrup,
     ],
   );
 
@@ -349,6 +377,14 @@ export default function RCColumnResults() {
                     ...state,
                     loadedSaveId: savedId,
                     loadedSaveName: savedName,
+                    nEsquinas,
+                    nCarasX,
+                    nCarasY,
+                    dbEsquinas,
+                    dbCarasX,
+                    dbCarasY,
+                    phiStirrup,
+                    sStirrup,
                   },
                 })
               }
@@ -464,31 +500,46 @@ export default function RCColumnResults() {
           <p className="text-lg font-bold text-primary mt-1">
             {result.barLayout.totalBars} Ø{result.dbLong}
           </p>
-          {armaduraConfirmada && (
-            <span className="text-xs text-text-muted">
-              e Ø{result.phiStirrup} c/{result.sStirrup.toFixed(0)} cm
-            </span>
-          )}
+          <span className="text-xs text-text-muted">
+            e Ø{phiStirrup} c/{Math.round(sStirrup)} cm
+          </span>
         </div>
       </div>
 
       {/* Pass/Fail indicator */}
       <div
-        className={`p-4 rounded-xl border-2 text-center ${result.passes ? "bg-success/10 border-success" : "bg-danger/10 border-danger"}`}
+        className={`p-4 rounded-xl border-2 text-center ${globalOK ? "bg-success/10 border-success" : "bg-danger/10 border-danger"}`}
       >
         <span className="text-xs uppercase tracking-wider font-semibold">
-          Verificación
+          Verificación global
         </span>
         <p
-          className={`text-3xl font-bold ${result.passes ? "text-success" : "text-danger"}`}
+          className={`text-3xl font-bold ${globalOK ? "text-success" : "text-danger"}`}
         >
-          {result.passes ? "✓ VERIFICA" : "✗ NO VERIFICA"}
+          {globalOK ? "✓ VERIFICA" : "✗ NO VERIFICA"}
         </p>
         <span className="text-xs text-text-muted">
-          {result.passes
-            ? `A_st = ${result.Ast.toFixed(1)} cm² (ρ = ${(result.rho * 100).toFixed(2)}%)`
-            : "Aumentar sección o modificar geometría"}
+          Flexo-compresión biaxial + esbeltez + armado longitudinal. Los
+          estribos se adoptan aparte.
         </span>
+        <div className="flex items-center justify-center gap-3 mt-3">
+          <span
+            className={`text-xs px-3 py-1 rounded-full ${dirXOK ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}
+          >
+            Dir X: {dirXOK ? "✓" : "✗"}
+          </span>
+          <span
+            className={`text-xs px-3 py-1 rounded-full ${dirYOK ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}
+          >
+            Dir Y: {dirYOK ? "✓" : "✗"}
+          </span>
+        </div>
+        {!globalOK && (
+          <p className="text-xs text-text-muted mt-2">
+            Revisar: {!dirXOK && !dirYOK ? "X e Y" : !dirXOK ? "X" : "Y"}.
+            Aumentar sección o modificar geometría.
+          </p>
+        )}
       </div>
 
       {/* ─── Armado longitudinal INTERACTIVO ─── */}
@@ -587,57 +638,40 @@ export default function RCColumnResults() {
         >
           <div className="text-xs text-text-muted space-y-0.5 mb-2">
             <p className="font-semibold text-text">
-              As nec X: {astReqX.toFixed(2)} cm² ({(astReqX / 2).toFixed(2)} cm²
-              por cara)
+              Dir X — por cara: nec {astReqFaceX.toFixed(2)} cm² · adoptada{" "}
+              {astProvFaceX.toFixed(2)} cm²
             </p>
             <p className="font-semibold text-text">
-              As nec Y: {astReqY.toFixed(2)} cm² ({(astReqY / 2).toFixed(2)} cm²
-              por cara)
+              Dir Y — por cara: nec {astReqFaceY.toFixed(2)} cm² · adoptada{" "}
+              {astProvFaceY.toFixed(2)} cm²
             </p>
             <p>
-              Esquinas: {nEsquinas} Ø{dbEsquinas} ={" "}
-              {armaduraManual.astEsquinas.toFixed(2)} cm² — cuentan en ambas
-              direcciones
+              As adoptada por cara = mitad de esquinas + mitad de barras de esa
+              dirección. Esquinas: {nEsquinas} Ø{dbEsquinas} ={" "}
+              {armaduraManual.astEsquinas.toFixed(2)} cm²; caras X: {nCarasX} Ø
+              {dbCarasX} = {armaduraManual.astCarasX.toFixed(2)} cm²; caras Y:{" "}
+              {nCarasY} Ø{dbCarasY} = {armaduraManual.astCarasY.toFixed(2)} cm²
             </p>
             <p>
-              Cara X: 2 esquinas + {nCarasX} Ø{dbCarasX} ={" "}
-              {armaduraManual.astXface.toFixed(2)} cm² por cara → Dir X (2
-              caras): {astProvX.toFixed(2)} cm²
-            </p>
-            <p>
-              Cara Y: 2 esquinas + {nCarasY} Ø{dbCarasY} ={" "}
-              {armaduraManual.astYface.toFixed(2)} cm² por cara → Dir Y (2
-              caras): {astProvY.toFixed(2)} cm²
+              As total provista: <strong>{astProviso.toFixed(2)} cm²</strong> (
+              {armaduraManual.totalBars} barras)
             </p>
           </div>
           <p
             className={`text-sm font-semibold ${astVerifica ? "text-success" : "text-danger"}`}
           >
             {astVerifX
-              ? `✓ Dir X: provisto ${astProvX.toFixed(2)} ≥ nec ${astReqX.toFixed(2)} cm²`
-              : `✗ Dir X: provisto ${astProvX.toFixed(2)} < nec ${astReqX.toFixed(2)} cm² (faltan ${faltanX.toFixed(2)})`}
+              ? `✓ Dir X: ${astProvFaceX.toFixed(2)} ≥ ${astReqFaceX.toFixed(2)} cm²/cara`
+              : `✗ Dir X: ${astProvFaceX.toFixed(2)} < ${astReqFaceX.toFixed(2)} cm²/cara (faltan ${faltanX.toFixed(2)})`}
             {" · "}
             {astVerifY
-              ? `✓ Dir Y: provisto ${astProvY.toFixed(2)} ≥ nec ${astReqY.toFixed(2)} cm²`
-              : `✗ Dir Y: provisto ${astProvY.toFixed(2)} < nec ${astReqY.toFixed(2)} cm² (faltan ${faltanY.toFixed(2)})`}
+              ? `✓ Dir Y: ${astProvFaceY.toFixed(2)} ≥ ${astReqFaceY.toFixed(2)} cm²/cara`
+              : `✗ Dir Y: ${astProvFaceY.toFixed(2)} < ${astReqFaceY.toFixed(2)} cm²/cara (faltan ${faltanY.toFixed(2)})`}
           </p>
-          <p
-            className={`text-2xl font-bold mt-1 ${astVerifica ? "text-primary" : "text-danger"}`}
-          >
-            Total: {astProviso.toFixed(2)} cm²{" "}
-            <span className="text-base font-normal">
-              ({armaduraManual.totalBars} barras)
-            </span>
-          </p>
-          <span
-            className={`text-sm font-semibold ${astVerifica ? "text-success" : "text-danger"}`}
-          >
-            {astVerifica ? "✓ VERIFICA" : "✗ NO VERIFICA"}
+          <span className={`text-sm font-semibold text-text`}>
+            Cobertura de As adoptada: X {astVerifX ? "✓" : "✗"} · Y{" "}
+            {astVerifY ? "✓" : "✗"}
           </span>
-          <p className="text-xs text-text-muted mt-1">
-            {nEsquinas} esquinas + {2 * nCarasX} caras X + {2 * nCarasY} caras Y
-            = {armaduraManual.totalBars} barras
-          </p>
         </div>
 
         {/* SVG layout */}
@@ -664,6 +698,54 @@ export default function RCColumnResults() {
             </span>{" "}
             estribo
           </span>
+        </div>
+
+        {/* Estribos (adoptados, editables) */}
+        <div className="p-4 rounded-lg mb-4 bg-surface-alt/40 border border-border">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="section-title">Estribos</h3>
+            <button
+              type="button"
+              onClick={resetStirrups}
+              className="text-xs bg-surface-alt border border-border hover:bg-surface text-text-muted px-3 py-1.5 rounded-lg"
+            >
+              Automático
+            </button>
+          </div>
+          <div className="flex flex-wrap items-end justify-center gap-6">
+            <label className="flex flex-col items-center gap-1">
+              <span className="text-xs text-text-muted">Ø estribo (mm)</span>
+              <select
+                value={phiStirrup}
+                onChange={(e) => setPhiStirrup(Number(e.target.value))}
+                className="text-sm font-semibold"
+              >
+                {[6, 8, 10, 12].map((d) => (
+                  <option key={d} value={d}>
+                    {d} mm
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex flex-col items-center gap-1">
+              <span className="text-xs text-text-muted">Separación (cm)</span>
+              <StepperInput
+                label=""
+                value={sStirrup}
+                onChange={setSStirrup}
+                min={5}
+                max={40}
+                step={5}
+                unit=" cm"
+              />
+            </div>
+          </div>
+          <p className="text-xs text-text-muted text-center mt-3">
+            Propuesta automática: Ø{result.phiStirrup} c/
+            {result.sStirrup.toFixed(0)} cm. La verificación de flexo-compresión
+            no depende del estribo; el valor adoptado se usa en planilla y
+            cómputo.
+          </p>
         </div>
 
         {/* Confirm button */}
@@ -693,33 +775,6 @@ export default function RCColumnResults() {
         )}
       </section>
 
-      {/* ─── Estribos (only after confirmation) ─── */}
-      {armaduraConfirmada && (
-        <section className="bg-surface rounded-xl border border-border p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="section-title">Estribos</h2>
-            <button
-              type="button"
-              onClick={() => setArmaduraConfirmada(false)}
-              className="text-xs bg-surface-alt border border-border hover:bg-surface text-text-muted px-3 py-1.5 rounded-lg"
-            >
-              Volver al armado
-            </button>
-          </div>
-
-          <div className="bg-primary/5 border border-primary/20 rounded-lg p-4 text-center">
-            <p className="text-xl font-bold text-primary">
-              Ø{result.phiStirrup} c/ {result.sStirrup.toFixed(0)} cm
-            </p>
-            <p className="text-xs text-text-muted mt-2">
-              φ<sub>e</sub> = {result.phiStirrup} mm (φ<sub>L</sub> ={" "}
-              {result.dbLong} {result.dbLong <= 16 ? "≤ 16 mm" : "> 16 mm"})
-              &nbsp;|&nbsp; s = min(b, h, 12·φ<sub>L</sub>, 48·φ<sub>e</sub>)
-            </p>
-          </div>
-        </section>
-      )}
-
       {/* Direction X card */}
       <section className="bg-surface rounded-xl border border-border p-5">
         <div className="flex items-center gap-2 mb-4">
@@ -730,9 +785,9 @@ export default function RCColumnResults() {
             {result.dirX.columnType === "SHORT" ? "Corta" : "Esbelta"}
           </span>
           <span
-            className={`text-xs px-2 py-0.5 rounded-full ${result.dirX.passes ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}
+            className={`text-xs px-2 py-0.5 rounded-full ${dirXOK ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}
           >
-            {result.dirX.passes ? "✓ Verifica" : "✗ No verifica"}
+            {dirXOK ? "✓ Verifica" : "✗ No verifica"}
           </span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
@@ -790,9 +845,9 @@ export default function RCColumnResults() {
             {result.dirY.columnType === "SHORT" ? "Corta" : "Esbelta"}
           </span>
           <span
-            className={`text-xs px-2 py-0.5 rounded-full ${result.dirY.passes ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}
+            className={`text-xs px-2 py-0.5 rounded-full ${dirYOK ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}
           >
-            {result.dirY.passes ? "✓ Verifica" : "✗ No verifica"}
+            {dirYOK ? "✓ Verifica" : "✗ No verifica"}
           </span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
@@ -944,8 +999,8 @@ export default function RCColumnResults() {
           dbEsquinas,
           dbCarasX,
           dbCarasY,
-          phiStirrup: result.phiStirrup,
-          sStirrupCm: result.sStirrup,
+          phiStirrup: phiStirrup,
+          sStirrupCm: sStirrup,
         })}
         note="Estribos con recubrimiento supuesto 2.5 cm."
       />

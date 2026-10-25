@@ -3,28 +3,28 @@
 // Biaxial analysis: two directions independently, adopt worst case
 
 export interface RCColumnInput {
-  fc: number;    // MPa — concrete compressive strength
-  fy: number;    // MPa — steel yield stress
-  PD: number;    // kN — dead load
-  PL: number;    // kN — live load
-  lu: number;    // m — unbraced length
+  fc: number; // MPa — concrete compressive strength
+  fy: number; // MPa — steel yield stress
+  PD: number; // kN — dead load
+  PL: number; // kN — live load
+  lu: number; // m — unbraced length
   MxSup: number; // kN·m — moment about X, top
   MxInf: number; // kN·m — moment about X, bottom
   MySup: number; // kN·m — moment about Y, top
   MyInf: number; // kN·m — moment about Y, bottom
-  Cx?: number;   // cm — column side in X direction
-  Cy?: number;   // cm — column side in Y direction
+  Cx?: number; // cm — column side in X direction
+  Cy?: number; // cm — column side in Y direction
   betaD?: number; // creep factor (default 0.6)
-  nEsquinas?: number;   // barras en las 4 esquinas (default 4)
-  nCarasX?: number;     // barras intermedias por cara X (default 0)
-  nCarasY?: number;     // barras intermedias por cara Y (default 0)
-  dbEsquinas?: number;  // mm — diámetro de barras en esquinas (default 12)
-  dbCarasX?: number;    // mm — diámetro de barras en caras X (default 12)
-  dbCarasY?: number;    // mm — diámetro de barras en caras Y (default 12)
+  nEsquinas?: number; // barras en las 4 esquinas (default 4)
+  nCarasX?: number; // barras intermedias por cara X (default 0)
+  nCarasY?: number; // barras intermedias por cara Y (default 0)
+  dbEsquinas?: number; // mm — diámetro de barras en esquinas (default 12)
+  dbCarasX?: number; // mm — diámetro de barras en caras X (default 12)
+  dbCarasY?: number; // mm — diámetro de barras en caras Y (default 12)
 }
 
 export interface DirectionResult {
-  label: string;       // "X" | "Y"
+  label: string; // "X" | "Y"
   M1u: number;
   M2u: number;
   k: number;
@@ -44,9 +44,16 @@ export interface DirectionResult {
   gamma: number;
   n_reduced: number;
   m_reduced: number;
-  n_raw: number;       // kN/cm² — without dividing by f'c
-  m_raw: number;       // kN·m/cm² — without dividing by f'c
+  n_raw: number; // kN/cm² — without dividing by f'c
+  m_raw: number; // kN·m/cm² — without dividing by f'c
   rho: number;
+  /** As total requerida para esta dirección (cm²). */
+  AstReq: number;
+  /** As total adoptada/provista para esta dirección (cm²). Para el cálculo
+   *  automático coincide con la requerida; con armado manual es la suma de
+   *  esquinas + barras intermedias de esa dirección. */
+  AstProv: number;
+  /** Área efectiva usada por el motor (adoptada si hay armado manual). */
   Ast: number;
   passes: boolean;
   steps: string[];
@@ -54,19 +61,19 @@ export interface DirectionResult {
 
 export interface RCColumnResult {
   Pu: number;
-  Ag: number;       // cm²
-  Cx: number;       // cm
-  Cy: number;       // cm
+  Ag: number; // cm²
+  Cx: number; // cm
+  Cy: number; // cm
   // Per-direction results
   dirX: DirectionResult;
   dirY: DirectionResult;
   // Combined (worst case)
   columnType: "SHORT" | "SLENDER";
   rho: number;
-  Ast: number;       // cm²
-  dbLong: number;    // mm — longitudinal bar diameter
-  phiStirrup: number;// mm — stirrup diameter
-  sStirrup: number;  // cm — stirrup spacing
+  Ast: number; // cm²
+  dbLong: number; // mm — longitudinal bar diameter
+  phiStirrup: number; // mm — stirrup diameter
+  sStirrup: number; // cm — stirrup spacing
   lambdaOK: boolean;
   passes: boolean;
   steps: string[];
@@ -74,45 +81,51 @@ export interface RCColumnResult {
 }
 
 export interface BiaxialBarLayout {
-  dbEsquinas: number;            // mm — diámetro barras de esquina
-  dbCarasX: number;              // mm — diámetro barras caras X
-  dbCarasY: number;              // mm — diámetro barras caras Y
-  aBarEsquinas: number;          // cm² por barra de esquina
-  aBarX: number;                 // cm² por barra cara X
-  aBarY: number;                 // cm² por barra cara Y
+  dbEsquinas: number; // mm — diámetro barras de esquina
+  dbCarasX: number; // mm — diámetro barras caras X
+  dbCarasY: number; // mm — diámetro barras caras Y
+  aBarEsquinas: number; // cm² por barra de esquina
+  aBarX: number; // cm² por barra cara X
+  aBarY: number; // cm² por barra cara Y
   // Dirección X: barras en caras de ancho b (perpendiculares a X, 2 caras)
-  nXperFace: number;             // barras por cara X (incluye 2 esquinas)
-  nXtotal: number;               // total barras caras X = 2 × nXperFace (incluye 4 esquinas)
-  astXprovided: number;          // cm² provisto en dirección X (ambas caras)
+  nXperFace: number; // barras por cara X (incluye 2 esquinas)
+  nXtotal: number; // total barras caras X = 2 × nXperFace (incluye 4 esquinas)
+  astXprovided: number; // cm² provisto en dirección X (ambas caras)
   // Dirección Y: las esquinas ya están
-  astYneeded: number;            // cm² necesarios según dirY.Ast
-  cornerContribY: number;        // cm² que aportan las 4 esquinas a Y
-  astYremaining: number;         // cm² que faltan para Y (= max(0, astYneeded - cornerContribY))
-  nYadditionalPerFace: number;   // barras intermedias adicionales por cara Y (caras de ancho h)
-  nYadditionalTotal: number;     // total barras adicionales en Y
-  astYprovided: number;          // cm² provisto en dirección Y (ambas caras)
+  astYneeded: number; // cm² necesarios según dirY.Ast
+  cornerContribY: number; // cm² que aportan las 4 esquinas a Y
+  astYremaining: number; // cm² que faltan para Y (= max(0, astYneeded - cornerContribY))
+  nYadditionalPerFace: number; // barras intermedias adicionales por cara Y (caras de ancho h)
+  nYadditionalTotal: number; // total barras adicionales en Y
+  astYprovided: number; // cm² provisto en dirección Y (ambas caras)
   // Totales
-  totalBars: number;             // total de barras distintas (nXtotal + nYadditionalTotal)
-  astTotalProvided: number;      // acero total colocado (cm²)
+  totalBars: number; // total de barras distintas (nXtotal + nYadditionalTotal)
+  astTotalProvided: number; // acero total colocado (cm²)
 }
 
 // Standard rebar areas (mm²)
 const BAR_AREAS: Record<number, number> = {
-  8: 50, 10: 79, 12: 113, 16: 201, 20: 314, 25: 491, 32: 804,
+  8: 50,
+  10: 79,
+  12: 113,
+  16: 201,
+  20: 314,
+  25: 491,
+  32: 804,
 };
 const BAR_DIAMETERS = [8, 10, 12, 16, 20, 25, 32];
 
 export interface ManualAstResult {
-  totalBars: number;       // nEsquinas + 2*nCarasX + 2*nCarasY
-  astTotal: number;        // cm² total
-  astXface: number;        // cm² por cara X (2 esquinas + nCarasX intermedias)
-  astYface: number;        // cm² por cara Y (2 esquinas + nCarasY intermedias)
-  perBarEsquinas: number;  // cm² por barra esquina
-  perBarX: number;         // cm² por barra cara X
-  perBarY: number;         // cm² por barra cara Y
-  astEsquinas: number;     // cm² total de las nEsquinas barras de esquina
-  astCarasX: number;       // cm² total de las 2*nCarasX barras de cara X
-  astCarasY: number;       // cm² total de las 2*nCarasY barras de cara Y
+  totalBars: number; // nEsquinas + 2*nCarasX + 2*nCarasY
+  astTotal: number; // cm² total
+  astXface: number; // cm² por cara X (2 esquinas + nCarasX intermedias)
+  astYface: number; // cm² por cara Y (2 esquinas + nCarasY intermedias)
+  perBarEsquinas: number; // cm² por barra esquina
+  perBarX: number; // cm² por barra cara X
+  perBarY: number; // cm² por barra cara Y
+  astEsquinas: number; // cm² total de las nEsquinas barras de esquina
+  astCarasX: number; // cm² total de las 2*nCarasX barras de cara X
+  astCarasY: number; // cm² total de las 2*nCarasY barras de cara Y
 }
 
 /**
@@ -130,7 +143,7 @@ export function computeManualAst(
   dbCarasX: number,
   dbCarasY: number,
 ): ManualAstResult {
-  const area = (d: number) => (Math.PI * d * d / 4) / 100; // mm² → cm²
+  const area = (d: number) => (Math.PI * d * d) / 4 / 100; // mm² → cm²
   const perBarEsquinas = area(dbEsquinas);
   const perBarX = area(dbCarasX);
   const perBarY = area(dbCarasY);
@@ -167,15 +180,19 @@ export function computeManualAst(
 }
 
 const PHI_C = 0.65; // tied column
-const ES = 200000;   // MPa — steel elastic modulus
+const ES = 200000; // MPa — steel elastic modulus
 const EPS_CU = 0.003;
 
 function fmt(n: number, decimals: number = 2): string {
   return n.toFixed(decimals);
 }
 
-function f2(n: number): string { return fmt(n, 1); }
-function f3(n: number): string { return fmt(n, 3); }
+function f2(n: number): string {
+  return fmt(n, 1);
+}
+function f3(n: number): string {
+  return fmt(n, 3);
+}
 
 /**
  * Compute β₁ per CIRSOC 10.2.7.3
@@ -220,12 +237,12 @@ function buildInteractionCurve(
     const Cc = 0.85 * fc_kNcm2 * a * Cx_cm;
 
     // Compression steel strain and force
-    const epsSC = (c > 0) ? EPS_CU * (c - d_prime) / c : 0;
+    const epsSC = c > 0 ? (EPS_CU * (c - d_prime)) / c : 0;
     const fsSC = Math.max(-fy_mpa, Math.min(fy_mpa, ES * epsSC));
     const Cs = (As_mm2 * fsSC) / 1000; // kN
 
     // Tension steel strain and force
-    const epsST = (c > 0) ? EPS_CU * (c - d_cm) / c : 0;
+    const epsST = c > 0 ? (EPS_CU * (c - d_cm)) / c : 0;
     const fsST = Math.max(-fy_mpa, Math.min(fy_mpa, ES * epsST));
     const T = (As_mm2 * fsST) / 1000; // kN (negative when in tension)
 
@@ -234,9 +251,7 @@ function buildInteractionCurve(
 
     // Moment about centroid (kN·cm)
     const Mn_kNcm =
-      Cc * (hHalf - a / 2) +
-      Cs * (hHalf - d_prime) -
-      T * (hHalf - d_cm);
+      Cc * (hHalf - a / 2) + Cs * (hHalf - d_prime) - T * (hHalf - d_cm);
     const Mn_kNm = Mn_kNcm / 100;
 
     pnVals.push(Pn * PHI_C);
@@ -249,11 +264,7 @@ function buildInteractionCurve(
 /**
  * Find maximum φM_n on the interaction curve at a given φP_n = Pu target.
  */
-function maxMomentAtPu(
-  pnVals: number[],
-  mnVals: number[],
-  Pu: number,
-): number {
+function maxMomentAtPu(pnVals: number[], mnVals: number[], Pu: number): number {
   let maxMn = 0;
   const points = pnVals.map((p, i) => ({ p, m: mnVals[i] }));
   points.sort((a, b) => a.p - b.p);
@@ -301,10 +312,10 @@ function checkRho(
 /**
  * Select standard longitudinal bars based on required Ast.
  */
-function selectLongitudinalBars(
-  Ast_cm2: number,
-  _Cx_cm: number,
-): { nBars: number; db: number } {
+function selectLongitudinalBars(Ast_cm2: number): {
+  nBars: number;
+  db: number;
+} {
   for (let nBars = 4; nBars <= 12; nBars += 2) {
     const perBar = (Ast_cm2 * 100) / nBars;
     for (const db of BAR_DIAMETERS) {
@@ -320,10 +331,8 @@ function selectLongitudinalBars(
  * Y-direction gets corner contribution; intermediate bars are added only if needed.
  */
 function selectBiaxialBars(
-  astX: number,   // cm² requeridos dirección X (dirX.Ast)
-  astY: number,   // cm² requeridos dirección Y (dirY.Ast)
-  _Cx: number,    // cm — reserved for future use
-  _Cy: number,    // cm — reserved for future use
+  astX: number, // cm² requeridos dirección X (dirX.Ast)
+  astY: number, // cm² requeridos dirección Y (dirY.Ast)
 ): BiaxialBarLayout {
   for (const db of BAR_DIAMETERS) {
     const aBar = BAR_AREAS[db] / 100; // cm²
@@ -412,17 +421,25 @@ interface SingleDirInput {
   lu: number;
   M1u: number;
   M2u: number;
-  b: number;      // cm — ancho perpendicular a la flexión (dimensión secundaria)
-  h: number;      // cm — canto en dirección de flexión (dimensión de estudio)
+  b: number; // cm — ancho perpendicular a la flexión (dimensión secundaria)
+  h: number; // cm — canto en dirección de flexión (dimensión de estudio)
   betaD?: number;
-  astProvided?: number; // cm² — optional manual steel area
+  astProvided?: number; // cm² — optional manual steel area (dirección)
+  /** Armado manual de esta dirección: 2 esquinas + intermedias por cara. */
+  manualBars?: {
+    nEsquinas: number;
+    nIntermediates: number;
+    dbEsquinas: number;
+    dbInter: number;
+  };
 }
 
 function designOneDirection(
   input: SingleDirInput,
   label: string,
 ): DirectionResult {
-  const { fc, fy, PD, PL, lu, M1u, M2u, b, h, betaD, astProvided } = input;
+  const { fc, fy, PD, PL, lu, M1u, M2u, b, h, betaD, astProvided, manualBars } =
+    input;
 
   const st: string[] = [];
   st.push(`====== DIRECCIÓN ${label} ======`);
@@ -500,7 +517,9 @@ function designOneDirection(
     st.push(`--- ${label}: Efectos de segundo orden ---`);
 
     Mmin = Pu * (0.015 + 0.03 * (h / 100));
-    st.push(`M_min = P_u·(0.015 + 0.03·h) = ${f2(Pu)}·(0.015 + 0.03·${(h / 100)}) = ${f2(Mmin)} kN·m`);
+    st.push(
+      `M_min = P_u·(0.015 + 0.03·h) = ${f2(Pu)}·(0.015 + 0.03·${h / 100}) = ${f2(Mmin)} kN·m`,
+    );
 
     Ec = 4700 * Math.sqrt(fc);
     st.push(`E_c = 4700·√f'_c = ${f2(Ec)} MPa`);
@@ -522,7 +541,9 @@ function designOneDirection(
     st.push(`P_c = π²·EI/(k·l_u)² = ${f2(Pc)} kN`);
 
     if (Pu > 0.75 * Pc) {
-      st.push(`⚠ P_u = ${f2(Pu)} > 0.75·P_c = ${f2(0.75 * Pc)} → Inestabilidad.`);
+      st.push(
+        `⚠ P_u = ${f2(Pu)} > 0.75·P_c = ${f2(0.75 * Pc)} → Inestabilidad.`,
+      );
     } else {
       st.push(`P_u = ${f2(Pu)} ≤ 0.75·P_c = ${f2(0.75 * Pc)} ✓`);
     }
@@ -591,7 +612,9 @@ function designOneDirection(
   const checkMax = checkRho(b, h, fc, fy, Pu, Mu!, rhoHi);
   if (!checkMax.works) {
     st.push(`Aún con ρ = 8% la sección no verifica.`);
-    st.push(`φM_n máx = ${f2(checkMax.maxPhiMn)} kN·m vs M_u = ${f2(Mu!)} kN·m`);
+    st.push(
+      `φM_n máx = ${f2(checkMax.maxPhiMn)} kN·m vs M_u = ${f2(Mu!)} kN·m`,
+    );
     passes = false;
     rho = rhoHi;
     finalAst = rhoHi * b * h;
@@ -609,15 +632,22 @@ function designOneDirection(
     finalAst = rho * b * h;
     passes = true;
 
-    st.push(`ρ encontrada = ${(rho * 100).toFixed(2)}% → A_st = ${f2(finalAst)} cm²`);
+    st.push(
+      `ρ encontrada = ${(rho * 100).toFixed(2)}% → A_st = ${f2(finalAst)} cm²`,
+    );
     st.push(`A_st mín = 0.01·${b}·${h} = ${f2(0.01 * b * h)} cm²`);
   }
 
   // ─── Manual reinforcement check ───
+  // Se compara la As total adoptada EN ESTA DIRECCIÓN (esquinas + barras
+  // intermedias de la dirección) contra la As total requerida. Las barras
+  // intermedias de la otra dirección no participan de esta verificación.
   if (astProvided !== undefined) {
     const rhoProvided = astProvided / (b * h);
     const passesManual = rhoProvided >= rho;
-    st.push(`Armadura manual: ${astProvided.toFixed(2)} cm² → ρ = ${(rhoProvided * 100).toFixed(2)}%`);
+    st.push(
+      `Armadura manual: ${astProvided.toFixed(2)} cm² en esta dirección → ρ = ${(rhoProvided * 100).toFixed(2)}%`,
+    );
     st.push(`  ρ necesaria = ${(rho * 100).toFixed(2)}%`);
     if (passesManual) {
       st.push(`  ✓ ρ provista ≥ ρ necesaria`);
@@ -629,11 +659,32 @@ function designOneDirection(
 
   const effectiveAst = astProvided ?? finalAst;
 
-  // ─── Local longitudinal bars for this direction ───
+  // ─── Local longitudinal bars / adopted layout for this direction ───
   st.push("");
   st.push(`--- ${label}: Armado longitudinal ---`);
-  const { nBars, db: dbLong } = selectLongitudinalBars(effectiveAst, b);
-  st.push(`${nBars} Ø${dbLong} mm → A_st = ${f2((nBars * BAR_AREAS[dbLong]) / 100)} cm²`);
+  if (manualBars) {
+    const areaBar = (d: number) => (Math.PI * d * d) / 4 / 100; // cm²
+    const perFace =
+      2 * areaBar(manualBars.dbEsquinas) +
+      manualBars.nIntermediates * areaBar(manualBars.dbInter);
+    st.push(
+      `Adoptado por cara: 2 Ø${manualBars.dbEsquinas} (esquinas) + ${manualBars.nIntermediates} Ø${manualBars.dbInter} (intermedias) = ${perFace.toFixed(2)} cm²/cara`,
+    );
+    st.push(
+      `Adoptado en las 2 caras: ${(2 * perFace).toFixed(2)} cm² (As total de esta dirección)`,
+    );
+    st.push(
+      `Requerido total: ${finalAst.toFixed(2)} cm² (${(finalAst / 2).toFixed(2)} cm² por cara)`,
+    );
+    st.push(
+      `Comparación por cara: ${perFace.toFixed(2)} ${perFace >= finalAst / 2 ? "≥" : "<"} ${(finalAst / 2).toFixed(2)} cm² → ${perFace >= finalAst / 2 ? "✓" : "✗"}`,
+    );
+  } else {
+    const { nBars, db: dbLong } = selectLongitudinalBars(effectiveAst);
+    st.push(
+      `${nBars} Ø${dbLong} mm → A_st = ${f2((nBars * BAR_AREAS[dbLong]) / 100)} cm²`,
+    );
+  }
 
   st.push("");
   st.push(`Estado dir ${label}: ${passes ? "✓ VERIFICA" : "✗ NO VERIFICA"}`);
@@ -662,6 +713,8 @@ function designOneDirection(
     n_raw,
     m_raw,
     rho,
+    AstReq: finalAst,
+    AstProv: effectiveAst,
     Ast: effectiveAst,
     passes,
     steps: st,
@@ -673,11 +726,7 @@ function designOneDirection(
  * Always starts with 4 × Ø12 corners and adds intermediates or increases
  * diameter if needed. Returns 3 independent diameters ready for user adjustment.
  */
-export function proposeArmado(
-  astNeeded: number,
-  _dirX: DirectionResult,
-  _dirY: DirectionResult,
-): {
+export function proposeArmado(astNeeded: number): {
   nEsquinas: number;
   dbEsquinas: number;
   nCarasX: number;
@@ -685,7 +734,7 @@ export function proposeArmado(
   nCarasY: number;
   dbCarasY: number;
 } {
-  const area = (d: number) => (Math.PI * d * d / 4) / 100; // cm² per bar
+  const area = (d: number) => (Math.PI * d * d) / 4 / 100; // cm² per bar
 
   function tryDiameter(db: number): {
     nEsquinas: number;
@@ -743,11 +792,10 @@ export function designRCColumn(input: RCColumnInput): RCColumnResult {
   const userDims = Cx > 0 && Cy_cm > 0;
 
   if (!userDims) {
-    const Ag_req = Math.max(
-      ((PD + PL) * 10) / (0.4 * fc),
-      400,
+    const Ag_req = Math.max(((PD + PL) * 10) / (0.4 * fc), 400);
+    predim.push(
+      `Predimensionamiento: A_g ≈ (P_D+P_L)/(0.4·f'_c·0.1) = (${PD}+${PL})/(0.4·${fc}·0.1) = ${f2(Ag_req)} cm²`,
     );
-    predim.push(`Predimensionamiento: A_g ≈ (P_D+P_L)/(0.4·f'_c·0.1) = (${PD}+${PL})/(0.4·${fc}·0.1) = ${f2(Ag_req)} cm²`);
     predim.push(`A_g mín = 400 cm²`);
     const Ag = Math.max(Ag_req, 400);
 
@@ -767,7 +815,9 @@ export function designRCColumn(input: RCColumnInput): RCColumnResult {
       while (Cx * Cy_cm < Ag) Cy_cm++;
     }
 
-    predim.push(`Dimensiones propuestas: Cx = ${Cx} cm, Cy = ${Cy_cm} cm (${Cx}×${Cy_cm})`);
+    predim.push(
+      `Dimensiones propuestas: Cx = ${Cx} cm, Cy = ${Cy_cm} cm (${Cx}×${Cy_cm})`,
+    );
     predim.push(`A_g = ${Cx}·${Cy_cm} = ${Cx * Cy_cm} cm² ≥ ${f2(Ag)} cm² ✓`);
   } else {
     predim.push(`Dimensiones dadas: Cx = ${Cx} cm, Cy = ${Cy_cm} cm`);
@@ -791,7 +841,14 @@ export function designRCColumn(input: RCColumnInput): RCColumnResult {
     dbCarasX !== 12 ||
     dbCarasY !== 12;
   const astManual = useManual
-    ? computeManualAst(nEsquinas, nCarasX, nCarasY, dbEsquinas, dbCarasX, dbCarasY)
+    ? computeManualAst(
+        nEsquinas,
+        nCarasX,
+        nCarasY,
+        dbEsquinas,
+        dbCarasX,
+        dbCarasY,
+      )
     : undefined;
 
   // ─── Direction X: flexión en plano X → canto = Cx, ancho = Cy ───
@@ -809,11 +866,26 @@ export function designRCColumn(input: RCColumnInput): RCColumnResult {
 
   const dirX = designOneDirection(
     {
-      fc, fy, PD, PL, lu,
-      M1u: M1u_x, M2u: M2u_x,
-      b: Cy_cm, h: Cx,
+      fc,
+      fy,
+      PD,
+      PL,
+      lu,
+      M1u: M1u_x,
+      M2u: M2u_x,
+      b: Cy_cm,
+      h: Cx,
       betaD: input.betaD,
-      astProvided: astManual?.astTotal,
+      // En X cuentan las 4 esquinas + las barras intermedias de X, no las de Y.
+      astProvided: astManual ? astManual.astXface * 2 : undefined,
+      manualBars: astManual
+        ? {
+            nEsquinas,
+            nIntermediates: nCarasX,
+            dbEsquinas,
+            dbInter: dbCarasX,
+          }
+        : undefined,
     },
     "X",
   );
@@ -833,11 +905,26 @@ export function designRCColumn(input: RCColumnInput): RCColumnResult {
 
   const dirY = designOneDirection(
     {
-      fc, fy, PD, PL, lu,
-      M1u: M1u_y, M2u: M2u_y,
-      b: Cx, h: Cy_cm,
+      fc,
+      fy,
+      PD,
+      PL,
+      lu,
+      M1u: M1u_y,
+      M2u: M2u_y,
+      b: Cx,
+      h: Cy_cm,
       betaD: input.betaD,
-      astProvided: astManual?.astTotal,
+      // En Y cuentan las 4 esquinas + las barras intermedias de Y, no las de X.
+      astProvided: astManual ? astManual.astYface * 2 : undefined,
+      manualBars: astManual
+        ? {
+            nEsquinas,
+            nIntermediates: nCarasY,
+            dbEsquinas,
+            dbInter: dbCarasY,
+          }
+        : undefined,
     },
     "Y",
   );
@@ -854,8 +941,12 @@ export function designRCColumn(input: RCColumnInput): RCColumnResult {
       : "SHORT";
   const lambdaOK = dirX.lambda <= 100 && dirY.lambda <= 100;
 
-  combo.push(`Dir X: A_st = ${f2(dirX.Ast)} cm², ρ = ${(dirX.rho * 100).toFixed(2)}%, ${dirX.columnType === "SHORT" ? "Corta" : "Esbelta"}, ${dirX.passes ? "✓" : "✗"}`);
-  combo.push(`Dir Y: A_st = ${f2(dirY.Ast)} cm², ρ = ${(dirY.rho * 100).toFixed(2)}%, ${dirY.columnType === "SHORT" ? "Corta" : "Esbelta"}, ${dirY.passes ? "✓" : "✗"}`);
+  combo.push(
+    `Dir X: A_st nec = ${f2(dirX.AstReq)} cm² | adoptada = ${f2(dirX.AstProv)} cm², ρ = ${(dirX.rho * 100).toFixed(2)}%, ${dirX.columnType === "SHORT" ? "Corta" : "Esbelta"}, ${dirX.passes ? "✓" : "✗"}`,
+  );
+  combo.push(
+    `Dir Y: A_st nec = ${f2(dirY.AstReq)} cm² | adoptada = ${f2(dirY.AstProv)} cm², ρ = ${(dirY.rho * 100).toFixed(2)}%, ${dirY.columnType === "SHORT" ? "Corta" : "Esbelta"}, ${dirY.passes ? "✓" : "✗"}`,
+  );
   combo.push(`→ Tipo: Columna ${columnType === "SHORT" ? "Corta" : "Esbelta"}`);
   combo.push(`→ Verificación: ${passes ? "✓ VERIFICA" : "✗ NO VERIFICA"}`);
 
@@ -871,33 +962,60 @@ export function designRCColumn(input: RCColumnInput): RCColumnResult {
         nXperFace: nEsquinas / 2 + nCarasX,
         nXtotal: nEsquinas + 2 * nCarasX,
         astXprovided: astManual!.astXface * 2,
-        astYneeded: dirY.Ast,
+        astYneeded: dirY.AstReq,
         cornerContribY: nEsquinas * astManual!.perBarEsquinas,
-        astYremaining: Math.max(0, dirY.Ast - nEsquinas * astManual!.perBarEsquinas),
+        astYremaining: Math.max(
+          0,
+          dirY.AstReq - nEsquinas * astManual!.perBarEsquinas,
+        ),
         nYadditionalPerFace: nCarasY,
         nYadditionalTotal: 2 * nCarasY,
         astYprovided: astManual!.astYface * 2,
         totalBars: astManual!.totalBars,
         astTotalProvided: astManual!.astTotal,
       }
-    : selectBiaxialBars(dirX.Ast, dirY.Ast, Cx, Cy_cm);
+    : selectBiaxialBars(dirX.AstReq, dirY.AstReq);
   const rho_final = barLayout.astTotalProvided / (Cx * Cy_cm);
-  const dbLong = Math.max(barLayout.dbEsquinas, barLayout.dbCarasX, barLayout.dbCarasY);
+  const dbLong = Math.max(
+    barLayout.dbEsquinas,
+    barLayout.dbCarasX,
+    barLayout.dbCarasY,
+  );
 
   combo.push("");
   combo.push("--- Armado biaxial ---");
   if (useManual) {
-    combo.push(`Armadura manual: ${astManual!.totalBars} barras (Ø${dbEsquinas} esquinas + Ø${dbCarasX} caras X + Ø${dbCarasY} caras Y)`);
-    combo.push(`  n_esquinas=${nEsquinas} + n_caras_x=${nCarasX} + n_caras_y=${nCarasY}`);
-    combo.push(`Dirección X: Ast_nec = ${f2(dirX.Ast)} cm² → ${barLayout.nXtotal} barras en caras de ${Cx} cm (${barLayout.nXperFace} por cara, incluye 2×2 esquinas)`);
-    combo.push(`Dirección Y: Ast_nec = ${f2(dirY.Ast)} cm² → esquinas aportan ${f2(barLayout.cornerContribY)} cm²`);
-    combo.push(`  Resta: ${f2(barLayout.astYremaining)} cm² (manual, no se agregan barras automáticamente)`);
-    combo.push(`Total: ${astManual!.totalBars} barras | Ast_total = ${f2(astManual!.astTotal)} cm² | ρ = ${(rho_final * 100).toFixed(2)}%`);
+    combo.push(
+      `Armadura manual: ${astManual!.totalBars} barras (Ø${dbEsquinas} esquinas + Ø${dbCarasX} caras X + Ø${dbCarasY} caras Y)`,
+    );
+    combo.push(
+      `  n_esquinas=${nEsquinas} + n_caras_x=${nCarasX} + n_caras_y=${nCarasY}`,
+    );
+    combo.push(
+      `Dirección X: Ast_nec = ${f2(dirX.AstReq)} cm² | adoptada = ${f2(dirX.AstProv)} cm² → ${barLayout.nXtotal} barras en caras de ${Cx} cm (${barLayout.nXperFace} por cara, incluye 2×2 esquinas)`,
+    );
+    combo.push(
+      `Dirección Y: Ast_nec = ${f2(dirY.AstReq)} cm² | adoptada = ${f2(dirY.AstProv)} cm² → esquinas aportan ${f2(barLayout.cornerContribY)} cm²`,
+    );
+    combo.push(
+      `  Resta: ${f2(barLayout.astYremaining)} cm² (manual, no se agregan barras automáticamente)`,
+    );
+    combo.push(
+      `Total: ${astManual!.totalBars} barras | Ast_total = ${f2(astManual!.astTotal)} cm² | ρ = ${(rho_final * 100).toFixed(2)}%`,
+    );
   } else {
-    combo.push(`Dirección X: Ast_nec = ${f2(dirX.Ast)} cm² → ${barLayout.nXtotal} Ø${dbLong} en caras de ${Cx} cm (${barLayout.nXperFace} por cara, incluye 4 esquinas)`);
-    combo.push(`Dirección Y: Ast_nec = ${f2(dirY.Ast)} cm² → esquinas aportan ${f2(barLayout.cornerContribY)} cm²`);
-    combo.push(`  Resta: ${f2(barLayout.astYremaining)} cm² → ${barLayout.nYadditionalTotal} Ø${dbLong} adicionales en caras de ${Cy_cm} cm (${barLayout.nYadditionalPerFace} por cara)`);
-    combo.push(`Total: ${barLayout.totalBars} Ø${dbLong} | Ast_total = ${f2(barLayout.astTotalProvided)} cm² | ρ = ${(rho_final * 100).toFixed(2)}%`);
+    combo.push(
+      `Dirección X: Ast_nec = ${f2(dirX.AstReq)} cm² → ${barLayout.nXtotal} Ø${dbLong} en caras de ${Cx} cm (${barLayout.nXperFace} por cara, incluye 4 esquinas)`,
+    );
+    combo.push(
+      `Dirección Y: Ast_nec = ${f2(dirY.AstReq)} cm² | adoptada = ${f2(dirY.AstProv)} cm² → esquinas aportan ${f2(barLayout.cornerContribY)} cm²`,
+    );
+    combo.push(
+      `  Resta: ${f2(barLayout.astYremaining)} cm² → ${barLayout.nYadditionalTotal} Ø${dbLong} adicionales en caras de ${Cy_cm} cm (${barLayout.nYadditionalPerFace} por cara)`,
+    );
+    combo.push(
+      `Total: ${barLayout.totalBars} Ø${dbLong} | Ast_total = ${f2(barLayout.astTotalProvided)} cm² | ρ = ${(rho_final * 100).toFixed(2)}%`,
+    );
   }
 
   // ─── Combined stirrups ───
@@ -905,18 +1023,24 @@ export function designRCColumn(input: RCColumnInput): RCColumnResult {
   combo.push("--- Estribos ---");
 
   const phiStirrup = dbLong <= 16 ? 6 : 8;
-  combo.push(`φ_e ≥ ${phiStirrup} mm (φ_L = ${dbLong} ${dbLong <= 16 ? "≤ 16 mm" : "> 16 mm"})`);
+  combo.push(
+    `φ_e ≥ ${phiStirrup} mm (φ_L = ${dbLong} ${dbLong <= 16 ? "≤ 16 mm" : "> 16 mm"})`,
+  );
 
   const s1 = Math.min(Cx, Cy_cm);
   const s2 = 12 * (dbLong / 10);
   const s3 = 48 * (phiStirrup / 10);
   const sStirrup = Math.min(s1, s2, s3);
-  combo.push(`Separación: s ≤ min(${s1}, ${f2(s2)}, ${f2(s3)}) = ${f2(sStirrup)} cm`);
+  combo.push(
+    `Separación: s ≤ min(${s1}, ${f2(s2)}, ${f2(s3)}) = ${f2(sStirrup)} cm`,
+  );
 
   combo.push("");
   combo.push("=============== RESUMEN FINAL ===============");
   combo.push(`Sección: ${Cx}×${Cy_cm} cm, A_g = ${Cx * Cy_cm} cm²`);
-  combo.push(`Armadura: ${(rho_final * 100).toFixed(2)}% = ${f2(barLayout.astTotalProvided)} cm² (${barLayout.totalBars} Ø${dbLong})`);
+  combo.push(
+    `Armadura: ${(rho_final * 100).toFixed(2)}% = ${f2(barLayout.astTotalProvided)} cm² (${barLayout.totalBars} Ø${dbLong})`,
+  );
   combo.push(`Estribos: φ${phiStirrup} c/${f2(sStirrup)} cm`);
   combo.push(`Estado: ${passes ? "✓ VERIFICA" : "✗ NO VERIFICA"}`);
 

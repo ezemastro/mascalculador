@@ -562,6 +562,10 @@ interface RCColumnaSaveData {
   dbEsquinas?: number;
   dbCarasX?: number;
   dbCarasY?: number;
+  /** Diámetro de estribo adoptado (mm). */
+  phiStirrup?: number;
+  /** Separación de estribo adoptada (cm). */
+  sStirrup?: number;
 }
 
 const COLUMNA_COLUMNS: PlanillaColumn[] = [
@@ -615,7 +619,9 @@ function buildColumnaRow(save: SavedBeam): string[] {
     dbCarasX: d.dbCarasX,
     dbCarasY: d.dbCarasY,
   });
-  const astReq = inputRes.Ast;
+  // La As requerida es la mayor de las dos direcciones; la provista es el
+  // armado adoptado (no la propuesta automática).
+  const astReq = Math.max(inputRes.dirX.AstReq, inputRes.dirY.AstReq);
   const astProv = full.barLayout.astTotalProvided;
   const nEsq = d.nEsquinas ?? 4;
   const armText = `${nEsq}Ø${d.dbEsquinas ?? 12} + X:${d.nCarasX ?? 0}Ø${d.dbCarasX ?? 12} + Y:${d.nCarasY ?? 0}Ø${d.dbCarasY ?? 12}`;
@@ -631,7 +637,7 @@ function buildColumnaRow(save: SavedBeam): string[] {
     astReq.toFixed(2),
     astProv.toFixed(2),
     armText,
-    `Ø${full.phiStirrup} c/${full.sStirrup}`,
+    `Ø${d.phiStirrup ?? full.phiStirrup} c/${d.sStirrup ?? full.sStirrup}`,
   ];
 }
 

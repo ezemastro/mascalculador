@@ -54,6 +54,10 @@ export interface RCColumnState {
   dbEsquinas?: number;
   dbCarasX?: number;
   dbCarasY?: number;
+  /** Diámetro de estribo adoptado (mm). */
+  phiStirrup?: number;
+  /** Separación de estribo adoptada (cm). */
+  sStirrup?: number;
   /** Id del guardado cargado, si viene de uno existente */
   loadedSaveId?: string | null;
   loadedSaveName?: string | null;
@@ -211,12 +215,13 @@ export function ArmadoLayoutSVG({
         Cx = {Cx} cm
       </text>
       <text
-        x={ox - 6}
+        x={ox - 10}
         y={oy + rectH / 2}
-        textAnchor="end"
+        textAnchor="middle"
         fontSize="10"
         fill="var(--color-text-muted, #9ca3af)"
         dominantBaseline="middle"
+        transform={`rotate(-90 ${ox - 10} ${oy + rectH / 2})`}
       >
         Cy = {Cy} cm
       </text>
@@ -280,6 +285,26 @@ export default function RCColumnForm() {
   const [loadedSaveName, setLoadedSaveName] = useState<string | null>(
     state?.loadedSaveName ?? null,
   );
+
+  // Estribos adoptados (vienen de la pantalla de resultados vía router state).
+  const [phiStirrup, setPhiStirrup] = useState<number | undefined>(
+    state?.phiStirrup,
+  );
+  const [sStirrup, setSStirrup] = useState<number | undefined>(state?.sStirrup);
+
+  // Armado longitudinal adoptado (viene de resultados al pulsar "Volver" o de
+  // un guardado cargado). La edición se hace en Resultados; el formulario solo
+  // lo transporta para no perderlo al recalcular.
+  const [nEsquinas, setNEsquinas] = useState<number | undefined>(
+    state?.nEsquinas,
+  );
+  const [nCarasX, setNCarasX] = useState<number | undefined>(state?.nCarasX);
+  const [nCarasY, setNCarasY] = useState<number | undefined>(state?.nCarasY);
+  const [dbEsquinas, setDbEsquinas] = useState<number | undefined>(
+    state?.dbEsquinas,
+  );
+  const [dbCarasX, setDbCarasX] = useState<number | undefined>(state?.dbCarasX);
+  const [dbCarasY, setDbCarasY] = useState<number | undefined>(state?.dbCarasY);
 
   // Contributed loads from upper columns
   const [contributedColumns, setContributedColumns] = useState<
@@ -646,6 +671,14 @@ export default function RCColumnForm() {
       includeSelfWeight,
       contributedColumns,
       contributedBeams,
+      nEsquinas,
+      nCarasX,
+      nCarasY,
+      dbEsquinas,
+      dbCarasX,
+      dbCarasY,
+      phiStirrup,
+      sStirrup,
     };
 
     if (loadedSaveId) {
@@ -787,6 +820,15 @@ export default function RCColumnForm() {
         }),
       );
     }
+    // Estribos y armado longitudinal adoptados (pantalla de resultados).
+    if (typeof d.phiStirrup === "number") setPhiStirrup(d.phiStirrup);
+    if (typeof d.sStirrup === "number") setSStirrup(d.sStirrup);
+    if (typeof d.nEsquinas === "number") setNEsquinas(d.nEsquinas);
+    if (typeof d.nCarasX === "number") setNCarasX(d.nCarasX);
+    if (typeof d.nCarasY === "number") setNCarasY(d.nCarasY);
+    if (typeof d.dbEsquinas === "number") setDbEsquinas(d.dbEsquinas);
+    if (typeof d.dbCarasX === "number") setDbCarasX(d.dbCarasX);
+    if (typeof d.dbCarasY === "number") setDbCarasY(d.dbCarasY);
   }
 
   function removeContributedColumn(index: number) {
@@ -866,6 +908,14 @@ export default function RCColumnForm() {
     setContributedBeams([]);
     setLoadedSaveId(null);
     setLoadedSaveName(null);
+    setPhiStirrup(undefined);
+    setSStirrup(undefined);
+    setNEsquinas(undefined);
+    setNCarasX(undefined);
+    setNCarasY(undefined);
+    setDbEsquinas(undefined);
+    setDbCarasX(undefined);
+    setDbCarasY(undefined);
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -892,6 +942,16 @@ export default function RCColumnForm() {
       contributedBeams,
       loadedSaveId,
       loadedSaveName,
+      // Round-trip del armado longitudinal y estribos adoptados (pueden venir
+      // de la pantalla de resultados al pulsar "Volver").
+      nEsquinas,
+      nCarasX,
+      nCarasY,
+      dbEsquinas,
+      dbCarasX,
+      dbCarasY,
+      phiStirrup,
+      sStirrup,
     };
     navigate("/rc-column-results", { state: rcState });
   }
