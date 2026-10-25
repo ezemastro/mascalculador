@@ -22,7 +22,13 @@ let activeCleanup: (() => void) | null = null;
 export function printSheets(build: () => PlanillaSheet[] | null): void {
   if (activeCleanup) return;
 
-  const sheets = build();
+  const built = build();
+  // No imprimir hojas vacías (p. ej. la planilla de apoyos cuando no hay
+  // ninguno): solo encabezado y una página en blanco. Se conservan las hojas
+  // sin filas si traen notas (errores de elementos que no se pudieron procesar).
+  const sheets = built?.filter(
+    (sheet) => sheet.rows.length > 0 || (sheet.notes?.length ?? 0) > 0,
+  );
   if (!sheets || sheets.length === 0) return;
 
   const printRoot = ensurePrintRoot();
