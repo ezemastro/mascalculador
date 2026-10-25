@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { printSheets } from "../lib/print-sheets";
 import {
   buildBasesSheet,
+  buildTroncoSheet,
   buildCabezalVigaSheet,
   buildColumnaSheet,
   buildLosaSheet,
@@ -36,7 +37,11 @@ export const PRINT_ITEMS: { kind: PrintKind; label: string; hint: string }[] = [
   },
   { kind: "vigas", label: "Vigas", hint: "Planilla de vigas H° A°" },
   { kind: "columnas", label: "Columnas", hint: "Planilla de columnas" },
-  { kind: "bases", label: "Bases", hint: "Planilla de bases" },
+  {
+    kind: "bases",
+    label: "Bases",
+    hint: "Planilla de bases + planilla de troncos",
+  },
   {
     kind: "vf-cabezales",
     label: "Vigas de fundación",
@@ -65,8 +70,10 @@ export function buildSheets(kind: PrintKind): PlanillaSheet[] | null {
       return [buildVigaSheet(getSavedBeams("hormigon"))];
     case "columnas":
       return [buildColumnaSheet(getSavedBeams("rc-columna"))];
-    case "bases":
-      return [buildBasesSheet(getSavedBeams("bases"))];
+    case "bases": {
+      const bases = getSavedBeams("bases");
+      return [buildBasesSheet(bases), buildTroncoSheet(bases)];
+    }
     case "vf-cabezales":
       return [buildCabezalVigaSheet(getSavedBeams("cabezal"))];
     case "cabezales":

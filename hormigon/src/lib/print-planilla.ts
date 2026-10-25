@@ -14,6 +14,7 @@ import { computeDeflections } from "./deflection";
 import { CONCRETE_DENSITY } from "./constants";
 import type { BaseInput, BaseResult, BaseType } from "./bases-calc";
 import { designBase, designVigaCabezal } from "./bases-calc";
+import { designTronco, type TroncoAdopcion } from "./tronco-calc";
 import { designRCColumn } from "./rc-column-calc";
 import type { MuroInput, MuroResult, MuroBarSelection } from "./muro-calc";
 import type { PileCapInput, PileCapResult } from "./pilecap-calc";
@@ -706,6 +707,12 @@ const BASES_COLUMNS: PlanillaColumn[] = [
  *  (data root). Todos los campos son opcionales: si faltan, la celda cae a las
  *  áreas / Av/s requeridos del resultado. */
 interface BasesAdopcion {
+  troncoNEsq?: number;
+  troncoNCarasX?: number;
+  troncoNCarasY?: number;
+  troncoDbEsq?: number;
+  troncoDbCarasX?: number;
+  troncoDbCarasY?: number;
   vigaSupQty?: number;
   vigaSupDiam?: number;
   vigaInfQty?: number;
@@ -951,6 +958,107 @@ export function buildBasesSheet(sources: SavedBeam[]): PlanillaSheet {
       failed.length > 0
         ? [`No se pudieron procesar (datos incompletos): ${failed.join(", ")}`]
         : undefined,
+  };
+}
+
+// ---- Troncos de columna (una fila por base con tronco) ----
+
+const TRONCO_COLUMNS: PlanillaColumn[] = [
+  { key: "elem", label: "Elemento", width: "12%" },
+  { key: "tipo", label: "Base", width: "12%" },
+  { key: "sec", label: "b×b (cm)", width: "9%" },
+  { key: "lu", label: "lu (m)", align: "right" },
+  { key: "n", label: "N (kN)", align: "right" },
+  { key: "m", label: "Mx/My (kN·m)", align: "right" },
+  { key: "arm", label: "Armadura longitudinal", width: "28%" },
+  { key: "stirrup", label: "Estribos", width: "12%" },
+];
+
+/** Planilla de troncos (una fila por base que tenga tronco). Usa el armado
+ *  adoptado en Bases o, si no hay adopción, el propuesto por el motor. */
+export function buildTroncoSheet(sources: SavedBeam[]): PlanillaSheet {
+  const rows: string[][] = [];
+  const failed: string[] = [];
+  const sinTronco: string[] = [];
+  for (const save of sources) {
+    try {
+      const data = save.data as unknown as {
+        input?: Partial<BaseInput>;
+        result?: Partial<BaseResult>;
+      } & Partial<BaseInput> &
+        BasesAdopcion;
+      if (!data || typeof data !== "object") throw new Error("Sin datos");
+      if (data.result && !data.input) throw new Error("Datos incompletos");
+      const input = data.input ?? data;
+      let result: Partial<BaseResult>;
+      if (data.result) {
+        result = data.result;
+      } else {
+        if (!isCompleteBaseInput(input)) throw new Error("Datos incompletos");
+        result = designBase(input);
+      }
+      const hasAdopt =
+        data.troncoNEsq !== undefined ||
+        data.troncoNCarasX !== undefined ||
+        data.troncoNCarasY !== undefined ||
+        data.troncoDbEsq !== undefined ||
+        data.troncoDbCarasX !== undefined ||
+        data.troncoDbCarasY !== undefined;
+      const adopt: TroncoAdopcion | undefined = hasAdopt
+        ? {
+            nEsquinas: data.troncoNEsq,
+            nCarasX: data.troncoNCarasX,
+            nCarasY: data.troncoNCarasY,
+            dbEsquinas: data.troncoDbEsq,
+            dbCarasX: data.troncoDbCarasX,
+            dbCarasY: data.troncoDbCarasY,
+          }
+        : undefined;
+      const tronco = designTronco(
+        input as BaseInput,
+        result as BaseResult,
+        adopt,
+      );
+      if (!tronco) {
+        sinTronco.push(save.name);
+        continue;
+      }
+      const tipo = `${BASE_TYPE_LABELS[input.type ?? ""] ?? input.type ?? "—"}${
+        input.subType
+          ? ` · ${BASE_SUBTYPE_LABELS[input.subType] ?? input.subType}`
+          : ""
+      }`;
+      const b = tronco.bars;
+      const arm = `${b.nEsquinas}Ø${b.dbEsquinas} + X:${b.nCarasX}Ø${b.dbCarasX} + Y:${b.nCarasY}Ø${b.dbCarasY}`;
+      const stir = `Ø${tronco.columnComputo.phiStirrup} c/${fmt1(tronco.columnComputo.sStirrupCm)}`;
+      rows.push([
+        save.name,
+        tipo,
+        `${fmt1(tronco.bxCm)}×${fmt1(tronco.byCm)}`,
+        fmt1(tronco.luM),
+        fmt1(tronco.columnN),
+        `${fmt1(tronco.columnMx)} / ${fmt1(tronco.columnMy)}`,
+        arm,
+        stir,
+      ]);
+    } catch {
+      failed.push(save.name);
+    }
+  }
+  const notes: string[] = [];
+  if (rows.length > 0 && sinTronco.length > 0) {
+    notes.push(`Sin tronco (Df ≤ h): ${sinTronco.join(", ")}`);
+  }
+  if (rows.length > 0 && failed.length > 0) {
+    notes.push(`No se pudieron procesar: ${failed.join(", ")}`);
+  }
+  return {
+    title: "PLANILLA DE TRONCOS — H° A°",
+    subtitle: "Memoria de cálculo",
+    columns: TRONCO_COLUMNS,
+    rows,
+    countLabel: `Cantidad de troncos: ${rows.length}`,
+    notes: notes.length > 0 ? notes : undefined,
   };
 }
 
