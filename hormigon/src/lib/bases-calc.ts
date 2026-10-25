@@ -1514,7 +1514,7 @@ function designTensor(input: BaseInput): BaseResult {
     );
     if (!FrictionOK)
       wr.push(
-        "La fuerza de rozamiento es menor que la tracción en el tensor. Aumentar la carga vertical (PD+PL) o μ.",
+        "La fuerza de rozamiento es menor que la tracción del tensor. Aumentar H o utilizar viga de fundación.",
       );
     const Tn = Tu / 0.9;
     st.push(
@@ -1875,7 +1875,7 @@ function designEsquina(input: BaseInput): BaseResult {
       );
       if (!FrictionOK) {
         wr.push(
-          "La fuerza de rozamiento es menor que la tracción en el tensor (en una o ambas direcciones). Aumentar la carga vertical (PD+PL) o μ.",
+          "La fuerza de rozamiento es menor que la tracción del tensor (en una o ambas direcciones). Aumentar Hx/Hy o utilizar vigas de equilibrio.",
         );
       }
       const Tnx = Tux / 0.9;

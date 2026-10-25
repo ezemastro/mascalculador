@@ -7,7 +7,11 @@ import type { BaseInput } from "../lib/bases-calc";
 import { saveBeam, updateSave } from "../lib/storage";
 import type { BaseTensorAdopcion } from "../lib/storage";
 import { pickObraIfNeeded } from "../components/ObraPicker";
-import { computoBase } from "../lib/computo";
+import {
+  computoBase,
+  type ComputoBaseBeam,
+  type ComputoBaseTensor,
+} from "../lib/computo";
 import ComputoSection from "../components/ComputoSection";
 
 // ---------------------------------------------------------------------------
@@ -552,9 +556,6 @@ export default function BasesResults({
   const [tensorHy, setTensorHy] = useState<number | undefined>(
     input?.Hy ?? undefined,
   );
-  const [tensorMu, setTensorMu] = useState<number | undefined>(
-    input?.mu ?? undefined,
-  );
 
   // Adopción de la sección/armadura del tensor (se persiste en el guardado)
   const [tensorAdopt, setTensorAdopt] = useState<
@@ -575,9 +576,8 @@ export default function BasesResults({
       H: tensorH,
       Hx: tensorHx,
       Hy: tensorHy,
-      mu: tensorMu,
     };
-  }, [input, tensorH, tensorHx, tensorHy, tensorMu]);
+  }, [input, tensorH, tensorHx, tensorHy]);
 
   const { result, calcError } = useMemo(() => {
     if (!fullInput) return { result: null, calcError: null };
@@ -941,8 +941,7 @@ export default function BasesResults({
                   }
                   sub={
                     <span>
-                      Roce disponible (PD+PL)·μ = {fmt(nServFric, 1)}·
-                      {fmt(muFric, 2)} = {fmt(rfFric, 1)} kN{" "}
+                      Roce disponible = {fmt(rfFric, 1)} kN{" "}
                       <Badge ok={result.FrictionOK} />
                     </span>
                   }
@@ -1024,24 +1023,6 @@ export default function BasesResults({
                       }
                     />
                   </label>
-                  <label className="flex flex-col gap-1">
-                    <span className="text-xs text-text-muted">
-                      μ — coeficiente de rozamiento base-suelo (0.40 por
-                      defecto)
-                    </span>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0.1"
-                      max="1"
-                      value={tensorMu ?? 0.4}
-                      onChange={(e) =>
-                        setTensorMu(
-                          e.target.value ? Number(e.target.value) : undefined,
-                        )
-                      }
-                    />
-                  </label>
                   {!tensorPending ? (
                     <div className="text-sm bg-surface-alt rounded-lg p-3">
                       T<sub>ux</sub> = {fmt(result.Tux ?? 0, 1)} kN →{" "}
@@ -1071,24 +1052,6 @@ export default function BasesResults({
                       value={tensorH ?? ""}
                       onChange={(e) =>
                         setTensorH(
-                          e.target.value ? Number(e.target.value) : undefined,
-                        )
-                      }
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1">
-                    <span className="text-xs text-text-muted">
-                      μ — coeficiente de rozamiento base-suelo (0.40 por
-                      defecto)
-                    </span>
-                    <input
-                      type="number"
-                      step="0.1"
-                      min="0.1"
-                      max="1"
-                      value={tensorMu ?? 0.4}
-                      onChange={(e) =>
-                        setTensorMu(
                           e.target.value ? Number(e.target.value) : undefined,
                         )
                       }
@@ -1358,48 +1321,110 @@ export default function BasesResults({
       )}
 
       {/* ─── Cómputo de materiales — sólo bases ─── */}
-      {!isCabezal && (
-        <ComputoSection
-          computo={computoBase({
-            lxCm: result.Lx,
-            lyCm: result.Ly,
-            hCm: result.h,
-            heelCm: result.heel,
-            kxCm: result.kx,
-            kyCm: result.ky,
-            paletaType: input.type,
-            diamX,
-            qtyX,
-            diamY,
-            qtyY,
-            vigas: isEsquina
-              ? input.subType === "viga-de-equilibrio"
-                ? [
-                    {
-                      bCm: result.b_vigaX ?? 0,
-                      hCm: result.h_vigaX ?? 0,
-                      lengthCm: input.LcolX ?? 0,
-                    },
-                    {
-                      bCm: result.b_vigaY ?? 0,
-                      hCm: result.h_vigaY ?? 0,
-                      lengthCm: input.LcolY ?? 0,
-                    },
-                  ]
-                : []
-              : isViga
-                ? [
+      {!isCabezal &&
+        (() => {
+          // Viga(s): equipo de equilibrio → solo hormigón; viga de fundación →
+          // armadura adoptada (sup/inf + estribos por zona voladizo/tramo).
+          const vigas: ComputoBaseBeam[] = isEsquina
+            ? input.subType === "viga-de-equilibrio"
+              ? [
+                  {
+                    bCm: result.b_vigaX ?? 0,
+                    hCm: result.h_vigaX ?? 0,
+                    lengthCm: input.LcolX ?? 0,
+                  },
+                  {
+                    bCm: result.b_vigaY ?? 0,
+                    hCm: result.h_vigaY ?? 0,
+                    lengthCm: input.LcolY ?? 0,
+                  },
+                ]
+              : []
+            : isViga
+              ? (() => {
+                  const L = input.Lcol ?? 0;
+                  // Voladizo = dimensión de la zapata a lo largo de la viga.
+                  const volRaw =
+                    input.type === "medianera-x" ? result.Ly : result.Lx;
+                  const clamp = (x: number) => Math.max(0, Math.min(x, L));
+                  return [
                     {
                       bCm: result.b_viga,
                       hCm: result.h_viga,
-                      lengthCm: input.Lcol ?? 0,
+                      lengthCm: L,
+                      sup: { qty: vigaSupQty, diam: vigaSupDiam },
+                      inf: { qty: vigaInfQty, diam: vigaInfDiam },
+                      stirrupVol: {
+                        diam: estVolDiam,
+                        sepCm: estVolSep,
+                        legs: estVolLegs,
+                        coverCm: cover,
+                      },
+                      stirrupTramo: {
+                        diam: estTramoDiam,
+                        sepCm: estTramoSep,
+                        legs: estTramoLegs,
+                        coverCm: cover,
+                      },
+                      volLengthCm: clamp(volRaw ?? 0),
+                      tramoLengthCm: clamp(L - (volRaw ?? 0)),
                     },
-                  ]
-                : [],
-          })}
-          note="El hormigón incluye la viga de fundación / vigas de equilibrio. El acero de vigas y tensores queda fuera (adopción de barras pendiente)."
-        />
-      )}
+                  ];
+                })()
+              : [];
+
+          // Tensores: medianera → uno; esquina → X e Y. Adoptados o sugeridos
+          // (cuadrado sugerido + 4Ø12). Se saltean los que no tengan largo/sección.
+          const tensores: ComputoBaseTensor[] = [];
+          if (isTensor) {
+            const pushTensor = (
+              len: number | undefined,
+              adopt: BaseTensorAdopcion | undefined,
+              sugSide: number | undefined,
+            ) => {
+              const L = len ?? 0;
+              const side = Math.round(sugSide ?? 0);
+              const b = adopt?.b ?? side;
+              const h = adopt?.h ?? side;
+              if (!(L > 0) || !(b > 0) || !(h > 0)) return;
+              tensores.push({
+                bCm: b,
+                hCm: h,
+                lengthCm: L,
+                bars: adopt
+                  ? { qty: adopt.qty ?? 4, diam: adopt.diam ?? 12 }
+                  : { qty: 4, diam: 12 },
+              });
+            };
+            if (isMedianera) {
+              pushTensor(input.Lcol, tensorAdopt, result.h_tensor);
+            } else if (isEsquina) {
+              pushTensor(input.LcolX, tensorAdoptX, result.h_tensorX);
+              pushTensor(input.LcolY, tensorAdoptY, result.h_tensorY);
+            }
+          }
+
+          return (
+            <ComputoSection
+              computo={computoBase({
+                lxCm: result.Lx,
+                lyCm: result.Ly,
+                hCm: result.h,
+                heelCm: result.heel,
+                kxCm: result.kx,
+                kyCm: result.ky,
+                paletaType: input.type,
+                diamX,
+                qtyX,
+                diamY,
+                qtyY,
+                vigas,
+                tensores,
+              })}
+              note="El cómputo incluye la malla adoptada de la zapata, la viga de fundación (armadura superior, inferior/perchas y estribos) y el tensor (barras longitudinales + estribos Ø6 c/20). Las vigas de equilibrio de esquina quedan solo en hormigón."
+            />
+          );
+        })()}
     </MainLayout>
   );
 }

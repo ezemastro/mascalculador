@@ -353,7 +353,9 @@ export default function BasesForm() {
 - subType (para medianeras): "viga-de-fundacion" | "viga-de-equilibrio" | "tensor".
 - Lx, Ly: lados de la base en metros (si ya se adoptaron).
 - h: altura de la base en metros. hTalon: altura del talón en metros.
-- Lcol, LcolX, LcolY: longitudes de columna en metros.
+- Lcol, LcolX, LcolY: luz entre ejes de columnas en cm (viga de fundación y tensor).
+- H, Hx, Hy: altura del centro del tensor al fondo de la base en cm.
+- mu: coeficiente de rozamiento base-suelo (0.1 a 1).
 - includeSelfWeight: boolean.`,
       getState: () => assistantStateRef.current,
       apply: (values) => {
@@ -387,11 +389,24 @@ export default function BasesForm() {
             case "hTalon":
             case "Lcol":
             case "LcolX":
-            case "LcolY": {
+            case "LcolY":
+            case "H":
+            case "Hx":
+            case "Hy": {
               const v = numeric(key);
               if (v !== null) {
                 setNum(key, v);
                 applied.push(key);
+              }
+              break;
+            }
+            case "mu": {
+              const v = numeric("mu");
+              if (v !== null && (v < 0.1 || v > 1)) {
+                errors.push("mu: se esperaba un valor entre 0.1 y 1");
+              } else if (v !== null) {
+                setNum("mu", v);
+                applied.push("mu");
               }
               break;
             }
@@ -1073,10 +1088,111 @@ export default function BasesForm() {
                 </div>
 
                 {state.type === "esquina" && state.subType === "tensor" ? (
-                  <p className="text-xs text-text-muted">
-                    Los datos de los tensores X e Y (altura al fondo de la base
-                    y sección) se cargan en la hoja de resultados.
-                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs text-text-muted">
+                        L<sub>colX</sub> (cm) — luz entre ejes de columnas (X)
+                      </span>
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        value={state.LcolX ?? ""}
+                        onKeyDown={handleCommaKey}
+                        onChange={(e) =>
+                          setState((prev) => ({
+                            ...prev,
+                            LcolX: e.target.value
+                              ? Number(e.target.value)
+                              : undefined,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs text-text-muted">
+                        L<sub>colY</sub> (cm) — luz entre ejes de columnas (Y)
+                      </span>
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        value={state.LcolY ?? ""}
+                        onKeyDown={handleCommaKey}
+                        onChange={(e) =>
+                          setState((prev) => ({
+                            ...prev,
+                            LcolY: e.target.value
+                              ? Number(e.target.value)
+                              : undefined,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs text-text-muted">
+                        H<sub>x</sub> (cm) — altura centro tensor a fondo de
+                        base
+                      </span>
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        value={state.Hx ?? ""}
+                        onKeyDown={handleCommaKey}
+                        onChange={(e) =>
+                          setState((prev) => ({
+                            ...prev,
+                            Hx: e.target.value
+                              ? Number(e.target.value)
+                              : undefined,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs text-text-muted">
+                        H<sub>y</sub> (cm) — altura centro tensor a fondo de
+                        base
+                      </span>
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        value={state.Hy ?? ""}
+                        onKeyDown={handleCommaKey}
+                        onChange={(e) =>
+                          setState((prev) => ({
+                            ...prev,
+                            Hy: e.target.value
+                              ? Number(e.target.value)
+                              : undefined,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs text-text-muted">
+                        μ — coeficiente de rozamiento base-suelo (0.40 por
+                        defecto)
+                      </span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0.1"
+                        max="1"
+                        value={state.mu ?? 0.4}
+                        onChange={(e) =>
+                          setState((prev) => ({
+                            ...prev,
+                            mu: e.target.value
+                              ? Number(e.target.value)
+                              : undefined,
+                          }))
+                        }
+                      />
+                    </label>
+                  </div>
                 ) : state.type === "esquina" &&
                   state.subType === "viga-de-equilibrio" ? (
                   <div className="grid grid-cols-2 gap-3">
@@ -1188,10 +1304,69 @@ export default function BasesForm() {
                     </label>
                   </div>
                 ) : state.subType === "tensor" ? (
-                  <p className="text-xs text-text-muted">
-                    Los datos del tensor (altura al fondo de la base y sección)
-                    se cargan en la hoja de resultados.
-                  </p>
+                  <>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs text-text-muted">
+                        L<sub>col</sub> (cm) — luz entre ejes de columnas
+                      </span>
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        value={state.Lcol ?? ""}
+                        onKeyDown={handleCommaKey}
+                        onChange={(e) =>
+                          setState((prev) => ({
+                            ...prev,
+                            Lcol: e.target.value
+                              ? Number(e.target.value)
+                              : undefined,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs text-text-muted">
+                        H (cm) — altura centro tensor a fondo de base
+                      </span>
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        value={state.H ?? ""}
+                        onKeyDown={handleCommaKey}
+                        onChange={(e) =>
+                          setState((prev) => ({
+                            ...prev,
+                            H: e.target.value
+                              ? Number(e.target.value)
+                              : undefined,
+                          }))
+                        }
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-xs text-text-muted">
+                        μ — coeficiente de rozamiento base-suelo (0.40 por
+                        defecto)
+                      </span>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0.1"
+                        max="1"
+                        value={state.mu ?? 0.4}
+                        onChange={(e) =>
+                          setState((prev) => ({
+                            ...prev,
+                            mu: e.target.value
+                              ? Number(e.target.value)
+                              : undefined,
+                          }))
+                        }
+                      />
+                    </label>
+                  </>
                 ) : (
                   <>
                     <label className="flex flex-col gap-1">
