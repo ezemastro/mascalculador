@@ -401,17 +401,24 @@ function slabArmadura(
   adoptedDiam: number | undefined,
   adoptedSepCm: number | undefined,
   adoptedAs: number | undefined,
+  designAs: number | undefined,
 ): string {
-  const d = adoptedDiam && adoptedDiam > 0 ? adoptedDiam : inputDiam;
-  if (!d) return "—";
+  const d = (adoptedDiam && adoptedDiam > 0 ? adoptedDiam : inputDiam) ?? 10;
+  // Separación derivada del área (mm²/m) con el Ø elegido, acotada 1..50 cm.
+  const sepFromAs = (asMm2PerM: number) =>
+    Math.min(
+      50,
+      Math.max(1, Math.round(((BAR_AREA[d] ?? 0) * 100) / asMm2PerM)),
+    );
   const sep =
     adoptedSepCm && adoptedSepCm > 0
-      ? Math.round(adoptedSepCm)
+      ? Math.min(50, Math.max(1, Math.round(adoptedSepCm)))
       : adoptedAs && adoptedAs > 0
-        ? Math.round(((BAR_AREA[d] ?? 0) * 100) / adoptedAs)
-        : 0;
-  if (!sep) return "—";
-  const area = ((BAR_AREA[d] ?? 0) / 100).toFixed(2);
+        ? sepFromAs(adoptedAs)
+        : designAs && designAs > 0
+          ? sepFromAs(designAs)
+          : 15;
+  const area = ((BAR_AREA[d] ?? 0) / sep).toFixed(2); // cm²/m
   return `Ø${d} c/${sep} (${area} cm²/m)`;
 }
 
@@ -465,12 +472,14 @@ function buildLosaRow(save: SavedBeam): PlanillaCell[] {
     result.adoptedDiamX,
     result.adoptedSepXCm,
     result.adoptedAsX,
+    Math.max(dirX?.AsReq ?? 0, dirX?.AsMin ?? 0),
   );
   const armY = slabArmadura(
     input.dBarY,
     result.adoptedDiamY,
     result.adoptedSepYCm,
     result.adoptedAsY,
+    Math.max(dirY?.AsReq ?? 0, dirY?.AsMin ?? 0),
   );
 
   const mPos = Math.max(dirX?.Mu ?? 0, dirY?.Mu ?? 0);
