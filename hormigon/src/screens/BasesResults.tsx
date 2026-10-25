@@ -12,6 +12,11 @@ import {
   type ComputoBaseBeam,
   type ComputoBaseTensor,
 } from "../lib/computo";
+import {
+  designTronco,
+  type TroncoAdopcion,
+  type TroncoBars,
+} from "../lib/tronco-calc";
 import ComputoSection from "../components/ComputoSection";
 
 // ---------------------------------------------------------------------------
@@ -43,6 +48,13 @@ interface LocationState {
   tensorAdopt?: BaseTensorAdopcion;
   tensorAdoptX?: BaseTensorAdopcion;
   tensorAdoptY?: BaseTensorAdopcion;
+  /** Adopción manual del armado del tronco (pedestal). */
+  troncoNEsq?: number;
+  troncoNCarasX?: number;
+  troncoNCarasY?: number;
+  troncoDbEsq?: number;
+  troncoDbCarasX?: number;
+  troncoDbCarasY?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -502,6 +514,132 @@ function EstriboEditor({
   );
 }
 
+/** Control de cantidad (+/- + input) para el editor del tronco. */
+function TroncoQtyControl({
+  label,
+  value,
+  on,
+}: {
+  label: string;
+  value: number;
+  on: (v: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-xs text-text-muted">{label}</span>
+      <button
+        type="button"
+        onClick={() => on(Math.max(0, value - 1))}
+        className="w-7 h-7 rounded-lg bg-surface border border-border hover:bg-surface-alt text-text font-bold"
+      >
+        −
+      </button>
+      <input
+        type="number"
+        min={0}
+        value={value}
+        onChange={(e) => on(Math.max(0, Number(e.target.value) || 0))}
+        className="w-12 text-center"
+      />
+      <button
+        type="button"
+        onClick={() => on(value + 1)}
+        className="w-7 h-7 rounded-lg bg-surface border border-border hover:bg-surface-alt text-text font-bold"
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
+const TRONCO_DB = [8, 10, 12, 16, 20, 25];
+
+/** Selector de diámetro (mm) para el editor del tronco. */
+function TroncoDiamSelect({
+  label,
+  value,
+  on,
+}: {
+  label: string;
+  value: number;
+  on: (v: number) => void;
+}) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-xs text-text-muted">{label}</span>
+      <select value={value} onChange={(e) => on(Number(e.target.value))}>
+        {TRONCO_DB.map((d) => (
+          <option key={d} value={d}>
+            Ø{d}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+/** Editor del armado longitudinal del tronco (pedestal): 6 campos con freeze a
+ *  manual y botón "Automático" que vuelve al layout propuesto. */
+function TroncoArmadoEditor({
+  bars,
+  onPatch,
+}: {
+  bars: TroncoBars;
+  onPatch: (p: Partial<TroncoBars>) => void;
+}) {
+  return (
+    <div className="bg-surface-alt rounded-lg p-4 flex flex-col gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="flex flex-col gap-2">
+          <span className="text-xs font-semibold text-text">Esquinas</span>
+          <div className="flex items-end gap-2">
+            <TroncoQtyControl
+              label="n"
+              value={bars.nEsquinas}
+              on={(v) => onPatch({ nEsquinas: v })}
+            />
+            <TroncoDiamSelect
+              label="Ø (mm)"
+              value={bars.dbEsquinas}
+              on={(v) => onPatch({ dbEsquinas: v })}
+            />
+          </div>
+        </div>
+        <div className="flex flex-col gap-2">
+          <span className="text-xs font-semibold text-text">Caras X</span>
+          <div className="flex items-end gap-2">
+            <TroncoQtyControl
+              label="n"
+              value={bars.nCarasX}
+              on={(v) => onPatch({ nCarasX: v })}
+            />
+            <TroncoDiamSelect
+              label="Ø (mm)"
+              value={bars.dbCarasX}
+              on={(v) => onPatch({ dbCarasX: v })}
+            />
+          </div>
+        </div>
+        <div className="flex flex-col gap-2">
+          <span className="text-xs font-semibold text-text">Caras Y</span>
+          <div className="flex items-end gap-2">
+            <TroncoQtyControl
+              label="n"
+              value={bars.nCarasY}
+              on={(v) => onPatch({ nCarasY: v })}
+            />
+            <TroncoDiamSelect
+              label="Ø (mm)"
+              value={bars.dbCarasY}
+              on={(v) => onPatch({ dbCarasY: v })}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
@@ -568,6 +706,27 @@ export default function BasesResults({
     BaseTensorAdopcion | undefined
   >(locState?.tensorAdoptY);
 
+  // Adopción manual del armado del tronco (pedestal). Si todas son undefined →
+  // automático (el diseño propone el layout). Cualquiera definida → manual.
+  const [troncoNEsq, setTroncoNEsq] = useState<number | undefined>(
+    locState?.troncoNEsq,
+  );
+  const [troncoNCarasX, setTroncoNCarasX] = useState<number | undefined>(
+    locState?.troncoNCarasX,
+  );
+  const [troncoNCarasY, setTroncoNCarasY] = useState<number | undefined>(
+    locState?.troncoNCarasY,
+  );
+  const [troncoDbEsq, setTroncoDbEsq] = useState<number | undefined>(
+    locState?.troncoDbEsq,
+  );
+  const [troncoDbCarasX, setTroncoDbCarasX] = useState<number | undefined>(
+    locState?.troncoDbCarasX,
+  );
+  const [troncoDbCarasY, setTroncoDbCarasY] = useState<number | undefined>(
+    locState?.troncoDbCarasY,
+  );
+
   // ─── Compute result (must be before any early return — rules of hooks) ───
   const fullInput = useMemo<BaseInput | null>(() => {
     if (!input) return null;
@@ -609,6 +768,50 @@ export default function BasesResults({
       };
     }
   }, [fullInput, isCabezal]);
+
+  // ─── Tronco (pedestal) ───
+  // Diseño automático (sin adopción) para conocer el layout propuesto; el
+  // editado aplica la adopción manual.
+  const troncoAdopt = useMemo<TroncoAdopcion | undefined>(
+    () =>
+      troncoNEsq !== undefined ||
+      troncoNCarasX !== undefined ||
+      troncoNCarasY !== undefined ||
+      troncoDbEsq !== undefined ||
+      troncoDbCarasX !== undefined ||
+      troncoDbCarasY !== undefined
+        ? {
+            nEsquinas: troncoNEsq,
+            nCarasX: troncoNCarasX,
+            nCarasY: troncoNCarasY,
+            dbEsquinas: troncoDbEsq,
+            dbCarasX: troncoDbCarasX,
+            dbCarasY: troncoDbCarasY,
+          }
+        : undefined,
+    [
+      troncoNEsq,
+      troncoNCarasX,
+      troncoNCarasY,
+      troncoDbEsq,
+      troncoDbCarasX,
+      troncoDbCarasY,
+    ],
+  );
+  const troncoAuto = useMemo(
+    () =>
+      fullInput && result && !isCabezal
+        ? designTronco(fullInput, result)
+        : null,
+    [fullInput, result, isCabezal],
+  );
+  const tronco = useMemo(
+    () =>
+      fullInput && result && !isCabezal
+        ? designTronco(fullInput, result, troncoAdopt)
+        : null,
+    [fullInput, result, isCabezal, troncoAdopt],
+  );
 
   // ─── No data guard ───
   if (!input) {
@@ -710,6 +913,13 @@ export default function BasesResults({
       tensorAdopt,
       tensorAdoptX,
       tensorAdoptY,
+      // Adopción manual del armado del tronco (pedestal)
+      troncoNEsq,
+      troncoNCarasX,
+      troncoNCarasY,
+      troncoDbEsq,
+      troncoDbCarasX,
+      troncoDbCarasY,
     };
     // Si venimos de una base guardada, actualizamos la misma (mismo id/nombre)
     if (savedId) {
@@ -812,6 +1022,12 @@ export default function BasesResults({
                     tensorAdopt,
                     tensorAdoptX,
                     tensorAdoptY,
+                    troncoNEsq,
+                    troncoNCarasX,
+                    troncoNCarasY,
+                    troncoDbEsq,
+                    troncoDbCarasX,
+                    troncoDbCarasY,
                     loadedSaveId: savedId,
                     loadedSaveName: savedName,
                   },
@@ -852,6 +1068,225 @@ export default function BasesResults({
           </div>
         </section>
       )}
+
+      {/* ─── Tronco de columna (pedestal) ─── */}
+      {!isCabezal &&
+        (() => {
+          if (!tronco) {
+            return (
+              <section className="bg-surface rounded-xl border border-border p-5">
+                <SectionHeading>Tronco de columna</SectionHeading>
+                <p className="text-sm text-danger">
+                  D<sub>f</sub> debe ser mayor que la altura de la base para
+                  dimensionar el tronco (l<sub>u</sub> ≤ 0).
+                </p>
+              </section>
+            );
+          }
+          const sFinal = tronco.shear
+            ? tronco.shear.sFinalCm
+            : tronco.design.sStirrup;
+          const avsReq = tronco.shear
+            ? Math.max(tronco.shear.avsReqX, tronco.shear.avsReqY)
+            : 0;
+          // Freeze a manual: al editar un campo, fija los seis desde la
+          // propuesta automática (o la manual previa) + la edición.
+          const freeze = (patch: Partial<TroncoBars>) => {
+            const auto = troncoAuto?.bars;
+            const hasManual =
+              troncoNEsq !== undefined ||
+              troncoNCarasX !== undefined ||
+              troncoNCarasY !== undefined ||
+              troncoDbEsq !== undefined ||
+              troncoDbCarasX !== undefined ||
+              troncoDbCarasY !== undefined;
+            const base = hasManual
+              ? {
+                  nEsquinas: troncoNEsq ?? 4,
+                  nCarasX: troncoNCarasX ?? 0,
+                  nCarasY: troncoNCarasY ?? 0,
+                  dbEsquinas: troncoDbEsq ?? 12,
+                  dbCarasX: troncoDbCarasX ?? 12,
+                  dbCarasY: troncoDbCarasY ?? 12,
+                }
+              : {
+                  nEsquinas: auto?.nEsquinas ?? 4,
+                  nCarasX: auto?.nCarasX ?? 0,
+                  nCarasY: auto?.nCarasY ?? 0,
+                  dbEsquinas: auto?.dbEsquinas ?? 12,
+                  dbCarasX: auto?.dbCarasX ?? 12,
+                  dbCarasY: auto?.dbCarasY ?? 12,
+                };
+            const merged = { ...base, ...patch };
+            setTroncoNEsq(merged.nEsquinas);
+            setTroncoNCarasX(merged.nCarasX);
+            setTroncoNCarasY(merged.nCarasY);
+            setTroncoDbEsq(merged.dbEsquinas);
+            setTroncoDbCarasX(merged.dbCarasX);
+            setTroncoDbCarasY(merged.dbCarasY);
+          };
+          const clearManual = () => {
+            setTroncoNEsq(undefined);
+            setTroncoNCarasX(undefined);
+            setTroncoNCarasY(undefined);
+            setTroncoDbEsq(undefined);
+            setTroncoDbCarasX(undefined);
+            setTroncoDbCarasY(undefined);
+          };
+          const isManual = troncoAdopt !== undefined;
+          return (
+            <section className="bg-surface rounded-xl border border-border p-5">
+              <SectionHeading>Tronco de columna</SectionHeading>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                <DataCard
+                  label="b<sub>x</sub>"
+                  value={`${tronco.bxCm}`}
+                  sub="cm"
+                />
+                <DataCard
+                  label="b<sub>y</sub>"
+                  value={`${tronco.byCm}`}
+                  sub="cm"
+                />
+                <DataCard
+                  label="l<sub>u</sub>"
+                  value={`${fmt(tronco.luM, 2)}`}
+                  sub="m"
+                />
+                <DataCard
+                  label="N"
+                  value={`${fmt(tronco.columnN, 1)}`}
+                  sub="kN"
+                />
+                <DataCard
+                  label="M<sub>x</sub> (pie)"
+                  value={`${fmt(tronco.columnMx, 1)}`}
+                  sub="kN·m"
+                />
+                <DataCard
+                  label="M<sub>y</sub> (pie)"
+                  value={`${fmt(tronco.columnMy, 1)}`}
+                  sub="kN·m"
+                />
+              </div>
+              <p className="text-xs text-text-muted mt-2">
+                Momento superior = 0 (sólo en el pie). M<sub>x</sub>/M
+                <sub>y</sub> son momentos de diseño (últimos).
+              </p>
+
+              {/* Diseño resumido */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mt-3">
+                <DataCard
+                  label="Tipo"
+                  value={
+                    tronco.design.columnType === "SHORT" ? "Corta" : "Esbelta"
+                  }
+                />
+                <DataCard
+                  label="A<sub>st</sub>"
+                  value={`${fmt(tronco.design.Ast, 2)}`}
+                  sub="cm²"
+                />
+                <DataCard
+                  label="ρ"
+                  value={`${(tronco.design.rho * 100).toFixed(2)}`}
+                  sub="%"
+                />
+                <DataCard
+                  label="Barras"
+                  value={`${tronco.design.barLayout.totalBars} Ø${tronco.design.dbLong}`}
+                />
+                <DataCard
+                  label="Estribos"
+                  value={`Ø${tronco.design.phiStirrup} c/${fmt(sFinal, 1)}`}
+                  sub="cm"
+                />
+                <div className="bg-surface-alt rounded-lg p-3 flex items-center justify-center">
+                  <Badge ok={tronco.design.passes} />
+                </div>
+              </div>
+
+              {/* Armado (editable) */}
+              <div className="flex items-center justify-between mt-4 mb-2">
+                <span className="text-sm font-semibold text-text">
+                  Armado del tronco {isManual ? "(manual)" : "(automático)"}
+                </span>
+                {isManual && (
+                  <button
+                    type="button"
+                    onClick={clearManual}
+                    className="text-xs bg-surface-alt border border-border hover:bg-surface text-text-muted px-3 py-1.5 rounded-lg"
+                  >
+                    Automático
+                  </button>
+                )}
+              </div>
+              <TroncoArmadoEditor bars={tronco.bars} onPatch={freeze} />
+
+              {/* Corte (tensor) */}
+              {tronco.shear && (
+                <div className="mt-4">
+                  <span className="text-sm font-semibold text-text">
+                    Verificación a corte (tensor)
+                  </span>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mt-2">
+                    <DataCard
+                      label="V<sub>x</sub>"
+                      value={`${fmt(tronco.shear.vx, 1)}`}
+                      sub="kN"
+                    />
+                    <DataCard
+                      label="V<sub>y</sub>"
+                      value={`${fmt(tronco.shear.vy, 1)}`}
+                      sub="kN"
+                    />
+                    <DataCard
+                      label="φV<sub>c,x</sub>"
+                      value={`${fmt(tronco.shear.phiVcX, 1)}`}
+                      sub="kN"
+                    />
+                    <DataCard
+                      label="φV<sub>c,y</sub>"
+                      value={`${fmt(tronco.shear.phiVcY, 1)}`}
+                      sub="kN"
+                    />
+                    <DataCard
+                      label="A<sub>v</sub>/s req"
+                      value={`${fmt(avsReq, 2)}`}
+                      sub="cm²/m"
+                    />
+                    <DataCard
+                      label="A<sub>v</sub>/s prov"
+                      value={`${fmt(tronco.shear.avsProv, 2)}`}
+                      sub="cm²/m"
+                    />
+                    <DataCard
+                      label="s final"
+                      value={`${fmt(tronco.shear.sFinalCm, 1)}`}
+                      sub="cm"
+                    />
+                    <div className="bg-surface-alt rounded-lg p-3 flex items-center justify-center">
+                      <Badge ok={tronco.shear.ok} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Ver cuentas */}
+              <details className="no-print mt-4">
+                <summary className="cursor-pointer text-xs font-semibold text-text-muted uppercase tracking-wider hover:text-text">
+                  Ver cuentas del tronco
+                </summary>
+                <pre className="mt-3 p-3 bg-surface-alt rounded-lg text-xs text-text-muted font-mono whitespace-pre-wrap overflow-x-auto max-h-[32rem] overflow-y-auto">
+                  {[
+                    ...tronco.design.steps,
+                    ...(tronco.shear?.steps ?? []),
+                  ].join("\n")}
+                </pre>
+              </details>
+            </section>
+          );
+        })()}
 
       {/* ─── Esquina — sistema de equilibrio ─── */}
       {isEsquina && input.subType === "viga-de-equilibrio" && (
@@ -1145,35 +1580,6 @@ export default function BasesResults({
               )}
             </div>
           )}
-          {isEsquina && !tensorPending && (
-            <div className="mt-4 grid grid-cols-2 sm:grid-cols-5 gap-3">
-              <DataCard
-                label="N (tronco)"
-                value={`${fmt(result.tronco_N ?? 0, 1)}`}
-                sub="kN"
-              />
-              <DataCard
-                label="M<sub>x</sub>"
-                value={`${fmt(result.tronco_Mx ?? 0, 0)}`}
-                sub="kN·cm"
-              />
-              <DataCard
-                label="M<sub>y</sub>"
-                value={`${fmt(result.tronco_My ?? 0, 0)}`}
-                sub="kN·cm"
-              />
-              <DataCard
-                label="V<sub>x</sub>"
-                value={`${fmt(result.tronco_Vx ?? 0, 1)}`}
-                sub="kN"
-              />
-              <DataCard
-                label="V<sub>y</sub>"
-                value={`${fmt(result.tronco_Vy ?? 0, 1)}`}
-                sub="kN"
-              />
-            </div>
-          )}
         </section>
       )}
 
@@ -1420,8 +1826,9 @@ export default function BasesResults({
                 qtyY,
                 vigas,
                 tensores,
+                tronco: tronco?.columnComputo,
               })}
-              note="El cómputo incluye la malla adoptada de la zapata, la viga de fundación (armadura superior, inferior/perchas y estribos) y el tensor (barras longitudinales + estribos Ø6 c/20). Las vigas de equilibrio de esquina quedan solo en hormigón."
+              note="El cómputo incluye la malla adoptada de la zapata, el tronco de columna (hormigón + acero), la viga de fundación (armadura superior, inferior/perchas y estribos) y el tensor (barras longitudinales + estribos Ø6 c/20). Las vigas de equilibrio de esquina quedan solo en hormigón."
             />
           );
         })()}

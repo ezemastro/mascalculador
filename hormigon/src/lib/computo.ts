@@ -331,6 +331,20 @@ export function computoBase(p: {
   qtyY: number;
   vigas: ComputoBaseBeam[];
   tensores?: ComputoBaseTensor[];
+  /** Tronco (pedestal) de la columna: hormigón + acero de la columna. */
+  tronco?: {
+    cxCm: number;
+    cyCm: number;
+    luM: number;
+    nEsquinas: number;
+    nCarasX: number;
+    nCarasY: number;
+    dbEsquinas: number;
+    dbCarasX: number;
+    dbCarasY: number;
+    phiStirrup: number;
+    sStirrupCm: number;
+  };
 }): Computo {
   const acc = new ComputoAcc();
   const { heelCm, kxCm, kyCm } = p;
@@ -394,6 +408,9 @@ export function computoBase(p: {
   }
   acc.bar(p.diamX, p.qtyX, p.lxCm / 100);
   acc.bar(p.diamY, p.qtyY, p.lyCm / 100);
+  if (p.tronco) {
+    return sumComputos([acc.finish(), computoColumna(p.tronco)]);
+  }
   return acc.finish();
 }
 

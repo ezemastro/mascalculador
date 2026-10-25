@@ -32,6 +32,7 @@ import { calculateBeamEnvelope } from "./beam-envelope";
 import { designRCColumn } from "./rc-column-calc";
 import { CONCRETE_DENSITY } from "./constants";
 import type { BaseInput, BaseResult } from "./bases-calc";
+import { designTronco, type TroncoAdopcion } from "./tronco-calc";
 import type { MuroInput, MuroResult } from "./muro-calc";
 import {
   getSavedBeams,
@@ -222,6 +223,10 @@ interface ColumnaSaveData {
   dbEsquinas?: number;
   dbCarasX?: number;
   dbCarasY?: number;
+  /** Diámetro de estribo adoptado (mm). */
+  phiStirrup?: number;
+  /** Separación de estribo adoptada (cm). */
+  sStirrup?: number;
 }
 
 export function computoColumnaFromSave(save: SavedBeam): Computo | null {
@@ -257,8 +262,8 @@ export function computoColumnaFromSave(save: SavedBeam): Computo | null {
     dbEsquinas: d.dbEsquinas ?? 12,
     dbCarasX: d.dbCarasX ?? 12,
     dbCarasY: d.dbCarasY ?? 12,
-    phiStirrup: res.phiStirrup,
-    sStirrupCm: res.sStirrup,
+    phiStirrup: d.phiStirrup ?? res.phiStirrup,
+    sStirrupCm: d.sStirrup ?? res.sStirrup,
   });
 }
 
@@ -322,10 +327,40 @@ export function computoBaseFromSave(save: SavedBeam): Computo | null {
     tensorAdopt?: BaseTensorAdopcion;
     tensorAdoptX?: BaseTensorAdopcion;
     tensorAdoptY?: BaseTensorAdopcion;
+    // Tronco (pedestal) — adopción manual del armado.
+    troncoNEsq?: number;
+    troncoNCarasX?: number;
+    troncoNCarasY?: number;
+    troncoDbEsq?: number;
+    troncoDbCarasX?: number;
+    troncoDbCarasY?: number;
   };
   const input = data.input;
   const result = data.result;
   if (!input || !result) return null;
+
+  // Tronco (pedestal): cualquiera de los seis campos definido activa la
+  // adopción manual; si no, el diseño usa el layout automático.
+  const troncoAdopt: TroncoAdopcion | undefined =
+    data.troncoNEsq !== undefined ||
+    data.troncoNCarasX !== undefined ||
+    data.troncoNCarasY !== undefined ||
+    data.troncoDbEsq !== undefined ||
+    data.troncoDbCarasX !== undefined ||
+    data.troncoDbCarasY !== undefined
+      ? {
+          nEsquinas: data.troncoNEsq,
+          nCarasX: data.troncoNCarasX,
+          nCarasY: data.troncoNCarasY,
+          dbEsquinas: data.troncoDbEsq,
+          dbCarasX: data.troncoDbCarasX,
+          dbCarasY: data.troncoDbCarasY,
+        }
+      : undefined;
+  const tronco =
+    save.type === "cabezal"
+      ? null
+      : designTronco(input as BaseInput, result as BaseResult, troncoAdopt);
 
   const vigas: ComputoBaseBeam[] = [];
   if (input.type === "esquina" && input.subType === "viga-de-equilibrio") {
@@ -428,6 +463,7 @@ export function computoBaseFromSave(save: SavedBeam): Computo | null {
     qtyY: data.qtyY ?? result.nb_y ?? 0,
     vigas,
     tensores,
+    tronco: tronco?.columnComputo,
   });
 }
 

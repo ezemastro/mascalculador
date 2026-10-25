@@ -356,6 +356,7 @@ export default function BasesForm() {
 - Lcol, LcolX, LcolY: luz entre ejes de columnas en cm (viga de fundación y tensor).
 - H, Hx, Hy: altura del centro del tensor al fondo de la base en cm.
 - mu: coeficiente de rozamiento base-suelo (0.1 a 1).
+- troncoBx, troncoBy: lados del apoyo del tronco (pedestal) en cm (override del criterio por defecto).
 - includeSelfWeight: boolean.`,
       getState: () => assistantStateRef.current,
       apply: (values) => {
@@ -392,7 +393,9 @@ export default function BasesForm() {
             case "LcolY":
             case "H":
             case "Hx":
-            case "Hy": {
+            case "Hy":
+            case "troncoBx":
+            case "troncoBy": {
               const v = numeric(key);
               if (v !== null) {
                 setNum(key, v);
@@ -655,6 +658,18 @@ export default function BasesForm() {
       next.tensorAdopt = asAdopt(d.tensorAdopt);
       next.tensorAdoptX = asAdopt(d.tensorAdoptX);
       next.tensorAdoptY = asAdopt(d.tensorAdoptY);
+      // Tronco (pedestal): lados y adopción manual del armado. Viajan planos
+      // en el guardado (tanto el hecho desde resultados como desde el form).
+      const numOrUndef = (v: unknown): number | undefined =>
+        typeof v === "number" ? v : undefined;
+      next.troncoBx = numOrUndef(d.troncoBx) ?? numOrUndef(f.troncoBx);
+      next.troncoBy = numOrUndef(d.troncoBy) ?? numOrUndef(f.troncoBy);
+      next.troncoNEsq = numOrUndef(d.troncoNEsq);
+      next.troncoNCarasX = numOrUndef(d.troncoNCarasX);
+      next.troncoNCarasY = numOrUndef(d.troncoNCarasY);
+      next.troncoDbEsq = numOrUndef(d.troncoDbEsq);
+      next.troncoDbCarasX = numOrUndef(d.troncoDbCarasX);
+      next.troncoDbCarasY = numOrUndef(d.troncoDbCarasY);
       return next;
     });
   }
@@ -695,6 +710,13 @@ export default function BasesForm() {
       tensorAdopt: state.tensorAdopt,
       tensorAdoptX: state.tensorAdoptX,
       tensorAdoptY: state.tensorAdoptY,
+      // Tronco (pedestal) — adopción manual del armado.
+      troncoNEsq: state.troncoNEsq,
+      troncoNCarasX: state.troncoNCarasX,
+      troncoNCarasY: state.troncoNCarasY,
+      troncoDbEsq: state.troncoDbEsq,
+      troncoDbCarasX: state.troncoDbCarasX,
+      troncoDbCarasY: state.troncoDbCarasY,
     };
     navigate("/bases-results", {
       state: {
@@ -1624,6 +1646,84 @@ export default function BasesForm() {
               />
             </label>
           </div>
+        </section>
+
+        {/* ── 6. Tronco de columna ──────────────────────────── */}
+        <section className="bg-surface rounded-xl border border-border p-5">
+          <h2 className="section-title mb-4">Tronco de columna</h2>
+          <p className="text-xs text-text-muted mb-4">
+            El tronco (pedestal) une la cabeza de la base con la columna. Su
+            altura libre es l<sub>u</sub> = D<sub>f</sub> − h. El armado se
+            propone en Resultados y es editable.
+          </p>
+          {(() => {
+            const dfM = state.Df >= 5 ? state.Df / 100 : state.Df;
+            const hBaseCm = state.h ?? geo.hSug;
+            const luM = dfM - hBaseCm / 100;
+            const luBad = luM <= 0;
+            return (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs text-text-muted">
+                      b<sub>x</sub> (cm) — apoyo tronco{" "}
+                      {state.troncoBx === undefined && `(def: ${geo.bx})`}
+                    </span>
+                    <input
+                      type="number"
+                      step="1"
+                      min="1"
+                      value={state.troncoBx ?? ""}
+                      placeholder={String(geo.bx)}
+                      onKeyDown={handleCommaKey}
+                      onChange={(e) =>
+                        setState((prev) => ({
+                          ...prev,
+                          troncoBx: e.target.value
+                            ? Number(e.target.value)
+                            : undefined,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs text-text-muted">
+                      b<sub>y</sub> (cm) — apoyo tronco{" "}
+                      {state.troncoBy === undefined && `(def: ${geo.by})`}
+                    </span>
+                    <input
+                      type="number"
+                      step="1"
+                      min="1"
+                      value={state.troncoBy ?? ""}
+                      placeholder={String(geo.by)}
+                      onKeyDown={handleCommaKey}
+                      onChange={(e) =>
+                        setState((prev) => ({
+                          ...prev,
+                          troncoBy: e.target.value
+                            ? Number(e.target.value)
+                            : undefined,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs text-text-muted">
+                      l<sub>u</sub> (m) — altura libre del tronco
+                    </span>
+                    <input value={luM.toFixed(2)} readOnly />
+                  </label>
+                </div>
+                {luBad && (
+                  <p className="text-xs text-danger mt-3">
+                    D<sub>f</sub> debe ser mayor que la altura de la base para
+                    dimensionar el tronco (l<sub>u</sub> ≤ 0).
+                  </p>
+                )}
+              </>
+            );
+          })()}
         </section>
 
         {/* ── Actions ────────────────────────────────────────── */}

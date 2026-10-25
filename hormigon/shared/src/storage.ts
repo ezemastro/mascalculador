@@ -338,6 +338,15 @@ export interface BasesFormState {
   tensorAdopt?: BaseTensorAdopcion;
   tensorAdoptX?: BaseTensorAdopcion;
   tensorAdoptY?: BaseTensorAdopcion;
+  // Tronco (pedestal) — lados del apoyo (cm) y adopción manual del armado.
+  troncoBx?: number;
+  troncoBy?: number;
+  troncoNEsq?: number;
+  troncoNCarasX?: number;
+  troncoNCarasY?: number;
+  troncoDbEsq?: number;
+  troncoDbCarasX?: number;
+  troncoDbCarasY?: number;
 }
 
 export function saveLastBasesFormState(state: BasesFormState): void {

@@ -75,8 +75,12 @@ export interface BaseInput {
   bVigaY?: number; // cm — ancho viga Y (auto si falta)
   hVigaY?: number; // cm — alto viga Y (auto si falta)
   // Armado
-  cover?: number; // cm — recubrimiento (default 5)
+  cover?: number; // cm — recubrimiento (default 7)
   rebD?: number; // mm — diámetro de barra (default 12)
+  // Tronco (pedestal) — lados del apoyo del tronco (cm). Override manual del
+  // criterio de ancho de apoyo por defecto (supportWidths).
+  troncoBx?: number; // cm — lado X del tronco
+  troncoBy?: number; // cm — lado Y del tronco
   // Peso propio
   includeSelfWeight?: boolean; // — incluir peso propio + tierra en Areq (default true)
 }
@@ -359,7 +363,7 @@ function step6_Nominal(Mux: number, Muy: number): { Mnx: number; Mny: number } {
  *  Centrada: +5 cm por lado (2.5 en cada cara). Excéntrica: +5 en el lado
  *  paralelo a la medianera y +3 en el sentido de la excentricidad (2.5 redondeado).
  *  Esquina: +3 en cada sentido. */
-function supportWidths(input: BaseInput): { bx: number; by: number } {
+export function supportWidths(input: BaseInput): { bx: number; by: number } {
   const cx = input.cx;
   const cy = input.cy;
   if (input.type === "esquina") {
