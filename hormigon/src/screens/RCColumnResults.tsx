@@ -6,6 +6,7 @@ import {
   designRCColumn,
   computeManualAst,
   proposeArmado,
+  MAX_COLUMN_RHO,
 } from "../lib/rc-column-calc";
 import type { RCColumnState } from "./RCColumnForm";
 import { ArmadoLayoutSVG } from "./RCColumnForm";
@@ -151,14 +152,6 @@ function RCColumnResultsInner({ state }: { state: RCColumnState }) {
   const [dbCarasY, setDbCarasY] = useState<number>(
     state.dbCarasY ?? proposedArmado.dbCarasY,
   );
-  const [armaduraConfirmada, setArmaduraConfirmada] = useState(false);
-
-  // Cualquier cambio en el armado invalida la confirmación previa:
-  // obliga a volver a tocar "Confirmar armado" (y re-hide estribos).
-  function updateArmado(setter: (v: number) => void, v: number) {
-    setter(v);
-    setArmaduraConfirmada(false);
-  }
 
   // ─── Estribos adoptados (editables; propuesta auto del motor por defecto) ───
   const [phiStirrup, setPhiStirrup] = useState<number>(
@@ -256,7 +249,8 @@ function RCColumnResultsInner({ state }: { state: RCColumnState }) {
   // Cobertura global: resistencia (flexo-compresión) + esbeltez límite.
   const dirXOK = result.dirX.passes && result.dirX.lambda <= 100;
   const dirYOK = result.dirY.passes && result.dirY.lambda <= 100;
-  const globalOK = dirXOK && dirYOK;
+  const rhoMaxExceeded = result.rhoMaxExceeded || result.rho > MAX_COLUMN_RHO;
+  const globalOK = dirXOK && dirYOK && !rhoMaxExceeded;
 
   // Payload de guardado/impresión: los mismos campos que persiste el botón
   // "Guardar" (referencia única para no divergir).
@@ -486,12 +480,19 @@ function RCColumnResultsInner({ state }: { state: RCColumnState }) {
           <span className="text-xs text-text-muted uppercase tracking-wider font-semibold">
             ρ
           </span>
-          <p className="text-2xl font-bold text-primary mt-1">
+          <p
+            className={`text-2xl font-bold mt-1 ${rhoMaxExceeded ? "text-danger" : "text-primary"}`}
+          >
             {(result.rho * 100).toFixed(2)}%
           </p>
           <span className="text-xs text-text-muted">
             A<sub>st</sub> = {result.Ast.toFixed(1)} cm²
           </span>
+          {rhoMaxExceeded && (
+            <span className="block text-xs font-semibold text-danger">
+              No verifica cuantía máxima (4%)
+            </span>
+          )}
         </div>
         <div className="bg-surface rounded-xl border border-border p-4">
           <span className="text-xs text-text-muted uppercase tracking-wider font-semibold">
@@ -534,7 +535,16 @@ function RCColumnResultsInner({ state }: { state: RCColumnState }) {
             Dir Y: {dirYOK ? "✓" : "✗"}
           </span>
         </div>
-        {!globalOK && (
+        {rhoMaxExceeded && (
+          <p className="text-sm font-bold text-danger mt-2">
+            ✗ No verifica cuantía máxima:{" "}
+            {result.rho > MAX_COLUMN_RHO
+              ? `ρ = ${(result.rho * 100).toFixed(2)}% > 4%`
+              : "la sección no alcanza con ρ = 4%"}
+            . Aumentar la sección o reducir el armado.
+          </p>
+        )}
+        {!globalOK && !rhoMaxExceeded && (
           <p className="text-xs text-text-muted mt-2">
             Revisar: {!dirXOK && !dirYOK ? "X e Y" : !dirXOK ? "X" : "Y"}.
             Aumentar sección o modificar geometría.
@@ -552,7 +562,7 @@ function RCColumnResultsInner({ state }: { state: RCColumnState }) {
             <StepperInput
               label="Esquinas"
               value={nEsquinas}
-              onChange={(v) => updateArmado(setNEsquinas, v)}
+              onChange={(v) => setNEsquinas(v)}
               min={4}
               max={8}
               step={2}
@@ -563,9 +573,7 @@ function RCColumnResultsInner({ state }: { state: RCColumnState }) {
               </span>
               <select
                 value={dbEsquinas}
-                onChange={(e) =>
-                  updateArmado(setDbEsquinas, Number(e.target.value))
-                }
+                onChange={(e) => setDbEsquinas(Number(e.target.value))}
                 className="text-sm font-semibold"
               >
                 {DB_OPTIONS.map((d) => (
@@ -580,7 +588,7 @@ function RCColumnResultsInner({ state }: { state: RCColumnState }) {
             <StepperInput
               label="Caras X"
               value={nCarasX}
-              onChange={(v) => updateArmado(setNCarasX, v)}
+              onChange={(v) => setNCarasX(v)}
               min={0}
               max={6}
             />
@@ -590,9 +598,7 @@ function RCColumnResultsInner({ state }: { state: RCColumnState }) {
               </span>
               <select
                 value={dbCarasX}
-                onChange={(e) =>
-                  updateArmado(setDbCarasX, Number(e.target.value))
-                }
+                onChange={(e) => setDbCarasX(Number(e.target.value))}
                 className="text-sm font-semibold"
               >
                 {DB_OPTIONS.map((d) => (
@@ -607,7 +613,7 @@ function RCColumnResultsInner({ state }: { state: RCColumnState }) {
             <StepperInput
               label="Caras Y"
               value={nCarasY}
-              onChange={(v) => updateArmado(setNCarasY, v)}
+              onChange={(v) => setNCarasY(v)}
               min={0}
               max={6}
             />
@@ -617,9 +623,7 @@ function RCColumnResultsInner({ state }: { state: RCColumnState }) {
               </span>
               <select
                 value={dbCarasY}
-                onChange={(e) =>
-                  updateArmado(setDbCarasY, Number(e.target.value))
-                }
+                onChange={(e) => setDbCarasY(Number(e.target.value))}
                 className="text-sm font-semibold"
               >
                 {DB_OPTIONS.map((d) => (
@@ -747,32 +751,6 @@ function RCColumnResultsInner({ state }: { state: RCColumnState }) {
             cómputo.
           </p>
         </div>
-
-        {/* Confirm button */}
-        {!armaduraConfirmada ? (
-          <div className="text-center">
-            <button
-              type="button"
-              onClick={() => setArmaduraConfirmada(true)}
-              disabled={!astVerifica}
-              className={`px-6 py-2 rounded-lg font-semibold transition-colors ${
-                astVerifica
-                  ? "bg-primary text-white hover:bg-primary-hover"
-                  : "bg-surface-alt border border-border text-text-muted cursor-not-allowed"
-              }`}
-            >
-              {astVerifica
-                ? "Confirmar armado"
-                : "Ajustar armado para confirmar"}
-            </button>
-          </div>
-        ) : (
-          <div className="text-center">
-            <span className="inline-block px-3 py-1 rounded-full bg-success/10 text-success text-xs font-semibold">
-              ✓ Armado confirmado
-            </span>
-          </div>
-        )}
       </section>
 
       {/* Direction X card */}

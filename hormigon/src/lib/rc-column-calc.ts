@@ -23,6 +23,10 @@ export interface RCColumnInput {
   dbCarasY?: number; // mm — diámetro de barras en caras Y (default 12)
 }
 
+// Cuantía geométrica máxima adoptada (el reglamento permite 8%, pero
+// con empalmes se adopta 4%).
+export const MAX_COLUMN_RHO = 0.04;
+
 export interface DirectionResult {
   label: string; // "X" | "Y"
   M1u: number;
@@ -55,6 +59,8 @@ export interface DirectionResult {
   AstProv: number;
   /** Área efectiva usada por el motor (adoptada si hay armado manual). */
   Ast: number;
+  /** La sección/armado excede la cuantía geométrica máxima adoptada (4%). */
+  rhoMaxExceeded: boolean;
   passes: boolean;
   steps: string[];
 }
@@ -71,6 +77,9 @@ export interface RCColumnResult {
   columnType: "SHORT" | "SLENDER";
   rho: number;
   Ast: number; // cm²
+  /** La cuantía geométrica total adoptada supera el 4% (o la sección no
+   *  alcanza con ese máximo). */
+  rhoMaxExceeded: boolean;
   dbLong: number; // mm — longitudinal bar diameter
   phiStirrup: number; // mm — stirrup diameter
   sStirrup: number; // cm — stirrup spacing
@@ -604,14 +613,18 @@ function designOneDirection(
   st.push(`μ* = 10·M_u/(b·h²) = ${f2(m_raw)} kN·m/cm² (sin /f'c)`);
 
   let rhoLo = 0.01;
-  let rhoHi = 0.08;
+  let rhoHi = MAX_COLUMN_RHO;
   let rho = 0;
   let finalAst = 0;
   let passes = false;
+  let rhoMaxExceeded = false;
 
   const checkMax = checkRho(b, h, fc, fy, Pu, Mu!, rhoHi);
   if (!checkMax.works) {
-    st.push(`Aún con ρ = 8% la sección no verifica.`);
+    rhoMaxExceeded = true;
+    st.push(
+      `Aún con ρ = ${(MAX_COLUMN_RHO * 100).toFixed(0)}% (máximo adoptado) la sección no verifica.`,
+    );
     st.push(
       `φM_n máx = ${f2(checkMax.maxPhiMn)} kN·m vs M_u = ${f2(Mu!)} kN·m`,
     );
@@ -644,17 +657,23 @@ function designOneDirection(
   // intermedias de la otra dirección no participan de esta verificación.
   if (astProvided !== undefined) {
     const rhoProvided = astProvided / (b * h);
-    const passesManual = rhoProvided >= rho;
+    const rhoProvidedMaxExceeded = rhoProvided > MAX_COLUMN_RHO;
+    if (rhoProvidedMaxExceeded) rhoMaxExceeded = true;
+    const passesManual = rhoProvided >= rho && !rhoProvidedMaxExceeded;
     st.push(
       `Armadura manual: ${astProvided.toFixed(2)} cm² en esta dirección → ρ = ${(rhoProvided * 100).toFixed(2)}%`,
     );
     st.push(`  ρ necesaria = ${(rho * 100).toFixed(2)}%`);
-    if (passesManual) {
+    if (rhoProvidedMaxExceeded) {
+      st.push(
+        `  ⚠ ρ provista > ${(MAX_COLUMN_RHO * 100).toFixed(0)}% — NO VERIFICA cuantía máxima`,
+      );
+    } else if (passesManual) {
       st.push(`  ✓ ρ provista ≥ ρ necesaria`);
     } else {
       st.push(`  ⚠ ρ provista < ρ necesaria — NO VERIFICA`);
     }
-    passes = passesManual;
+    passes = passes && passesManual;
   }
 
   const effectiveAst = astProvided ?? finalAst;
@@ -716,6 +735,7 @@ function designOneDirection(
     AstReq: finalAst,
     AstProv: effectiveAst,
     Ast: effectiveAst,
+    rhoMaxExceeded,
     passes,
     steps: st,
   };
@@ -934,7 +954,7 @@ export function designRCColumn(input: RCColumnInput): RCColumnResult {
   combo.push("");
   combo.push("====== RESUMEN COMBINADO (BIAXIAL) ======");
 
-  const passes = dirX.passes && dirY.passes;
+  const dirPasses = dirX.passes && dirY.passes;
   const columnType: "SHORT" | "SLENDER" =
     dirX.columnType === "SLENDER" || dirY.columnType === "SLENDER"
       ? "SLENDER"
@@ -948,7 +968,9 @@ export function designRCColumn(input: RCColumnInput): RCColumnResult {
     `Dir Y: A_st nec = ${f2(dirY.AstReq)} cm² | adoptada = ${f2(dirY.AstProv)} cm², ρ = ${(dirY.rho * 100).toFixed(2)}%, ${dirY.columnType === "SHORT" ? "Corta" : "Esbelta"}, ${dirY.passes ? "✓" : "✗"}`,
   );
   combo.push(`→ Tipo: Columna ${columnType === "SHORT" ? "Corta" : "Esbelta"}`);
-  combo.push(`→ Verificación: ${passes ? "✓ VERIFICA" : "✗ NO VERIFICA"}`);
+  combo.push(
+    `→ Resistencia direccional: ${dirPasses ? "✓ VERIFICA" : "✗ NO VERIFICA"}`,
+  );
 
   // ─── Biaxial bar layout ───
   const barLayout: BiaxialBarLayout = useManual
@@ -976,12 +998,18 @@ export function designRCColumn(input: RCColumnInput): RCColumnResult {
       }
     : selectBiaxialBars(dirX.AstReq, dirY.AstReq);
   const rho_final = barLayout.astTotalProvided / (Cx * Cy_cm);
+  const rhoMaxExceeded =
+    dirX.rhoMaxExceeded || dirY.rhoMaxExceeded || rho_final > MAX_COLUMN_RHO;
+  const passes = dirPasses && !rhoMaxExceeded;
   const dbLong = Math.max(
     barLayout.dbEsquinas,
     barLayout.dbCarasX,
     barLayout.dbCarasY,
   );
 
+  combo.push(
+    `Cuantía geométrica: ρ = ${(rho_final * 100).toFixed(2)}% ${rhoMaxExceeded ? `> ${(MAX_COLUMN_RHO * 100).toFixed(0)}% — NO VERIFICA cuantía máxima` : `≤ ${(MAX_COLUMN_RHO * 100).toFixed(0)}% (máx adoptado)`}`,
+  );
   combo.push("");
   combo.push("--- Armado biaxial ---");
   if (useManual) {
@@ -1064,6 +1092,7 @@ export function designRCColumn(input: RCColumnInput): RCColumnResult {
     columnType,
     rho: rho_final,
     Ast: barLayout.astTotalProvided,
+    rhoMaxExceeded,
     dbLong,
     phiStirrup,
     sStirrup,
