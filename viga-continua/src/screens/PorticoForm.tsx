@@ -44,7 +44,7 @@ import type {
   PorticoSupportKind,
 } from "../lib/portico";
 
-const CAP = 5;
+const CAP = 6;
 
 interface PorticoNavState {
   mode: "portico";
@@ -159,7 +159,7 @@ export default function PorticoForm() {
     const controller = {
       title: "Pórtico",
       fieldDocs: `Campos (nombres exactos, unidades de UI):
-- nodes: array de nudos {id, x, y} (x e y en metros; el eje +y apunta hacia ABAJO). Mínimo 2, máximo 5.
+- nodes: array de nudos {id, x, y} (x e y en metros; el eje +y apunta hacia ABAJO). Mínimo 2, máximo 6.
 - bars: array de barras {id, fromNodeId, toNodeId, E, A_cm2, I_cm4}. E en MPa; A se da en cm² (se guarda como m²) e I en cm⁴ (se guarda como m⁴). También se aceptan A e I directamente en m² y m⁴.
 - supports: array de apoyos {nodeId, kind}; kind "hinge"/"articulado" (fija traslaciones) o "fixed"/"empotrado" (fija además la rotación).
 - loads: array de cargas sobre barra {barId, kind, D, L, angle, a, b?}. kind "point"/"puntual" (kN, posición a en m) o "distributed"/"distribuida" (kN/m entre a y b). angle en grados (0° = +x, 90° = +y = abajo). D=muerta, L=viva.`,
@@ -419,7 +419,7 @@ export default function PorticoForm() {
     };
   }, []);
 
-  // ---- Manipuladores de filas (cap 5/5/5/5) ----
+  // ---- Manipuladores de filas (cap 6/6/6/6) ----
 
   function addNode() {
     if (state.nodes.length >= CAP) return;
