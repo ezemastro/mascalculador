@@ -286,10 +286,10 @@ function sendResetMail(to, resetLink) {
   const mail = {
     from: mailFrom,
     to,
-    subject: "Recuperación de contraseña — Viga Continua",
+    subject: "Recuperación de contraseña — Hiperestáticos",
     html: `
       <p>Hola,</p>
-      <p>Recibimos una solicitud para recuperar tu contraseña de <strong>Viga Continua</strong>.</p>
+      <p>Recibimos una solicitud para recuperar tu contraseña de <strong>Hiperestáticos</strong>.</p>
       <p><a href="${resetLink}">Hacé clic acá para crear una nueva contraseña</a></p>
       <p>El enlace vence en 1 hora. Si no pediste esto, ignorá este correo.</p>
     `,
@@ -547,7 +547,7 @@ function assistantRateLimit(userId) {
   return true;
 }
 
-const ASSISTANT_SYSTEM = `Sos el asistente virtual de "Viga Continua" (MasCalculador), una app de análisis estructural según CIRSOC 201.
+const ASSISTANT_SYSTEM = `Sos el asistente virtual de "Hiperestáticos" (MasCalculador), una app de análisis estructural según CIRSOC 201.
 
 Módulos: Viga Continua (análisis elástico de vigas continuas) y Pórtico (análisis por rigidez 2D). Además hay una pantalla de administración de usuarios (solo admins).
 
@@ -748,7 +748,7 @@ app.post("/api/assistant/chat", authRequired, async (req, res) => {
           Authorization: `Bearer ${OPENROUTER_KEY}`,
           "Content-Type": "application/json",
           "HTTP-Referer": BASE_URL || "http://localhost:5175",
-          "X-Title": "MasCalculador - Viga Continua",
+          "X-Title": "MasCalculador - Hiperestáticos",
         },
         body: JSON.stringify({
           model,

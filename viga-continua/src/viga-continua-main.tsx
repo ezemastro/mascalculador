@@ -86,8 +86,16 @@ function NavBar({
   return (
     <div className="min-h-screen bg-bg text-text">
       <header className="sticky top-0 z-50 bg-surface border-b border-border px-4 py-2 flex gap-4 items-center">
-        <Link to="/" className="text-sm text-text-muted hover:text-text">
-          Viga Continua
+        <Link
+          to="/"
+          className="flex items-center gap-2 text-sm font-semibold text-text hover:text-primary"
+        >
+          <img
+            src="/brand-logo.png"
+            alt="Mastropietro"
+            className="h-7 w-auto rounded"
+          />
+          Hiperestáticos
         </Link>
         {admin && (
           <Link to="/admin" className="text-sm text-text-muted hover:text-text">

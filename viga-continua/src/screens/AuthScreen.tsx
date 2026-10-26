@@ -154,7 +154,12 @@ export default function AuthScreen({
   return (
     <div className="min-h-screen bg-bg text-text flex items-center justify-center px-4">
       <div className="w-full max-w-sm bg-surface border border-border rounded-lg p-6">
-        <h1 className="text-lg font-semibold mb-1">Viga Continua</h1>
+        <img
+          src="/brand-logo.png"
+          alt="Marcelo Mastropietro Atelier — Ingeniería & Arquitectura"
+          className="h-16 w-auto mx-auto rounded-lg bg-white px-3 py-1.5 ring-1 ring-black/5 mb-3"
+        />
+        <h1 className="text-lg font-semibold mb-1 text-center">Hiperestáticos</h1>
         <p className="text-xs text-text-muted mb-5">
           {mode === "login" && "Ingresá con tu cuenta para ver tus datos"}
           {mode === "register" &&
