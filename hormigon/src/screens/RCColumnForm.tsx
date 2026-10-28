@@ -1267,6 +1267,9 @@ export default function RCColumnForm() {
                   </option>
                 ))}
               </select>
+              <p className="text-[10px] leading-snug text-text-muted mt-1">
+                Los apoyos se numeran de izquierda a derecha mirando la viga.
+              </p>
               <button
                 type="button"
                 onClick={() => {

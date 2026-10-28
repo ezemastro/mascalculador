@@ -1085,17 +1085,35 @@ export default function ConcreteForm() {
                           // Salir del modo importación: queda como carga
                           // manual conservando los valores ya definidos
                           setConcreteLoads((prev) =>
-                            prev.map((l) =>
-                              l.id === load.id
-                                ? {
-                                    ...l,
-                                    importMode: false,
-                                    type: val as "point" | "distributed",
-                                    slabId: undefined,
-                                    slabEdge: undefined,
-                                  }
-                                : l,
-                            ),
+                            prev.map((l) => {
+                              if (l.id !== load.id) return l;
+                              const nextType = val as "point" | "distributed";
+                              const base = {
+                                ...l,
+                                importMode: false,
+                                type: nextType,
+                                slabId: undefined,
+                                slabEdge: undefined,
+                              };
+                              // Al cambiar de tipo, inicializar los campos que
+                              // el nuevo tipo necesita: si quedan undefined la
+                              // carga se guarda sin Inicio/Fin (o sin posición)
+                              // y al importar reacciones se pierde.
+                              if (nextType === "distributed") {
+                                return {
+                                  ...base,
+                                  start: l.start ?? 0,
+                                  end: l.end ?? totalLength,
+                                  position: undefined,
+                                };
+                              }
+                              return {
+                                ...base,
+                                position: l.position ?? totalLength / 2,
+                                start: undefined,
+                                end: undefined,
+                              };
+                            }),
                           );
                         }}
                         className="w-28"

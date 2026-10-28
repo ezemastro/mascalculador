@@ -20,7 +20,7 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
         if (p >= a && p <= b) ra += ((ld.magnitude ?? 0) * (b - p)) / (b - a);
       } else {
         const s = Math.max(ld.start ?? 0, a);
-        const e = Math.min(ld.end ?? 0, b);
+        const e = Math.min(ld.end ?? L, b);
         if (s < e) {
           const mid = (s + e) / 2;
           ra += ((ld.magnitude ?? 0) * (e - s) * (b - mid)) / (b - a);
@@ -40,7 +40,7 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
         if (x >= p && p >= a) m -= (ld.magnitude ?? 0) * (x - p);
       } else {
         const s = Math.max(ld.start ?? 0, a);
-        const e = Math.min(ld.end ?? 0, b);
+        const e = Math.min(ld.end ?? L, b);
         if (s < e && x > s) {
           const ee = Math.min(x, e);
           m -= (ld.magnitude ?? 0) * (ee - s) * (x - (s + ee) / 2);
@@ -81,7 +81,7 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
         }
       } else {
         const s = Math.max(ld.start ?? 0, a);
-        const e = Math.min(ld.end ?? 0, b);
+        const e = Math.min(ld.end ?? L, b);
         if (s < e) {
           const mid = (s + e) / 2;
           const f = (ld.magnitude ?? 0) * (e - s);
@@ -238,7 +238,7 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
         }
       } else {
         const s = Math.max(ld.start ?? 0, a);
-        const e = Math.min(ld.end ?? 0, b);
+        const e = Math.min(ld.end ?? L, b);
         if (s < e) {
           const mid = (s + e) / 2;
           const f = (ld.magnitude ?? 0) * (e - s);
@@ -269,7 +269,7 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
         if (x >= (ld.position ?? 0)) v -= ld.magnitude ?? 0;
       } else {
         const a = ld.start ?? 0;
-        const b = ld.end ?? 0;
+        const b = ld.end ?? L;
         if (x > a) {
           v -= (ld.magnitude ?? 0) * (Math.min(x, b) - a);
         }
@@ -302,7 +302,7 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
         }
       } else {
         const a = ld.start ?? 0;
-        const b = ld.end ?? 0;
+        const b = ld.end ?? L;
         if (x > a) {
           const ee = Math.min(x, b);
           m -= (ld.magnitude ?? 0) * (ee - a) * (x - (a + ee) / 2);
@@ -319,7 +319,7 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
     if (ld.type === "point") pts.add(ld.position ?? 0);
     else {
       pts.add(ld.start ?? 0);
-      pts.add(ld.end ?? 0);
+      pts.add(ld.end ?? L);
     }
   }
   // Add span midpoints to ensure moment peaks are captured for full-span UDL

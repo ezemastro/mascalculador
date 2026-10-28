@@ -59,13 +59,23 @@ export function getBeamReactions(saveId: string): BeamReactionResult | null {
         end: cl.end,
       }));
 
-    // Include self-weight if applicable
+    // Include self-weight if applicable.
+    // Viga placa (flangeMode != "none"): la losa ya está en las cargas, así que
+    // el peso propio solo cuenta el nervio sobresaliente bw·(h − hf). Igual que
+    // ConcreteResults, para que la reacción importada coincida con la pantalla
+    // de resultados de la viga.
     if (data.includeSelfWeight) {
       const bw = data.bw as number;
       const h = data.h as number;
+      const flangeMode =
+        (data.flangeMode as "none" | "spans" | "supports" | undefined) ??
+        (data.flangeType ? "spans" : "none");
+      const flangeHf = (data.flangeHf as number | undefined) ?? 0;
+      const effectiveH =
+        flangeMode !== "none" ? Math.max(h - flangeHf, 0) : h;
       const totalLength = spans.reduce((a, b) => a + b, 0);
-      if (bw && h && totalLength > 0) {
-        const selfWeightD = ((bw * h) / 1e6) * CONCRETE_DENSITY;
+      if (bw && effectiveH && totalLength > 0) {
+        const selfWeightD = ((bw * effectiveH) / 1e6) * CONCRETE_DENSITY;
         loads.push({
           id: "__sw__",
           type: "distributed",
