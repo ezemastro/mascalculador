@@ -520,7 +520,7 @@ const OPENROUTER_MODEL =
 // de un modelo free no deja al usuario sin respuesta.
 const OPENROUTER_MODELS = (
   process.env.OPENROUTER_MODELS ||
-  `${OPENROUTER_MODEL},nex-agi/nex-n2.5-pro:free,inclusionai/ling-3.0-flash-vl:free`
+  `${OPENROUTER_MODEL},google/gemma-4-26b-a4b-it:free,google/gemma-4-31b-it:free`
 )
   .split(",")
   .map((s) => s.trim())
