@@ -13,6 +13,7 @@ type AdminUser = {
 export default function AdminScreen() {
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     fetch("/api/admin/users")
@@ -26,6 +27,15 @@ export default function AdminScreen() {
       });
   }, []);
 
+  const q = query.trim().toLowerCase();
+  const filtered = users
+    ? users.filter(
+        (u) =>
+          u.username.toLowerCase().includes(q) ||
+          (u.email ?? "").toLowerCase().includes(q),
+      )
+    : null;
+
   return (
     <div className="max-w-3xl">
       <ScreenHeader
@@ -35,6 +45,17 @@ export default function AdminScreen() {
       {error && <p className="text-xs text-danger">{error}</p>}
       {!users && !error && (
         <p className="text-sm text-text-muted">Cargando...</p>
+      )}
+      {users && (
+        <div className="mb-3">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Buscar por usuario o email..."
+            aria-label="Buscar por usuario o email"
+          />
+        </div>
       )}
       {users && (
         <table className="w-full text-sm text-left border border-border rounded overflow-hidden">
@@ -47,8 +68,18 @@ export default function AdminScreen() {
             </tr>
           </thead>
           <tbody>
-            {users.map((u) => (
-              <tr key={u.id} className="border-t border-border">
+            {filtered && filtered.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={4}
+                  className="px-3 py-4 text-center text-text-muted"
+                >
+                  Sin resultados para “{query}”.
+                </td>
+              </tr>
+            ) : (
+              filtered?.map((u) => (
+                <tr key={u.id} className="border-t border-border">
                 <td className="px-3 py-2">
                   {u.username}
                   {Boolean(u.is_admin) && (
@@ -63,7 +94,8 @@ export default function AdminScreen() {
                 </td>
                 <td className="px-3 py-2">{u.key_count}</td>
               </tr>
-            ))}
+              ))
+            )}
           </tbody>
         </table>
       )}
