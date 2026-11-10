@@ -279,37 +279,25 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
   }
 
   function bendingMoment(x: number): number {
-    let m = 0;
-    for (let i = 0; i < n; i++) {
-      if (x >= pos[i]) {
-        m += reactions[i] * (x - pos[i]);
-      }
-    }
-    // Leftmost fixed support (only if not on a cantilever span)
-    if (isFixed(0) && !isFree(0) && !spanIsCantilever[0]) {
-      m += moments[0];
-    }
-    // Cantilever fixed-end moments
+    // Span superposition: M(x) = M_simple(x) + M_i + (M_j − M_i)·(x−a)/L.
+    // The reactions already carry the end-moment couples of supported spans,
+    // so the end moments are applied exactly once per span. Adding a support
+    // moment again (as the old cantilever branch did for a fixed right root)
+    // double-counted the negative moment and demanded twice the steel.
+    let k = 0;
     for (let i = 0; i < n - 1; i++) {
-      if (!spanIsCantilever[i]) continue;
-      if (isFree(i + 1) && isFixed(i) && x >= pos[i]) m += moments[i];
-      if (isFree(i) && isFixed(i + 1) && x >= pos[i + 1]) m += moments[i + 1];
-    }
-    for (const ld of loads) {
-      if (ld.type === "point") {
-        if (x >= (ld.position ?? 0)) {
-          m -= (ld.magnitude ?? 0) * (x - (ld.position ?? 0));
-        }
-      } else {
-        const a = ld.start ?? 0;
-        const b = ld.end ?? L;
-        if (x > a) {
-          const ee = Math.min(x, b);
-          m -= (ld.magnitude ?? 0) * (ee - a) * (x - (a + ee) / 2);
-        }
+      if (x >= pos[i] && x <= pos[i + 1]) {
+        k = i;
+        break;
       }
     }
-    return m;
+    const a = pos[k];
+    const b = pos[k + 1];
+    const momentA = moments[k];
+    const momentB = moments[k + 1];
+    return (
+      simpleM(a, b, x) + momentA + ((momentB - momentA) * (x - a)) / (b - a)
+    );
   }
 
   // ---- critical points ----
