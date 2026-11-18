@@ -216,7 +216,10 @@ export function checkBeam(
   const phiMn = PHI_B * Mn;
 
   // ---- Shear (Chapter G) ----
-  const Aw = h * tw; // mm² (CIRSOC G.2.1: altura total × espesor de alma)
+  // CIRSOC G.2.1: shear area = altura total × espesor de alma. For the 2 IPN
+  // composite section two webs contribute, so multiply by webCount (default 1).
+  const webCount = profile.webCount ?? 1;
+  const Aw = h * tw * webCount; // mm²
   const kv = 5.0;
   const hOverTw = dW / tw;
   const Cv =
@@ -312,7 +315,14 @@ export function checkBeam(
 
   // Shear
   st.push("--- Resistencia a corte ---");
-  st.push(`A_w = h·t_w = ${h}·${tw} = ${Aw.toFixed(0)} mm²`);
+  st.push(
+    `A_w = h·t_w${webCount > 1 ? `·${webCount}` : ""} = ${h}·${tw}${webCount > 1 ? `·${webCount}` : ""} = ${Aw.toFixed(0)} mm²`,
+  );
+  if (webCount > 1) {
+    st.push(
+      `Alma: ${webCount} perfiles → A_w = ${webCount}·h·t_w = ${webCount}·${h}·${tw} = ${Aw.toFixed(0)} mm²`,
+    );
+  }
   st.push(`k_v = ${kv} (alma no rigidizada)`);
   st.push(`h/t_w = ${hOverTw.toFixed(2)}`);
   st.push(`C_v = ${Cv.toFixed(3)}`);

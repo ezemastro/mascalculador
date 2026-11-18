@@ -45,7 +45,7 @@ interface BeamResultsDual {
 
 interface SteelDesignParams {
   profileName: string;
-  profileType?: "IPN" | "UPN"; // default "IPN" for backward compat
+  profileType?: "IPN" | "UPN" | "2IPN"; // default "IPN" for backward compat; "UPN" channel, "2IPN" two IPN side by side
   Fy: number; // MPa
   Lb: number; // mm (legacy, retained for backward compat)
   Lb1?: number; // mm (defaults to totalLength × 1000)

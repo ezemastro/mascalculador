@@ -12,6 +12,7 @@ import {
 } from "../lib/storage";
 import { IPN_PROFILES } from "../lib/profiles";
 import { UPN_PROFILES } from "../lib/upn-profiles";
+import { resolveProfile } from "../lib/profile-lookup";
 import { calculateBeamDual, migrateLoads } from "../lib/beam-calculations";
 import { DecimalInput } from "@mascalculador/shared";
 
@@ -46,9 +47,9 @@ export default function FormPage() {
   const [profileName, setProfileName] = useState(
     state?.designParams?.profileName ?? lastForm?.profileName ?? "IPN 200",
   );
-  const [profileType, setProfileType] = useState<"IPN" | "UPN">(
+  const [profileType, setProfileType] = useState<"IPN" | "UPN" | "2IPN">(
     state?.designParams?.profileType ??
-      (lastForm?.profileType as "IPN" | "UPN") ??
+      (lastForm?.profileType as "IPN" | "UPN" | "2IPN") ??
       "IPN",
   );
   const [Fy, setFy] = useState(state?.designParams?.Fy ?? lastForm?.Fy ?? 235);
@@ -254,15 +255,11 @@ export default function FormPage() {
     }
   }, [spanLengths, supportTypes, loads, Fy, valid]);
 
-  const selectedProfile =
-    profileType === "UPN"
-      ? UPN_PROFILES.find((p) => p.name === profileName)
-      : IPN_PROFILES.find((p) => p.name === profileName);
-  // For Zx comparison, get Zx from the appropriate profile
-  const selectedProfileZx =
-    profileType === "UPN"
-      ? (UPN_PROFILES.find((p) => p.name === profileName)?.Zx ?? 0)
-      : (IPN_PROFILES.find((p) => p.name === profileName)?.Zx ?? 0);
+  // Resolve the preview profile (IPN / UPN / 2IPN) for Zx comparison
+  const resolvedProfile = resolveProfile(profileType, profileName);
+  const selectedProfile = resolvedProfile;
+  // For Zx comparison, get Zx from the resolved profile
+  const selectedProfileZx = resolvedProfile?.Zx ?? 0;
   // Soft-warn when selected profile Zx < Zx_req (task 1.11)
   const showZxWarning = Zx_req !== null && selectedProfileZx < Zx_req;
 
@@ -312,7 +309,7 @@ export default function FormPage() {
           }
           if (typeof d.profileName === "string") setProfileName(d.profileName);
           if (typeof d.profileType === "string")
-            setProfileType(d.profileType as "IPN" | "UPN");
+            setProfileType(d.profileType as "IPN" | "UPN" | "2IPN");
           if (typeof d.Fy === "number") setFy(d.Fy);
           if (typeof d.Lb1 === "number") setLb1(d.Lb1);
           else if (typeof d.Lb === "number") setLb1(d.Lb);
@@ -567,15 +564,15 @@ export default function FormPage() {
               <select
                 value={profileType}
                 onChange={(e) => {
-                  const newType = e.target.value as "IPN" | "UPN";
+                  const newType = e.target.value as "IPN" | "UPN" | "2IPN";
                   setProfileType(newType);
-                  // Reset profile to first of the new type
-                  if (newType === "IPN") setProfileName("IPN 200");
-                  else setProfileName("UPN 200");
+                  // Reset profile to first of the new list. 2IPN reuses the IPN list.
+                  setProfileName(newType === "UPN" ? "UPN 200" : "IPN 200");
                 }}
               >
                 <option value="IPN">IPN (Doble T)</option>
                 <option value="UPN">UPN (Canal)</option>
+                <option value="2IPN">2 IPN (Doble T apareada)</option>
               </select>
             </label>
             <label className="flex flex-col gap-1">
@@ -587,7 +584,7 @@ export default function FormPage() {
                 {(profileType === "UPN" ? UPN_PROFILES : IPN_PROFILES).map(
                   (p) => (
                     <option key={p.name} value={p.name}>
-                      {p.name}
+                      {profileType === "2IPN" ? `2 ${p.name}` : p.name}
                     </option>
                   ),
                 )}

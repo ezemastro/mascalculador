@@ -17,6 +17,7 @@ export interface ProfileData {
   Zy?: number; // cm³ (optional)
   rx?: number; // cm (optional)
   sectionType?: "I" | "C"; // I = doubly-symmetric, C = channel (singly-symmetric)
+  webCount?: number; // number of webs contributing to shear area
 }
 
 /** d = profile height (alias for h — canonical field). */
@@ -88,3 +89,70 @@ export const IPN_PROFILES: ProfileData[] = [
     peso: peso as number,
   };
 });
+
+/**
+ * Composite "2 IPN" section: two identical IPN profiles placed side by side
+ * with their flanges coplanar (touching along the flange tips) and verified as
+ * ONE composite section. The separation between the two centroids equals the
+ * flange width b (mm) = b/20 cm; Iy is obtained via the parallel-axis theorem.
+ * b, h, tw, tf are kept from the SINGLE profile so flange/web slenderness
+ * (λ_f = b/2tf, λ_w) stay per-profile and conservative.
+ *
+ * Model (per-profile values suffixed _1), cm-based units:
+ *   A  = 2·A1
+ *   Ix = 2·Ix1,  Sx = 2·Sx1,  Zx = 2·Zx1
+ *   Iy = 2·(Iy1 + A1·(b/20)²)        // parallel axis, centroid sep. = b mm
+ *   rx = √(Ix/A),  ry = √(Iy/A)
+ *   Sy = Zy ≈ Iy / (b/10)            // half total width = b/10 cm (approx)
+ *   J  = 2·J1,  Cw = 2·Cw1           // two identical sections acting together
+ *
+ * Note: Cw = 2·Cw1 underestimates the true warping constant of the separated
+ * pair (the centroid separation adds a large term). That lowers Mcr and Lr,
+ * i.e. the lateral-torsional check is conservative, not optimistic.
+ *   peso = 2·peso1
+ */
+export function getDoubleIPN(ipn: ProfileData): ProfileData {
+  const A = 2 * ipn.A;
+  const Ix = 2 * ipn.Ix;
+  const Sx = 2 * ipn.Sx;
+  const Zx = 2 * ipn.Zx;
+
+  // Parallel axis: centroid separation between the two IPN = b (mm) = b/20 cm
+  const d = ipn.b / 20; // cm
+  const Iy = 2 * (ipn.Iy + ipn.A * d * d);
+
+  const rx = Math.sqrt(Ix / A);
+  const ry = Math.sqrt(Iy / A);
+
+  // Approximate weak-axis section moduli: half total width = b/10 cm
+  const halfWidth = ipn.b / 10; // cm
+  const Sy = Iy / halfWidth; // cm³ (approximate)
+  const Zy = Sy; // cm³ (approximate)
+
+  const J = 2 * ipn.J;
+  const Cw = 2 * ipn.Cw;
+  const peso = ipn.peso != null ? 2 * ipn.peso : undefined;
+
+  return {
+    // Name keeps the base single designation prefixed with "2"
+    name: `2 ${ipn.name}`, // e.g. "2 IPN 200"
+    h: ipn.h,
+    b: ipn.b,
+    tw: ipn.tw,
+    tf: ipn.tf,
+    A: Math.round(A * 10) / 10,
+    Ix, // exact (integer in catalog); not in the rounded set per spec
+    Sx: Math.round(Sx * 10) / 10,
+    Zx: Math.round(Zx * 10) / 10,
+    Iy: Math.round(Iy * 10) / 10,
+    ry: Math.round(ry * 100) / 100,
+    J: Math.round(J * 10) / 10,
+    Cw: Math.round(Cw * 10) / 10,
+    rx: Math.round(rx * 100) / 100,
+    Sy: Math.round(Sy * 10) / 10,
+    Zy: Math.round(Zy * 10) / 10,
+    peso,
+    sectionType: "I",
+    webCount: 2,
+  };
+}

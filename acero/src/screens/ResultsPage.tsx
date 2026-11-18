@@ -12,9 +12,9 @@ import {
   formatMoment,
 } from "../lib/beam-calculations";
 import { checkBeam } from "../lib/steel-design";
-import { getD, getBf, IPN_PROFILES, type ProfileData } from "../lib/profiles";
-import { UPN_PROFILES, upnToProfileData } from "../lib/upn-profiles";
-import type { UPNData } from "../lib/upn-profiles";
+import { getD, getBf, type ProfileData } from "../lib/profiles";
+import { UPN_PROFILES, type UPNData } from "../lib/upn-profiles";
+import { resolveProfile } from "../lib/profile-lookup";
 
 export default function ResultsPage() {
   const location = useLocation();
@@ -166,27 +166,21 @@ export default function ResultsPage() {
   } | null = null;
   let selectedProfileCalc: ProfileData | undefined;
   // Captured for JSX — set inside the if block below
-  let profileType: "IPN" | "UPN" = "IPN";
+  let profileType: "IPN" | "UPN" | "2IPN" = "IPN";
   let upnProfile: UPNData | undefined;
 
   if (designParams) {
     const profileType2 = designParams.profileType ?? "IPN";
-    let profile: ProfileData | undefined;
-    let upnPro: UPNData | undefined;
-
-    if (profileType2 === "UPN") {
-      const upn = UPN_PROFILES.find((p) => p.name === designParams.profileName);
-      if (upn) {
-        upnPro = upn;
-        profile = upnToProfileData(upn);
-      }
-    } else {
-      profile = IPN_PROFILES.find((p) => p.name === designParams.profileName);
-    }
+    const profile = resolveProfile(profileType2, designParams.profileName);
+    // upnPro kept populated for UPN-only JSX rows (centroid / shear center)
+    const upnPro =
+      profileType2 === "UPN"
+        ? UPN_PROFILES.find((p) => p.name === designParams.profileName)
+        : undefined;
     selectedProfileCalc = profile;
 
     // Capture for use in JSX scope
-    profileType = profileType2 as "IPN" | "UPN";
+    profileType = profileType2 as "IPN" | "UPN" | "2IPN";
     upnProfile = upnPro;
     if (profile) {
       const totalBeamMm = L * 1000;
@@ -638,6 +632,14 @@ export default function ResultsPage() {
           <h2 className="text-sm font-semibold text-text-muted uppercase tracking-wider mb-4">
             Mostrar resultados {designCheck.profile} &mdash; CIRSOC 301-05
           </h2>
+
+          {profileType === "2IPN" && (
+            <div className="mb-4 p-3 bg-surface-alt rounded-lg text-xs text-text-muted">
+              Los 2 IPN se verifican como <strong>sección compuesta</strong>{" "}
+              (perfiles solidarios, alas coplanares). Si no quedan vinculados
+              entre sí, la resistencia al pandeo lateral está sobreestimada.
+            </div>
+          )}
 
           {/* Subdimensioned banner (task 1.14) */}
           {designCheck.subdimensioned && (

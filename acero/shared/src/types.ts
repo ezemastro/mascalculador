@@ -53,7 +53,7 @@ export interface BeamResultsDual {
 
 export interface SteelDesignParams {
   profileName: string;
-  profileType?: "IPN" | "UPN";
+  profileType?: "IPN" | "UPN" | "2IPN"; // default "IPN" for backward compat; "UPN" channel, "2IPN" two IPN side by side
   Fy: number;
   Lb: number;
   Lb1?: number;

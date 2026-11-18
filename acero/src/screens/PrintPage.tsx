@@ -7,7 +7,8 @@ import {
 } from "../lib/beam-calculations";
 import { designConcreteDetailed } from "../lib/concrete-design";
 import { checkBeam } from "../lib/steel-design";
-import { getD, getBf, IPN_PROFILES } from "../lib/profiles";
+import { getD, getBf } from "../lib/profiles";
+import { resolveProfile } from "../lib/profile-lookup";
 
 // ---------------------------------------------------------------------------
 // Print CSS shared across both modes
@@ -47,8 +48,9 @@ function NavSteelPrintout({
   const L = beamConfig.spans.reduce((a, b) => a + b, 0);
 
   const profile = useMemo(
-    () => IPN_PROFILES.find((p) => p.name === designParams.profileName),
-    [designParams.profileName],
+    () =>
+      resolveProfile(designParams.profileType, designParams.profileName),
+    [designParams.profileName, designParams.profileType],
   );
 
   const designCheck = useMemo(() => {
@@ -172,7 +174,7 @@ function NavSteelPrintout({
             Viga de acero — CIRSOC 301-05
           </p>
           <p className="text-sm">
-            Perfil: <strong>{designParams.profileName}</strong>
+            Perfil: <strong>{profile?.name ?? designParams.profileName}</strong>
             &nbsp;&mdash;&nbsp; Fecha: {todayISO()}
           </p>
         </div>
@@ -277,7 +279,9 @@ function NavSteelPrintout({
           <tbody>
             <tr>
               <td className="font-bold p-1 border w-32">Perfil</td>
-              <td className="p-1 border">{designParams.profileName}</td>
+              <td className="p-1 border">
+                {profile?.name ?? designParams.profileName}
+              </td>
               <td className="font-bold p-1 border w-16">Fy</td>
               <td className="p-1 border">{designParams.Fy} MPa</td>
             </tr>
@@ -335,8 +339,15 @@ function NavSteelPrintout({
         {profile && (
           <>
             <h2 className="font-bold text-sm mb-1">
-              4. CARACTERÍSTICAS DEL PERFIL — {profile.name}
+              4. CARACTERÍSTICAS DEL PERFIL —{" "}
+              {profile?.name ?? designParams.profileName}
             </h2>
+            {designParams.profileType === "2IPN" && (
+              <p className="text-xs mb-1">
+                Dos IPN apareados, alas coplanares, verificados como sección
+                compuesta (perfiles solidarios).
+              </p>
+            )}
             <table className="w-full text-xs mb-4 border border-black">
               <tbody>
                 {[
@@ -782,7 +793,9 @@ function SavedBeamPrintout() {
                 <tr>
                   <td className="font-bold p-1 border">Perfil:</td>
                   <td className="p-1 border">
-                    {(d.profileName as string) || "—"}
+                    {d.profileType === "2IPN"
+                      ? `2 ${(d.profileName as string) || "—"}`
+                      : (d.profileName as string) || "—"}
                   </td>
                   <td className="font-bold p-1 border">
                     F<sub>y</sub>:

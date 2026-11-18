@@ -48,7 +48,7 @@ const SCREEN_TERMS: Record<string, string> = {
   "/viga-acero": `Términos de esta pantalla:
 - Tramo: luz entre apoyos (m). Apoyos: simple, empotrado o libre (solo extremos).
 - Cargas: puntuales (kN, con posición en m) o distribuidas (kN/m, con rango inicio-fin). D: muerta, L: viva; U = 1.2·D + 1.6·L.
-- Perfil: designación del perfil de acero (IPN, UPN, etc.).
+- Perfil: designación del perfil de acero (IPN, UPN, 2 IPN = dos IPN apareados, etc.).
 - Fy: tensión de fluencia del acero (MPa).
 - Lb: longitud sin arriostrar (mm). Cb: factor de flexión.
 - Flecha límite: relación L/xxx para la verificación de servicio.`,
