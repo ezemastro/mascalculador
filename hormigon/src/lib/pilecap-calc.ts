@@ -277,7 +277,8 @@ export function designPileCap(input: PileCapInput): PileCapResult {
   const C = Rp / sinTheta;
   const wS = Math.min(Dp, tipo === "triangulo" ? Math.min(cx, cy) : cy);
   const bDisp = tipo === "triangulo" ? L1 / Math.sqrt(3) : L2;
-  const sigmaC = C / (wS * bDisp);
+  // kN/cm² → MPa: 1 kN/cm² = 10 MPa (los límites están en MPa).
+  const sigmaC = (C / (wS * bDisp)) * 10;
   const sigmaCLim = PHI_C * 0.85 * BETA_S * fc;
   const bielaOK = sigmaC <= sigmaCLim;
 
@@ -293,28 +294,29 @@ export function designPileCap(input: PileCapInput): PileCapResult {
     `   Ancho disponible de cabezal: b = ${f1(bDisp)} cm ${tipo === "triangulo" ? "(2·apotemas = lado/√3)" : ""}`,
   );
   st.push(
-    `   σ = C/(ws·b) = ${f1(C)}/(${f1(wS)}·${f1(bDisp)}) = ${f2(sigmaC)} MPa`,
+    `   σ = C/(ws·b) = ${f1(C)} kN/(${f1(wS)}·${f1(bDisp)}) cm² = ${f2(sigmaC / 10)} kN/cm² = ${f2(sigmaC)} MPa`,
   );
   st.push(
     `   Límite = φ·0.85·βs·f'c = 0.75·0.85·0.75·${fc} = ${f2(sigmaCLim)} MPa (βs = 0.75, biela embotellada) → ${bielaOK ? "✓ cumple" : "✗ NO cumple"}`,
   );
 
   // ── Paso 5: nudos ───────────────────────────────────────────────────────
-  const sigmaCol = PuTot / (cx * cy);
+  // Tensiones en kN/cm² × 10 → MPa, para comparar con límites en MPa.
+  const sigmaCol = (PuTot / (cx * cy)) * 10;
   const sigmaColLim = PHI_C * 0.85 * 1.0 * fc;
   const nodoColOK = sigmaCol <= sigmaColLim;
   const areaPil = (Math.PI * Dp * Dp) / 4;
-  const sigmaPil = Rp / areaPil;
+  const sigmaPil = (Rp / areaPil) * 10;
   const sigmaPilLim = PHI_C * 0.85 * 0.8 * fc;
   const nodoPilOK = sigmaPil <= sigmaPilLim;
 
   st.push("");
   st.push("5. Presiones en los nudos");
   st.push(
-    `   Nudo columna (CCC): σ = Pu,total/(cx·cy) = ${f1(PuTot)}/(${f1(cx)}·${f1(cy)}) = ${f2(sigmaCol)} MPa ≤ φ·0.85·1.0·f'c = ${f2(sigmaColLim)} MPa → ${nodoColOK ? "✓" : "✗"}`,
+    `   Nudo columna (CCC): σ = Pu,total/(cx·cy) = ${f1(PuTot)} kN/(${f1(cx)}·${f1(cy)}) cm² = ${f2(sigmaCol / 10)} kN/cm² = ${f2(sigmaCol)} MPa ≤ φ·0.85·1.0·f'c = ${f2(sigmaColLim)} MPa → ${nodoColOK ? "✓" : "✗"}`,
   );
   st.push(
-    `   Nudo pilote (CCT): σ = Rp/Apilote = ${f1(Rp)}/${f1(areaPil)} cm² = ${f2(sigmaPil)} MPa ≤ φ·0.85·0.80·f'c = ${f2(sigmaPilLim)} MPa (βn = 0.80) → ${nodoPilOK ? "✓" : "✗"}`,
+    `   Nudo pilote (CCT): σ = Rp/Apilote = ${f1(Rp)} kN/${f1(areaPil)} cm² = ${f2(sigmaPil / 10)} kN/cm² = ${f2(sigmaPil)} MPa ≤ φ·0.85·0.80·f'c = ${f2(sigmaPilLim)} MPa (βn = 0.80) → ${nodoPilOK ? "✓" : "✗"}`,
   );
 
   // ── Paso 6: tirantes ────────────────────────────────────────────────────
@@ -361,15 +363,19 @@ export function designPileCap(input: PileCapInput): PileCapResult {
   );
 
   // ── Paso 7: anclaje de los tirantes ─────────────────────────────────────
+  // CIRSOC 201-05 §12.2.2 (barras inferiores sin revestir, hormigón normal,
+  // ψt = ψe = λ = 1; separación libre y recubrimiento ≥ db):
+  //   db ≤ 16 mm → ld = (12/25)·fy·db/√f'c ;  db > 16 mm → ld = (3/5)·fy·db/√f'c
+  //   ld ≥ 300 mm (§12.2.1).
+  // §12.5.2 gancho normal: ldh = 0.24·fy·db/√f'c ≥ máx(8·db, 150 mm).
   const dbMM = barD;
-  const ldMM =
-    dbMM <= 19
-      ? (fy * dbMM) / (6.3 * Math.sqrt(fc))
-      : (fy * dbMM) / (5 * Math.sqrt(fc));
-  const ldcMM =
-    dbMM >= 16
-      ? (0.24 * fy * dbMM) / Math.sqrt(fc)
-      : (0.19 * fy * dbMM) / Math.sqrt(fc);
+  const ldCoef = dbMM <= 16 ? 12 / 25 : 3 / 5;
+  const ldMM = Math.max((ldCoef * fy * dbMM) / Math.sqrt(fc), 300);
+  const ldcMM = Math.max(
+    (0.24 * fy * dbMM) / Math.sqrt(fc),
+    8 * dbMM,
+    150,
+  );
   const ld = ldMM / 10;
   const ldc = ldcMM / 10;
   const anclaje =
@@ -384,7 +390,10 @@ export function designPileCap(input: PileCapInput): PileCapResult {
   st.push("");
   st.push("7. Anclaje de los tirantes sobre los pilotes");
   st.push(
-    `   ld (recta, Ø${barD}) = ${f1(ld)} cm ; ldc (gancho 90°) = ${f1(ldc)} cm`,
+    `   ld (recta, Ø${barD}) = máx(${dbMM <= 16 ? "12/25" : "3/5"}·fy·db/√f'c; 30 cm) = máx(${dbMM <= 16 ? "0.48" : "0.60"}·${fy}·${dbMM}/√${fc}; 300) mm = ${f1(ld)} cm`,
+  );
+  st.push(
+    `   ldh (gancho 90°) = máx(0.24·fy·db/√f'c; 8·db; 15 cm) = máx(0.24·${fy}·${dbMM}/√${fc}; ${8 * dbMM}; 150) mm = ${f1(ldc)} cm`,
   );
   st.push(
     `   Disponible desde el eje del pilote al borde: ${f1(anclaje)} cm → ${anclajeOK ? "✓ alcanza recto" : anclajeGanchoOK ? "△ recto no alcanza: gancho estándar 90° al final" : "✗ ni recto ni gancho: acortar s, alargar L1 o reducir Ø"}`,
