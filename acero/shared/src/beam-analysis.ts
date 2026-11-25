@@ -68,14 +68,29 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
     return 6 * sum;
   }
 
-  // ---- total load on segment [a,b] and its moment about a ----
-  function segmentLoads(a: number, b: number) {
+  // ---- point-load ownership ----
+  // Una carga puntual ubicada exactamente sobre un apoyo interior pertenece a
+  // DOS tramos si se usa el intervalo cerrado [a,b], y su reacción se sumaba
+  // dos veces (ΣR ≠ carga total y el diagrama de corte quedaba desplazado).
+  // Cada carga puntual se asigna a un único tramo: [a, b) — y el último tramo
+  // también incluye su extremo derecho b. Una carga sobre un apoyo la toma el
+  // tramo que arranca en ese apoyo y la transmite íntegra a él.
+  function ownsPoint(spanIdx: number, p: number): boolean {
+    const a = pos[spanIdx];
+    const b = pos[spanIdx + 1];
+    return p >= a && (p < b || (spanIdx === n - 2 && p <= b));
+  }
+
+  // ---- total load on span i and its moment about its left end a ----
+  function segmentLoads(spanIdx: number) {
+    const a = pos[spanIdx];
+    const b = pos[spanIdx + 1];
     let force = 0;
     let momentA = 0;
     for (const ld of loads) {
       if (ld.type === "point") {
         const p = ld.position ?? 0;
-        if (p >= a && p <= b) {
+        if (ownsPoint(spanIdx, p)) {
           force += ld.magnitude ?? 0;
           momentA += (ld.magnitude ?? 0) * (p - a);
         }
@@ -99,7 +114,7 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
 
   for (let i = 0; i < n - 1; i++) {
     if (!isFree(i) && !isFree(i + 1)) continue;
-    const { force, momentA } = segmentLoads(pos[i], pos[i + 1]);
+    const { force, momentA } = segmentLoads(i);
     if (isFree(i + 1)) {
       // cantilever from left support i
       reactions[i] += force;
@@ -108,9 +123,13 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
       // through the section (classic simply-supported beam with overhang).
       moments[i] -= momentA;
     } else {
-      // cantilever from right support i+1
+      // cantilever from right support i+1 (extremo libre a la izquierda).
+      // El momento en la raíz se toma respecto de la raíz b, no del extremo
+      // libre a: M_raíz = Σ P·(b − p) = F·(b − a) − Σ P·(p − a).
+      // (Antes se usaba Σ P·(p − a): una carga en la punta del voladizo
+      // izquierdo daba momento nulo en la raíz.)
       reactions[i + 1] += force;
-      moments[i + 1] -= momentA;
+      moments[i + 1] -= force * (pos[i + 1] - pos[i]) - momentA;
     }
   }
 
@@ -232,7 +251,9 @@ export function calculateBeam(config: BeamConfig, loads: Load[]): BeamResults {
     for (const ld of loads) {
       if (ld.type === "point") {
         const p = ld.position ?? 0;
-        if (p >= a && p <= b) {
+        // Solo el tramo "dueño" de la carga (ver ownsPoint): evita sumar dos
+        // veces una carga ubicada sobre un apoyo interior.
+        if (ownsPoint(i, p)) {
           ri += ((ld.magnitude ?? 0) * (b - p)) / Ls;
           rj += ((ld.magnitude ?? 0) * (p - a)) / Ls;
         }
