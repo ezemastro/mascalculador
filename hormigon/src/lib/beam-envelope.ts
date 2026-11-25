@@ -50,8 +50,9 @@ interface Seg {
  * El momento/corte máximo se obtiene combinando:
  *  - Carga muerta (1.2·D) en TODOS los tramos.
  *  - Carga viva (1.6·L) únicamente en los tramos "activados" de cada patrón.
+ *  - Además, la combinación 1.4·D en todos los tramos (sin viva).
  *
- * Se enumeran todos los patrones (2^n) y se toma la envolvente. Las reacciones
+ * Se enumeran todos los patrones (2^n + 1) y se toma la envolvente. Las reacciones
  * se devuelven separadas en D y L (sin factorar) para uso posterior (columnas).
  */
 export function calculateBeamEnvelope(
@@ -127,6 +128,28 @@ export function calculateBeamEnvelope(
       });
     }
     patterns.push(calculateBeam(config, cfgLoads));
+  }
+
+  // ---- Combinación U = 1.4·D (CIRSOC 201-05 Art. 9.2.1, ec. 9-1) ----
+  // Gobierna cuando la carga viva es chica (L < D/8): con L = 0, 1.2·D
+  // subestima un 14% respecto de 1.4·D. Se agrega como un patrón más de la
+  // envolvente (sin carga viva).
+  {
+    const cfgLoads: Load[] = [];
+    let idx = 0;
+    for (const seg of segments) {
+      const magnitude = 1.4 * seg.D;
+      if (magnitude === 0) continue;
+      cfgLoads.push({
+        id: `d14-${idx++}`,
+        type: seg.type,
+        magnitude,
+        position: seg.position,
+        start: seg.start,
+        end: seg.end,
+      });
+    }
+    if (cfgLoads.length > 0) patterns.push(calculateBeam(config, cfgLoads));
   }
 
   // ---- Envelope query functions ----

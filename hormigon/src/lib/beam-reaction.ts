@@ -92,8 +92,9 @@ export function getBeamReactions(saveId: string): BeamReactionResult | null {
 
   try {
     const dual = calculateBeamDual(config, loads);
-    const uReactions = dual.d.reactions.map(
-      (rd, i) => 1.2 * rd + 1.6 * dual.l.reactions[i],
+    // U = máx(1.4·D, 1.2·D + 1.6·L) — CIRSOC 201-05 Art. 9.2.1 (ec. 9-1 y 9-2).
+    const uReactions = dual.d.reactions.map((rd, i) =>
+      Math.max(1.4 * rd, 1.2 * rd + 1.6 * dual.l.reactions[i]),
     );
     return {
       dReactions: dual.d.reactions,
