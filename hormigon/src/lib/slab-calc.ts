@@ -2103,6 +2103,53 @@ export function validateSlabSupports(
   return "Apoyos inválidos: los bordes apoyados no forman una tipología válida. La losa cruzada requiere 4 bordes apoyados, la unidireccional requiere 2 bordes opuestos y el voladizo requiere 1 borde continuo (empotrado).";
 }
 
+/**
+ * Áreas tributarias de una losa cruzada por borde (método de las áreas
+ * tributarias, práctica habitual de reparto de cargas de losas a vigas):
+ *  - Entre dos bordes de igual condición, la línea de reparto sale de la
+ *    esquina a 45°.
+ *  - Entre un borde continuo (empotrado) y uno articulado, sale a 60° medidos
+ *    desde el borde continuo (el continuo toma la mayor parte).
+ * Equivale a asignar cada punto al borde con menor distancia/peso, con peso
+ * √3 para el borde continuo y 1 para el articulado (tan 60° = √3).
+ *
+ * Se integra por fajas en X: en cada faja la frontera es lineal, así que el
+ * reparto en Y se resuelve en forma exacta. La suma de las cuatro áreas es
+ * siempre lx·ly (equilibrio garantizado).
+ *
+ * Devuelve áreas en m² por borde: [Izq, Der, Arr, Aba].
+ */
+export function tributaryAreas(
+  lx: number,
+  ly: number,
+  edges: readonly EdgeCondition[],
+): [number, number, number, number] {
+  const w = (e: EdgeCondition) => (e === "continuo" ? Math.sqrt(3) : 1);
+  const [wI, wD, wA, wB] = [w(edges[0]), w(edges[1]), w(edges[2]), w(edges[3])];
+  // Frontera Arr/Aba (y medido desde el borde Arr): y/wA = (ly − y)/wB
+  const yStar = (ly * wA) / (wA + wB);
+  const N = 4000;
+  const dx = lx / N;
+  let aI = 0,
+    aD = 0,
+    aA = 0,
+    aB = 0;
+  for (let k = 0; k < N; k++) {
+    const x = (k + 0.5) * dx;
+    const cI = x / wI;
+    const cD = (lx - x) / wD;
+    const cX = Math.min(cI, cD); // "costo" del borde X más cercano
+    const lenA = Math.min(wA * cX, yStar);
+    const lenB = Math.min(wB * cX, ly - yStar);
+    const lenX = ly - lenA - lenB;
+    aA += lenA * dx;
+    aB += lenB * dx;
+    if (cI <= cD) aI += lenX * dx;
+    else aD += lenX * dx;
+  }
+  return [aI, aD, aA, aB];
+}
+
 // Beam-strip positive/negative moments for a span L between two edges with
 // conditions c0/c1: both simple → qu·L²/8, both fixed → qu·L²/24 (+ qu·L²/12),
 // mixed → qu·L²/14.22 (+ qu·L²/8).
@@ -2608,85 +2655,25 @@ export function designSlab(input: SlabInput): SlabResult {
       st.push(`   M_y,neg = ${MnegY.toFixed(2)} kN·m/m (en apoyo continuo Y)`);
     st.push("");
 
-    // Reactions: CRx-type uses Rex = C * qu * lShort, CRex-type uses Rex = C * qArea / edgeLength
-    const qArea = qu * lShort * lShort;
-    if (hasOneFixedX) {
-      const cf = interpolateKalmanok1Fixed(r);
-      // CRey = continuous edge reaction (the fixed X edge), CRx = articulated X edge
-      // X direction: asymmetric (one fixed, one simple) → use CRey for fixed edge
-      // Y direction: symmetric (both simple) → use CRy for both
-      RxIzq = isX0Fixed ? cf.CRey * qu * lShort : cf.CRx * qu * lShort;
-      RxDer = isXLFixed ? cf.CRey * qu * lShort : cf.CRx * qu * lShort;
-      RyArr = RyAba = cf.CRy * qu * lShort;
-      Rx = (RxIzq + RxDer) / 2;
-      Ry = RyArr;
-    } else if (hasOneFixedY) {
-      const cf = interpolateKalmanok1FixedY(r);
-      // CRey = continuous edge reaction (the fixed Y edge), CRy = articulated Y edge
-      // X direction: symmetric (both simple) → use CRx for both
-      // Y direction: asymmetric (one fixed, one simple) → use CRey for fixed edge
-      RxIzq = RxDer = cf.CRx * qu * lShort;
-      RyArr = isY0Fixed ? cf.CRey * qu * lShort : cf.CRy * qu * lShort;
-      RyAba = isYLFixed ? cf.CRey * qu * lShort : cf.CRy * qu * lShort;
-      Rx = RxIzq;
-      Ry = (RyArr + RyAba) / 2;
-    } else if (hasTwoFixedX) {
-      const cf = interpolateKalmanok2FixedX(r);
-      RxIzq = RxDer = (cf.CRex * qArea) / lx;
-      RyArr = RyAba = cf.CRy * qu * lShort;
-      Rx = RxIzq;
-      Ry = RyArr;
-    } else if (hasTwoFixedY) {
-      const cf = interpolateKalmanok2FixedY(r);
-      RxIzq = RxDer = cf.CRx * qu * lShort;
-      RyArr = RyAba = (cf.CRey * qArea) / ly;
-      Rx = RxIzq;
-      Ry = RyArr;
-    } else if (hasTwoAdj) {
-      const cf = interpolateKalmanok2Adj(r);
-      // CRx2 → continuous X edge, CRx → simple X edge
-      // CRy0 → continuous Y edge, CRy → simple Y edge
-      // Remap based on which edges are "continuo"
-      const isX0Cont = edges[0] === "continuo";
-      const isXLCont = edges[1] === "continuo";
-      const isY0Cont = edges[2] === "continuo";
-      const isYLCont = edges[3] === "continuo";
-      RxIzq = isX0Cont ? cf.CRx2 * qu * lShort : cf.CRx * qu * lShort;
-      RxDer = isXLCont ? cf.CRx2 * qu * lShort : cf.CRx * qu * lShort;
-      RyArr = isY0Cont ? cf.CRy0 * qu * lShort : cf.CRy * qu * lShort;
-      RyAba = isYLCont ? cf.CRy0 * qu * lShort : cf.CRy * qu * lShort;
-      Rx = (RxIzq + RxDer) / 2;
-      Ry = (RyArr + RyAba) / 2;
-    } else if (hasThreeFixed) {
-      const isYsimple = !isY0Fixed || !isYLFixed;
-      if (isYsimple) {
-        const cf = interpolateKalmanok3FixedY(r);
-        RxIzq = RxDer = (cf.CRex * qArea) / lx;
-        RyArr = isY0Fixed ? (cf.CRey * qArea) / ly : cf.CRy * qu * lShort;
-        RyAba = isYLFixed ? (cf.CRey * qArea) / ly : cf.CRy * qu * lShort;
-        Rx = RxIzq;
-        Ry = (RyArr + RyAba) / 2;
-      } else {
-        const cf = interpolateKalmanok3Fixed(r);
-        RxIzq = isX0Fixed ? (cf.CRex * qArea) / lx : cf.CRx * qu * lShort;
-        RxDer = isXLFixed ? (cf.CRex * qArea) / lx : cf.CRx * qu * lShort;
-        RyArr = RyAba = (cf.CRey * qArea) / ly;
-        Rx = (RxIzq + RxDer) / 2;
-        Ry = RyArr;
-      }
-    } else if (hasFourFixed) {
-      const cf = interpolateKalmanok4Fixed(r);
-      RxIzq = RxDer = (cf.CRex * qArea) / lx;
-      RyArr = RyAba = (cf.CRey * qArea) / ly;
-      Rx = RxIzq;
-      Ry = RyArr;
-    } else {
-      const cf = interpolateKalmanokSimple(r);
-      RxIzq = RxDer = cf.CRx * qu * lShort;
-      RyArr = RyAba = cf.CRy * qu * lShort;
-      Rx = RxIzq;
-      Ry = RyArr;
-    }
+    // Reacciones por áreas tributarias (45° entre bordes iguales, 60° desde
+    // el borde continuo hacia el articulado). R_borde = q_u·A_borde/L_borde,
+    // carga uniforme equivalente sobre la viga. ΣR·L = q_u·lx·ly siempre.
+    const [aIzq, aDer, aArr, aAba] = tributaryAreas(lx, ly, edges);
+    RxIzq = (qu * aIzq) / ly;
+    RxDer = (qu * aDer) / ly;
+    RyArr = (qu * aArr) / lx;
+    RyAba = (qu * aAba) / lx;
+    Rx = (RxIzq + RxDer) / 2;
+    Ry = (RyArr + RyAba) / 2;
+    st.push(
+      `Reacciones por áreas tributarias (45° entre bordes iguales; 60° desde el borde continuo hacia el articulado):`,
+    );
+    st.push(
+      `   A_Izq = ${aIzq.toFixed(2)} m², A_Der = ${aDer.toFixed(2)} m², A_Arr = ${aArr.toFixed(2)} m², A_Aba = ${aAba.toFixed(2)} m² (Σ = ${(aIzq + aDer + aArr + aAba).toFixed(2)} = lx·ly = ${(lx * ly).toFixed(2)} m²)`,
+    );
+    st.push(
+      `   R = q_u·A/L: R_Izq = ${qu.toFixed(2)}·${aIzq.toFixed(2)}/${ly.toFixed(2)}, R_Der = ${qu.toFixed(2)}·${aDer.toFixed(2)}/${ly.toFixed(2)}, R_Arr = ${qu.toFixed(2)}·${aArr.toFixed(2)}/${lx.toFixed(2)}, R_Aba = ${qu.toFixed(2)}·${aAba.toFixed(2)}/${lx.toFixed(2)}`,
+    );
     st.push(
       `Reacciones: R_xIzq = ${RxIzq.toFixed(2)} kN/m, R_xDer = ${RxDer.toFixed(2)} kN/m, R_yArr = ${RyArr.toFixed(2)} kN/m, R_yAba = ${RyAba.toFixed(2)} kN/m`,
     );
