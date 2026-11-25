@@ -250,7 +250,9 @@ function RCColumnResultsInner({ state }: { state: RCColumnState }) {
   const dirXOK = result.dirX.passes && result.dirX.lambda <= 100;
   const dirYOK = result.dirY.passes && result.dirY.lambda <= 100;
   const rhoMaxExceeded = result.rhoMaxExceeded || result.rho > MAX_COLUMN_RHO;
-  const globalOK = dirXOK && dirYOK && !rhoMaxExceeded;
+  // Verificación biaxial adicional (Bresler / contorno); null = no aplica.
+  const biaxialOK = result.biaxial?.ok ?? true;
+  const globalOK = dirXOK && dirYOK && !rhoMaxExceeded && biaxialOK;
 
   // Payload de guardado/impresión: los mismos campos que persiste el botón
   // "Guardar" (referencia única para no divergir).
@@ -534,6 +536,19 @@ function RCColumnResultsInner({ state }: { state: RCColumnState }) {
           >
             Dir Y: {dirYOK ? "✓" : "✗"}
           </span>
+          {result.biaxial && (
+            <span
+              className={`text-xs px-3 py-1 rounded-full ${biaxialOK ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}
+              title={
+                result.biaxial.method === "bresler"
+                  ? "Bresler: Pu/φPni"
+                  : "Contorno: Mux/φMnx + Muy/φMny"
+              }
+            >
+              Biaxial: {result.biaxial.ratio.toFixed(2)}{" "}
+              {biaxialOK ? "✓" : "✗"}
+            </span>
+          )}
         </div>
         {rhoMaxExceeded && (
           <p className="text-sm font-bold text-danger mt-2">
@@ -546,7 +561,15 @@ function RCColumnResultsInner({ state }: { state: RCColumnState }) {
         )}
         {!globalOK && !rhoMaxExceeded && (
           <p className="text-xs text-text-muted mt-2">
-            Revisar: {!dirXOK && !dirYOK ? "X e Y" : !dirXOK ? "X" : "Y"}.
+            Revisar:{" "}
+            {!dirXOK && !dirYOK
+              ? "X e Y"
+              : !dirXOK
+                ? "X"
+                : !dirYOK
+                  ? "Y"
+                  : "flexión biaxial (X e Y combinadas)"}
+            .
             Aumentar sección o modificar geometría.
           </p>
         )}

@@ -85,6 +85,8 @@ export interface RCColumnResult {
   sStirrup: number; // cm — stirrup spacing
   lambdaOK: boolean;
   passes: boolean;
+  /** Verificación biaxial adicional (null si hay momento en una sola dirección). */
+  biaxial: BiaxialCheck | null;
   steps: string[];
   barLayout: BiaxialBarLayout;
 }
@@ -239,6 +241,7 @@ function buildInteractionCurve(
   fy_mpa: number,
   Ast_cm2: number,
   d_prime: number = 3,
+  capped: boolean = true,
 ): { pn: number[]; mn: number[] } {
   const fc_kNcm2 = fc_mpa * 0.1; // MPa → kN/cm²
   const beta1 = computeBeta1(fc_mpa);
@@ -251,7 +254,11 @@ function buildInteractionCurve(
 
   // Tope de carga axial — CIRSOC 201-05 Art. 10.3.6.2 (columnas con estribos):
   //   φ·Pn,máx = 0.80·φ·[0.85·f'c·(Ag − Ast) + fy·Ast]
-  const phiPnMax = phiPnMaxTied(Cx_cm, Cy_cm, fc_mpa, fy_mpa, Ast_cm2);
+  // (capped = false solo para el método de Bresler, que usa la curva completa
+  // y aplica el tope aparte.)
+  const phiPnMax = capped
+    ? phiPnMaxTied(Cx_cm, Cy_cm, fc_mpa, fy_mpa, Ast_cm2)
+    : Infinity;
 
   // Scan neutral axis depth c from small to large
   const nPts = 200;
@@ -283,9 +290,14 @@ function buildInteractionCurve(
     // Axial force (compression positive)
     const Pn = Cc + Cs + T;
 
-    // Moment about centroid (kN·cm)
+    // Momento respecto del baricentro (kN·cm): M = Σ F_i·(h/2 − y_i), con F
+    // positiva en compresión e y_i medida desde la fibra comprimida.
+    // La capa inferior (y = d) entra con el MISMO signo que las demás: si está
+    // traccionada (T < 0) y está debajo del baricentro (h/2 − d < 0), su aporte
+    // es positivo. Antes figuraba "− T·(h/2 − d)", que restaba el aporte de la
+    // armadura traccionada y subestimaba mucho φMn con poca carga axial.
     const Mn_kNcm =
-      Cc * (hHalf - a / 2) + Cs * (hHalf - d_prime) - T * (hHalf - d_cm);
+      Cc * (hHalf - a / 2) + Cs * (hHalf - d_prime) + T * (hHalf - d_cm);
     const Mn_kNm = Mn_kNcm / 100;
 
     // Corte horizontal del diagrama en φ·Pn,máx (Art. 10.3.6.2).
@@ -324,6 +336,125 @@ function maxMomentAtPu(pnVals: number[], mnVals: number[], Pu: number): number {
   }
 
   return maxMn;
+}
+
+/**
+ * φ·Pn a excentricidad e = M/P dada (m), sobre la curva SIN tope axial.
+ * Recorre la curva (c creciente → e decreciente) e interpola en P.
+ */
+function phiPnAtEccentricity(
+  b_cm: number,
+  h_cm: number,
+  fc: number,
+  fy: number,
+  Ast_cm2: number,
+  e_m: number,
+): number {
+  const { pn, mn } = buildInteractionCurve(
+    b_cm,
+    h_cm,
+    fc,
+    fy,
+    Ast_cm2,
+    3,
+    false,
+  );
+  let best = 0;
+  for (let i = 0; i < pn.length - 1; i++) {
+    if (pn[i] <= 0 || pn[i + 1] <= 0) continue;
+    const e1 = mn[i] / pn[i];
+    const e2 = mn[i + 1] / pn[i + 1];
+    if ((e_m - e1) * (e_m - e2) <= 0 && Math.abs(e2 - e1) > 1e-12) {
+      const t = (e_m - e1) / (e2 - e1);
+      best = Math.max(best, pn[i] + t * (pn[i + 1] - pn[i]));
+    }
+  }
+  // e ≈ 0 → compresión pura (último punto de la curva)
+  if (e_m <= 1e-9) best = Math.max(best, pn[pn.length - 1]);
+  return best;
+}
+
+export interface BiaxialCheck {
+  method: "bresler" | "contorno";
+  /** Pu / φPni (Bresler) o Mux/φMnx + Muy/φMny (contorno). ≤ 1 verifica. */
+  ratio: number;
+  ok: boolean;
+  steps: string[];
+}
+
+/**
+ * Verificación adicional a flexión biaxial (CIRSOC 201-05, comentario
+ * C10.3.6 / ACI 318 R10.3.6):
+ *  - Si Pu ≥ 0.1·f'c·Ag → método de la carga recíproca de Bresler:
+ *      1/φPni = 1/φPnx + 1/φPny − 1/φP₀ ; verifica si Pu ≤ φPni
+ *    (φPnx, φPny: capacidad uniaxial a la misma excentricidad e = Mu/Pu).
+ *  - Si Pu < 0.1·f'c·Ag → contorno de carga lineal (conservador):
+ *      Mux/φMnx + Muy/φMny ≤ 1, con φMn a la carga Pu.
+ * Cada dirección usa la armadura de sus dos caras (la misma de la
+ * verificación uniaxial); las barras de las otras caras se desprecian
+ * (conservador). Mu incluye magnificación por esbeltez y momento mínimo.
+ */
+function checkBiaxial(
+  Cx: number,
+  Cy: number,
+  fc: number,
+  fy: number,
+  Pu: number,
+  MuX: number,
+  MuY: number,
+  AstX: number,
+  AstY: number,
+): BiaxialCheck {
+  const st: string[] = [];
+  const Ag = Cx * Cy; // cm²
+  st.push("--- Verificación biaxial (adicional) ---");
+  st.push(
+    `M_ux = ${f2(MuX)} kN·m (flexión en X), M_uy = ${f2(MuY)} kN·m (flexión en Y), P_u = ${f2(Pu)} kN`,
+  );
+  const limite = (0.1 * fc * Ag * 100) / 1000; // kN
+  if (Pu >= limite) {
+    // Dirección X: canto Cx, ancho Cy. Dirección Y: canto Cy, ancho Cx.
+    const eX = Pu > 0 ? MuX / Pu : 0;
+    const eY = Pu > 0 ? MuY / Pu : 0;
+    const phiPnx = phiPnAtEccentricity(Cy, Cx, fc, fy, AstX, eX);
+    const phiPny = phiPnAtEccentricity(Cx, Cy, fc, fy, AstY, eY);
+    const AstT = Math.max(AstX, AstY);
+    const P0 = (0.85 * fc * (Ag - AstT) * 100 + fy * AstT * 100) / 1000;
+    const phiP0 = PHI_C * P0;
+    const inv = 1 / phiPnx + 1 / phiPny - 1 / phiP0;
+    const phiPni = inv > 0 ? 1 / inv : 0;
+    const ratio = phiPni > 0 ? Pu / phiPni : Infinity;
+    const ok = ratio <= 1;
+    st.push(
+      `P_u = ${f2(Pu)} kN ≥ 0.1·f'c·A_g = ${f2(limite)} kN → método de Bresler (carga recíproca)`,
+    );
+    st.push(
+      `  e_x = M_ux/P_u = ${(eX * 100).toFixed(1)} cm → φP_nx = ${f2(phiPnx)} kN ; e_y = ${(eY * 100).toFixed(1)} cm → φP_ny = ${f2(phiPny)} kN`,
+    );
+    st.push(`  φP₀ = 0.65·[0.85·f'c·(A_g − A_st) + f_y·A_st] = ${f2(phiP0)} kN`);
+    st.push(
+      `  1/φP_ni = 1/${f2(phiPnx)} + 1/${f2(phiPny)} − 1/${f2(phiP0)} → φP_ni = ${f2(phiPni)} kN`,
+    );
+    st.push(
+      `  P_u/φP_ni = ${ratio.toFixed(2)} ${ok ? "≤ 1 ✓ verifica biaxial" : "> 1 ✗ NO verifica biaxial"}`,
+    );
+    return { method: "bresler", ratio, ok, steps: st };
+  }
+  const cx = buildInteractionCurve(Cy, Cx, fc, fy, AstX);
+  const cy = buildInteractionCurve(Cx, Cy, fc, fy, AstY);
+  const phiMnx = maxMomentAtPu(cx.pn, cx.mn, Pu);
+  const phiMny = maxMomentAtPu(cy.pn, cy.mn, Pu);
+  const ratio =
+    (phiMnx > 0 ? MuX / phiMnx : MuX > 0 ? Infinity : 0) +
+    (phiMny > 0 ? MuY / phiMny : MuY > 0 ? Infinity : 0);
+  const ok = ratio <= 1;
+  st.push(
+    `P_u = ${f2(Pu)} kN < 0.1·f'c·A_g = ${f2(limite)} kN → contorno de carga lineal`,
+  );
+  st.push(
+    `  M_ux/φM_nx + M_uy/φM_ny = ${f2(MuX)}/${f2(phiMnx)} + ${f2(MuY)}/${f2(phiMny)} = ${ratio.toFixed(2)} ${ok ? "≤ 1 ✓ verifica biaxial" : "> 1 ✗ NO verifica biaxial"}`,
+  );
+  return { method: "contorno", ratio, ok, steps: st };
 }
 
 /**
@@ -1036,7 +1167,25 @@ export function designRCColumn(input: RCColumnInput): RCColumnResult {
   const rho_final = barLayout.astTotalProvided / (Cx * Cy_cm);
   const rhoMaxExceeded =
     dirX.rhoMaxExceeded || dirY.rhoMaxExceeded || rho_final > MAX_COLUMN_RHO;
-  const passes = dirPasses && !rhoMaxExceeded;
+  // Verificación biaxial adicional: solo si hay momentos aplicados en ambas
+  // direcciones (el momento mínimo se considera por separado en cada eje).
+  const hasMx = MxSup !== 0 || MxInf !== 0;
+  const hasMy = MySup !== 0 || MyInf !== 0;
+  const biaxial: BiaxialCheck | null =
+    hasMx && hasMy
+      ? checkBiaxial(
+          Cx,
+          Cy_cm,
+          fc,
+          fy,
+          Pu,
+          dirX.Mu,
+          dirY.Mu,
+          dirX.Ast,
+          dirY.Ast,
+        )
+      : null;
+  const passes = dirPasses && !rhoMaxExceeded && (biaxial?.ok ?? true);
   const dbLong = Math.max(
     barLayout.dbEsquinas,
     barLayout.dbCarasX,
@@ -1106,6 +1255,16 @@ export function designRCColumn(input: RCColumnInput): RCColumnResult {
     `Armadura: ${(rho_final * 100).toFixed(2)}% = ${f2(barLayout.astTotalProvided)} cm² (${barLayout.totalBars} Ø${dbLong})`,
   );
   combo.push(`Estribos: φ${phiStirrup} c/${f2(sStirrup)} cm`);
+  combo.push("");
+  if (biaxial) {
+    combo.push(...biaxial.steps);
+  } else {
+    combo.push("--- Verificación biaxial (adicional) ---");
+    combo.push(
+      "No aplica: hay momento aplicado en una sola dirección (o en ninguna).",
+    );
+  }
+  combo.push("");
   combo.push(`Estado: ${passes ? "✓ VERIFICA" : "✗ NO VERIFICA"}`);
 
   // Build combined steps: header + predimensioning + dirX + dirY + combo
@@ -1134,6 +1293,7 @@ export function designRCColumn(input: RCColumnInput): RCColumnResult {
     sStirrup,
     lambdaOK,
     passes,
+    biaxial,
     steps: combinedSteps,
     barLayout,
   };
