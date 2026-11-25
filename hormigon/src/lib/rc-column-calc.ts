@@ -212,6 +212,23 @@ function computeBeta1(fc: number): number {
 }
 
 /**
+ * Tope de carga axial para columnas con estribos (kN) — CIRSOC 201-05
+ * Art. 10.3.6.2: φ·Pn,máx = 0.80·φ·P₀, P₀ = 0.85·f'c·(Ag − Ast) + fy·Ast.
+ */
+export function phiPnMaxTied(
+  Cx_cm: number,
+  Cy_cm: number,
+  fc_mpa: number,
+  fy_mpa: number,
+  Ast_cm2: number,
+): number {
+  const Ag_mm2 = Cx_cm * Cy_cm * 100;
+  const Ast_mm2 = Ast_cm2 * 100;
+  const P0 = (0.85 * fc_mpa * (Ag_mm2 - Ast_mm2) + fy_mpa * Ast_mm2) / 1000; // kN
+  return 0.8 * PHI_C * P0;
+}
+
+/**
  * Build interaction curve (φP_n, φM_n) for given section and reinforcement.
  * Symmetric reinforcement: As_tension = As_compression = Ast/2.
  */
@@ -232,6 +249,10 @@ function buildInteractionCurve(
   const pnVals: number[] = [];
   const mnVals: number[] = [];
 
+  // Tope de carga axial — CIRSOC 201-05 Art. 10.3.6.2 (columnas con estribos):
+  //   φ·Pn,máx = 0.80·φ·[0.85·f'c·(Ag − Ast) + fy·Ast]
+  const phiPnMax = phiPnMaxTied(Cx_cm, Cy_cm, fc_mpa, fy_mpa, Ast_cm2);
+
   // Scan neutral axis depth c from small to large
   const nPts = 200;
   for (let i = 0; i < nPts; i++) {
@@ -248,12 +269,16 @@ function buildInteractionCurve(
     // Compression steel strain and force
     const epsSC = c > 0 ? (EPS_CU * (c - d_prime)) / c : 0;
     const fsSC = Math.max(-fy_mpa, Math.min(fy_mpa, ES * epsSC));
-    const Cs = (As_mm2 * fsSC) / 1000; // kN
+    // Barras dentro del bloque comprimido: se descuenta el hormigón que
+    // desplazan (fs − 0.85·f'c) para no contar dos veces esa área.
+    const fsSCnet = d_prime < a ? fsSC - 0.85 * fc_mpa : fsSC;
+    const Cs = (As_mm2 * fsSCnet) / 1000; // kN
 
     // Tension steel strain and force
     const epsST = c > 0 ? (EPS_CU * (c - d_cm)) / c : 0;
     const fsST = Math.max(-fy_mpa, Math.min(fy_mpa, ES * epsST));
-    const T = (As_mm2 * fsST) / 1000; // kN (negative when in tension)
+    const fsSTnet = d_cm < a ? fsST - 0.85 * fc_mpa : fsST;
+    const T = (As_mm2 * fsSTnet) / 1000; // kN (negative when in tension)
 
     // Axial force (compression positive)
     const Pn = Cc + Cs + T;
@@ -263,7 +288,8 @@ function buildInteractionCurve(
       Cc * (hHalf - a / 2) + Cs * (hHalf - d_prime) - T * (hHalf - d_cm);
     const Mn_kNm = Mn_kNcm / 100;
 
-    pnVals.push(Pn * PHI_C);
+    // Corte horizontal del diagrama en φ·Pn,máx (Art. 10.3.6.2).
+    pnVals.push(Math.min(Pn * PHI_C, phiPnMax));
     mnVals.push(Mn_kNm * PHI_C);
   }
 
@@ -628,6 +654,12 @@ function designOneDirection(
     st.push(
       `φM_n máx = ${f2(checkMax.maxPhiMn)} kN·m vs M_u = ${f2(Mu!)} kN·m`,
     );
+    const capAtMax = phiPnMaxTied(b, h, fc, fy, rhoHi * b * h);
+    if (Pu > capAtMax) {
+      st.push(
+        `P_u = ${f2(Pu)} kN > φ·P_n,máx = 0.80·φ·P₀ = ${f2(capAtMax)} kN con ρ = ${(MAX_COLUMN_RHO * 100).toFixed(0)}% (CIRSOC 201-05 Art. 10.3.6.2) → aumentar la sección`,
+      );
+    }
     passes = false;
     rho = rhoHi;
     finalAst = rhoHi * b * h;
@@ -645,6 +677,10 @@ function designOneDirection(
     finalAst = rho * b * h;
     passes = true;
 
+    const cap = phiPnMaxTied(b, h, fc, fy, finalAst);
+    st.push(
+      `Tope axial (CIRSOC 201-05 Art. 10.3.6.2): φ·P_n,máx = 0.80·φ·[0.85·f'c·(A_g − A_st) + f_y·A_st] = 0.80·0.65·[0.85·${fc}·(${f2(b * h)} − ${f2(finalAst)}) + ${fy}·${f2(finalAst)}]·0.1 = ${f2(cap)} kN ≥ P_u = ${f2(Pu)} kN ✓`,
+    );
     st.push(
       `ρ encontrada = ${(rho * 100).toFixed(2)}% → A_st = ${f2(finalAst)} cm²`,
     );
