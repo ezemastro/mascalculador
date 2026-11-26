@@ -1,6 +1,6 @@
 // Módulo admin "Cabezal sobre pilotes": diseño por bielas y tirantes del
 // cabezal apoyado en 2 o 3 pilotes (rectangular, 3 en línea o triangular).
-// Complementa al módulo "Vigas de fundación para cabezales", que dimensiona
+// Complementa al módulo "Viga de fundación", que dimensiona
 // sólo la viga. Los guardados usan el tipo propio "pilecap".
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";

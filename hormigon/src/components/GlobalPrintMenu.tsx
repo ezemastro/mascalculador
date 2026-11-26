@@ -45,7 +45,7 @@ export const PRINT_ITEMS: { kind: PrintKind; label: string; hint: string }[] = [
   {
     kind: "vf-cabezales",
     label: "Vigas de fundación",
-    hint: "Planilla de vigas de fundación para cabezales",
+    hint: "Planilla de vigas de fundación",
   },
   {
     kind: "cabezales",

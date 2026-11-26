@@ -161,7 +161,7 @@ function NavBar({
             to="/cabezales"
             className="text-sm text-text-muted hover:text-text"
           >
-            Vigas de fundación para cabezales
+            Viga de fundación
           </Link>
           <Link
             to="/cabezal-pilotes"

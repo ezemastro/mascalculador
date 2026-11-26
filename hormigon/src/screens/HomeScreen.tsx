@@ -118,7 +118,7 @@ const CALC_MODULES: ModuleDef[] = [
   },
   {
     to: "/cabezales",
-    name: "Vigas de fundación para cabezales",
+    name: "Viga de fundación",
     description: "Vigas de fundación sobre pilotes",
     icon: ICONS.vfCabezales,
   },

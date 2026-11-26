@@ -1,4 +1,4 @@
-// Módulo admin "Vigas de fundación para cabezales".
+// Módulo admin "Viga de fundación".
 //
 // Dimensiona SÓLO la viga de fundación (misma formulación que la viga de una
 // base medianera: Ru = Pu·e/(Lcol − e), diagrama, As y estribos). El cabezal
@@ -485,7 +485,7 @@ export default function CabezalForm() {
     <MainLayout>
       <div className="flex flex-col gap-6">
         <ScreenHeader
-          title="Vigas de fundación para cabezales"
+          title="Viga de fundación"
           subtitle={
             <>
               <span>CIRSOC 201 · Hormigón armado</span>

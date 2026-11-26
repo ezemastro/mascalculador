@@ -1366,7 +1366,7 @@ export function buildCabezalVigaSheet(sources: SavedBeam[]): PlanillaSheet {
     }
   }
   return {
-    title: "PLANILLA DE VIGAS DE FUNDACIÓN PARA CABEZALES — H° A°",
+    title: "PLANILLA DE VIGAS DE FUNDACIÓN — H° A°",
     subtitle: "Memoria de cálculo",
     columns: CABEZAL_VIGA_COLUMNS,
     rows,
