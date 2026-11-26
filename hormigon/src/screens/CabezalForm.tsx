@@ -53,8 +53,11 @@ function getSavedColumns(): Array<{
         name: s.name,
         PD: typeof d.PD === "number" ? d.PD : 0,
         PL: typeof d.PL === "number" ? d.PL : 0,
-        cx: typeof d.cx === "number" ? d.cx : 0,
-        cy: typeof d.cy === "number" ? d.cy : 0,
+        // Las columnas se guardan con Cx/Cy (mayúscula); cx/cy por compatibilidad.
+        cx:
+          typeof d.Cx === "number" ? d.Cx : typeof d.cx === "number" ? d.cx : 0,
+        cy:
+          typeof d.Cy === "number" ? d.Cy : typeof d.cy === "number" ? d.cy : 0,
       };
     });
 }
@@ -344,8 +347,9 @@ export default function CabezalForm() {
     if (!col) return;
     setState((prev) => ({
       ...prev,
+      // PL = 0 es un valor válido (columna sin sobrecarga).
       PD: col.PD || prev.PD,
-      PL: col.PL || prev.PL,
+      PL: col.PL,
       cx: col.cx || prev.cx,
       cy: col.cy || prev.cy,
     }));
@@ -621,8 +625,7 @@ export default function CabezalForm() {
                     </option>
                     {savedColumns.map((c) => (
                       <option key={c.id} value={c.id}>
-                        {c.name} — P<sub>D</sub>={c.PD.toFixed(2)}, P
-                        <sub>L</sub>={c.PL.toFixed(2)} kN, {c.cx}×{c.cy} cm
+                        {`${c.name} — PD=${c.PD.toFixed(2)}, PL=${c.PL.toFixed(2)} kN, ${c.cx}×${c.cy} cm`}
                       </option>
                     ))}
                   </select>
@@ -941,7 +944,8 @@ export default function CabezalForm() {
               </dl>
               <p className="mt-3 text-[11px] leading-snug text-text-muted">
                 Sólo se dimensiona la viga de fundación. El cabezal sobre
-                pilotes queda para una próxima etapa.
+                pilotes (con la reacción P<sub>u</sub> + R<sub>u</sub>) se
+                calcula en el módulo Cabezales.
               </p>
             </div>
             <button

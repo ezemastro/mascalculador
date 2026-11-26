@@ -748,9 +748,7 @@ function designCentrada(input: BaseInput, quOverride?: number): BaseResult {
   st.push(
     `   b0 = ${punch.b0Expr} = ${f1(punch.b0)} cm (lados ${f1(punch.ax)} × ${f1(punch.ay)} cm)`,
   );
-  st.push(
-    `   A0 = ${f1(punch.ax)}·${f1(punch.ay)} = ${f1(punch.A0)} cm²`,
-  );
+  st.push(`   A0 = ${f1(punch.ax)}·${f1(punch.ay)} = ${f1(punch.A0)} cm²`);
   st.push(
     `   β = ${f1(punch.beta)}, Y = ${Y}, αs = ${alphaS}, F1 = ${f1(punch.F1)}, F2 = ${f1(punch.F2)} → F = ${f1(punch.F)}`,
   );
@@ -1397,7 +1395,7 @@ export interface CabezalVigaInput {
 /**
  * Módulo admin de cabezales: dimensiona SÓLO la viga de fundación con la
  * geometría en planta provista por el usuario. El cabezal en sí (pilotes,
- * punzonado, flexión) queda pendiente para una próxima etapa.
+ * punzonado, flexión) se dimensiona en el módulo Cabezales.
  */
 export function designVigaCabezal(input: CabezalVigaInput): BaseResult {
   if (!(input.Lx > 0) || !(input.Ly > 0)) {
@@ -1451,7 +1449,7 @@ export function designVigaCabezal(input: CabezalVigaInput): BaseResult {
     "Esquema cerrado: la viga equilibra el momento de la columna medianera y re-centra la resultante.",
   );
   st.push(
-    "Dimensionado del cabezal (pilotes, punzonado, flexión): pendiente para una próxima etapa.",
+    "El cabezal (pilotes, punzonado, flexión) se dimensiona en el módulo Cabezales con la reacción Pu + Ru.",
   );
   st.push("");
 
