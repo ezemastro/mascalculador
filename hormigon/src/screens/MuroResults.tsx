@@ -285,45 +285,96 @@ function StirrupEditor({
   );
 }
 
-/** Esquema en corte del muro + zapata (para interpretar estados y presiones). */
+/** Esquema en corte del muro + zapata (para interpretar estados y presiones).
+ *  Suelo retenido a la izquierda. Zapata centrada: tabique en el eje (talón
+ *  bajo el relleno + puntera). Zapata excéntrica / medianera: tabique en el
+ *  borde (eje medianero) y toda la zapata hacia la excavación. Con losa se
+ *  dibuja la losa superior; abajo, el diagrama de presiones del suelo. */
 function MuroSketch({ r, input }: { r: MuroResult; input: MuroInput }) {
   const H = r.H;
   const em = r.e_muro;
   const B = input.B_zap;
   const Hz = input.H_zap;
-  // Escala simple a px: 1 m ≈ 60 px (altura dibujable), con márgenes.
+  const medianera = input.tipo_zapata === "excentrica";
+  const conLosa = input.con_losa !== false;
+  // Escala única (1 m ≈ 60 px) para que las proporciones sean reales.
   const scale = 60;
-  const wM = Math.max(14, em * scale);
-  const wB = Math.max(70, B * scale);
+  const wM = Math.max(10, em * scale);
+  const wB = Math.max(wM + 20, B * scale);
   const hH = Math.max(40, H * scale);
-  const hZ = Math.max(20, Hz * scale);
-  const padX = 20;
-  const padY = 20;
-  const svgW = padX * 2 + wB;
-  const svgH = padY * 2 + hH + hZ;
-  const cx0 = padX + wB / 2 - wM / 2; // x del tabique (centrado)
-  const baseY = padY + hH; // arranque de la zapata
+  const hZ = Math.max(14, Hz * scale);
+  const soilW = 46; // franja de suelo retenido a la izquierda de la zapata
+  const losaW = 56; // tramo de losa dibujado
+  const hLosa = Math.max(6, input.e_losa * scale);
+  const padX = 12;
+  const padY = 22;
+  const presH = 34; // altura máxima del diagrama de presiones
+  const x0 = padX + soilW; // borde izquierdo de la zapata
+  const wallX = medianera ? x0 : x0 + wB / 2 - wM / 2;
+  const wallR = wallX + wM;
+  const svgW = Math.max(x0 + wB, wallR + (conLosa ? losaW : 96)) + padX + 4;
+  const baseY = padY + hH; // cara superior de la zapata
+  const botY = baseY + hZ; // apoyo de la zapata
+  const svgH = botY + presH + 30;
   const wallTop = padY;
+
+  // Diagrama de presiones (servicio). Con losa: uniforme. Sin losa: trapecio
+  // o triángulo según e (e > 0 → máximo del lado de la puntera, derecha).
+  const vuelca = r.sigma_max <= 0 && !conLosa;
+  const sMax = Math.max(r.sigma_max, 1e-9);
+  const hOf = (s: number) => (presH * Math.max(0, s)) / sMax;
+  let presPts = "";
+  if (!vuelca) {
+    const cont = Math.min(B, r.B_contacto || B) * scale;
+    const right = r.e0 >= 0;
+    const sL = right ? r.sigma_min : r.sigma_max;
+    const sR = right ? r.sigma_max : r.sigma_min;
+    if (cont >= wB - 0.5) {
+      presPts = `${x0},${botY} ${x0 + wB},${botY} ${x0 + wB},${botY + hOf(sR)} ${x0},${botY + hOf(sL)}`;
+    } else if (right) {
+      const xs = x0 + wB - cont;
+      presPts = `${xs},${botY} ${x0 + wB},${botY} ${x0 + wB},${botY + presH}`;
+    } else {
+      const xe = x0 + cont;
+      presPts = `${x0},${botY} ${xe},${botY} ${x0},${botY + presH}`;
+    }
+  }
+
   return (
     <svg
       width="100%"
       viewBox={`0 0 ${svgW} ${svgH}`}
-      className="mx-auto block max-w-[260px]"
+      className="mx-auto block max-w-[340px]"
       role="img"
       aria-label="Esquema en corte del muro y la zapata"
     >
-      {/* Suelo retenido (izquierda), sombreado */}
+      {/* Suelo retenido (izquierda del tabique, hasta la cara superior de la zapata) */}
       <rect
         x={padX}
         y={wallTop}
-        width={cx0 - padX}
-        height={hH + hZ}
+        width={wallX - padX}
+        height={hH}
         fill="var(--color-surface-alt, #1e293b)"
         opacity="0.35"
       />
-      {/* Zapata */}
+      {/* Suelo al costado de la zapata */}
       <rect
         x={padX}
+        y={baseY}
+        width={x0 - padX}
+        height={hZ}
+        fill="var(--color-surface-alt, #1e293b)"
+        opacity="0.35"
+      />
+      {/* Empuje activo (triángulo sobre la cara del suelo) */}
+      <polygon
+        points={`${wallX - 3},${wallTop + 4} ${wallX - 3},${baseY - 2} ${Math.max(padX + 2, wallX - 3 - 40)},${baseY - 2}`}
+        fill="var(--color-danger, #ef4444)"
+        opacity="0.22"
+      />
+      {/* Zapata */}
+      <rect
+        x={x0}
         y={baseY}
         width={wB}
         height={hZ}
@@ -333,7 +384,7 @@ function MuroSketch({ r, input }: { r: MuroResult; input: MuroInput }) {
       />
       {/* Tabique */}
       <rect
-        x={cx0}
+        x={wallX}
         y={wallTop}
         width={wM}
         height={hH}
@@ -341,42 +392,90 @@ function MuroSketch({ r, input }: { r: MuroResult; input: MuroInput }) {
         stroke="currentColor"
         strokeWidth="2"
       />
-      {/* Empuje activo (triángulo, izquierda) */}
-      <polygon
-        points={`${padX + 6},${wallTop + 4} ${padX + 6},${baseY - 2} ${cx0 - 4},${baseY - 2}`}
-        fill="var(--color-danger, #ef4444)"
-        opacity="0.18"
-      />
+      {/* Losa superior */}
+      {conLosa && (
+        <rect
+          x={wallR}
+          y={wallTop}
+          width={losaW}
+          height={hLosa}
+          fill="currentColor"
+          opacity="0.35"
+        />
+      )}
+      {!conLosa && (
+        <text x={wallR + 4} y={wallTop + 10} fontSize="9" fill="currentColor">
+          sin losa (voladizo)
+        </text>
+      )}
+      {/* Eje medianero */}
+      {medianera && (
+        <>
+          <line
+            x1={x0}
+            y1={wallTop - 14}
+            x2={x0}
+            y2={botY + presH + 6}
+            stroke="var(--color-warning, #f59e0b)"
+            strokeWidth="1"
+            strokeDasharray="5 3"
+          />
+          <text x={x0 + 3} y={wallTop - 5} fontSize="9" fill="currentColor">
+            eje medianero
+          </text>
+        </>
+      )}
       {/* Nivel freático */}
       {input.h_napa > 0 && input.H_zap + input.h_napa < input.H && (
         <line
           x1={padX}
           y1={baseY - input.h_napa * scale}
-          x2={cx0}
+          x2={wallX}
           y2={baseY - input.h_napa * scale}
           stroke="var(--color-primary, #2563eb)"
           strokeWidth="1"
           strokeDasharray="4 3"
         />
       )}
-      {/* Apuntalamiento (estado provisorio) */}
-      {r.z_strut > 0 && (
+      {/* Apuntalamiento (estado provisorio, solo con losa) */}
+      {conLosa && r.z_strut > 0 && (
         <line
-          x1={cx0 + wM / 2}
+          x1={wallR}
           y1={padY + r.z_strut * scale}
-          x2={cx0 + wM / 2 + 22}
+          x2={wallR + 22}
           y2={padY + r.z_strut * scale}
           stroke="var(--color-warning, #f59e0b)"
           strokeWidth="3"
         />
       )}
+      {/* Presiones del suelo */}
+      {presPts && (
+        <polygon
+          points={presPts}
+          fill="var(--color-primary, #2563eb)"
+          opacity="0.25"
+          stroke="var(--color-primary, #2563eb)"
+          strokeWidth="1"
+        />
+      )}
+      {vuelca && (
+        <text
+          x={x0 + wB / 2}
+          y={botY + 16}
+          fontSize="10"
+          textAnchor="middle"
+          fill="var(--color-danger, #ef4444)"
+        >
+          vuelca (e ≥ B/2)
+        </text>
+      )}
       {/* Cotas */}
-      <text x={padX} y={baseY + hZ + 14} fontSize="10" fill="currentColor">
-        B_zap {fmt(B, 2)} m
+      <text x={x0} y={svgH - 6} fontSize="10" fill="currentColor">
+        B_zap {fmt(B, 2)} m{!vuelca && ` · σmax ${fmt(r.sigma_max, 0)} kPa`}
       </text>
       <text
-        x={cx0 + wM + 4}
-        y={wallTop + hH / 2}
+        x={wallR + 4}
+        y={wallTop + hH * 0.78}
         fontSize="10"
         fill="currentColor"
       >
@@ -451,9 +550,13 @@ export default function MuroResults() {
 
   const r = result;
   const estadoLabel =
-    r.which === "definitivo"
-      ? "Definitivo (biapoyado)"
-      : "Provisorio (apuntalado)";
+    r.which === "voladizo"
+      ? "Voladizo (sin losa)"
+      : r.which === "definitivo"
+        ? "Definitivo (biapoyado)"
+        : "Provisorio (apuntalado)";
+  const conLosa = input.con_losa !== false;
+  const medianera = input.tipo_zapata === "excentrica";
 
   function handleSave() {
     const data = { input, result } as Record<string, unknown>;
@@ -566,7 +669,7 @@ export default function MuroResults() {
           />
           <DataCard
             label="V<sub>u</sub> gobernante"
-            value={`${fmt(1.6 * r.V_max_def, 1)}`}
+            value={`${fmt(r.Vu, 1)}`}
             sub="kN/m"
           />
           <DataCard
@@ -638,52 +741,80 @@ export default function MuroResults() {
       {/* Modelo estructural */}
       <section className="bg-surface rounded-xl border border-border p-5">
         <SectionHeading>Modelo estructural</SectionHeading>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {!conLosa ? (
           <div className="bg-surface-alt rounded-lg p-3">
             <span className="text-sm font-semibold text-text">
-              Definitivo — biapoyado
+              Sin losa — tabique en voladizo empotrado en la zapata
             </span>
             <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-text-muted">
               <span>Empuje W = {fmt(r.W_def, 1)} kN/m</span>
-              <span>R cabeza = {fmt(r.R_sup, 1)} kN/m</span>
-              <span>R base = {fmt(r.R_inf, 1)} kN/m</span>
               <span>
-                M<sub>max</sub> = {fmt(Math.abs(r.M_max_def), 1)} kN·m/m
+                M<sub>base</sub> = {fmt(r.M_volad, 1)} kN·m/m (cara suelo)
               </span>
               <span>
-                z M<sub>max</sub> = {fmt(r.z_M_max_def, 2)} m
+                V<sub>base</sub> = {fmt(r.W_def, 1)} kN/m
               </span>
               <span>
-                V<sub>max</sub> = {fmt(r.V_max_def, 1)} kN/m
+                M<sub>u</sub> = {fmt(r.M_u_suelo, 1)} kN·m/m
               </span>
             </div>
           </div>
-          <div className="bg-surface-alt rounded-lg p-3">
-            <span className="text-sm font-semibold text-text">
-              Provisorio — apuntalado
-            </span>
-            <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-text-muted">
-              <span>
-                z<sub>puntal</sub> = {fmt(r.z_strut, 2)} m
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="bg-surface-alt rounded-lg p-3">
+              <span className="text-sm font-semibold text-text">
+                Definitivo — biapoyado
               </span>
-              <span>
-                M<sub>cant</sub> = {fmt(Math.abs(r.M_cant), 1)} kN·m/m
+              <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-text-muted">
+                <span>Empuje W = {fmt(r.W_def, 1)} kN/m</span>
+                <span>R cabeza = {fmt(r.R_sup, 1)} kN/m</span>
+                <span>R base = {fmt(r.R_inf, 1)} kN/m</span>
+                <span>
+                  M<sub>max</sub> = {fmt(Math.abs(r.M_max_def), 1)} kN·m/m
+                </span>
+                <span>
+                  z M<sub>max</sub> = {fmt(r.z_M_max_def, 2)} m
+                </span>
+                <span>
+                  V<sub>max</sub> = {fmt(r.V_max_def, 1)} kN/m
+                </span>
+              </div>
+            </div>
+            <div className="bg-surface-alt rounded-lg p-3">
+              <span className="text-sm font-semibold text-text">
+                Provisorio — apuntalado
               </span>
-              <span>
-                R<sub>puntal</sub> = {fmt(r.R_strut, 1)} kN/m
-              </span>
-              <span>
-                R<sub>base</sub> = {fmt(r.R_base_lower, 1)} kN/m
-              </span>
-              <span>
-                M<sub>max</sub> = {fmt(Math.abs(r.M_max_prov), 1)} kN·m/m
-              </span>
-              <span>
-                V<sub>max</sub> = {fmt(r.V_max_prov, 1)} kN/m
-              </span>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-text-muted">
+                <span>
+                  z<sub>puntal</sub> = {fmt(r.z_strut, 2)} m
+                </span>
+                <span>
+                  M<sub>cant</sub> = {fmt(Math.abs(r.M_cant), 1)} kN·m/m
+                </span>
+                <span>
+                  R<sub>puntal</sub> = {fmt(r.R_strut, 1)} kN/m
+                </span>
+                <span>
+                  R<sub>base</sub> = {fmt(r.R_base_lower, 1)} kN/m
+                </span>
+                <span>
+                  M<sub>max</sub> = {fmt(Math.abs(r.M_max_prov), 1)} kN·m/m
+                </span>
+                <span>
+                  V<sub>max</sub> = {fmt(r.V_max_prov, 1)} kN/m
+                </span>
+              </div>
             </div>
           </div>
-        </div>
+        )}
+        {conLosa && medianera && r.M_u_nudo > 0 && (
+          <p className="text-xs text-text-muted mt-3">
+            Medianera con losa: el momento de la puntera M<sub>u,nudo</sub> ={" "}
+            {fmt(r.M_u_nudo, 1)} kN·m/m pasa al pie del tabique (cara del suelo)
+            y la cupla losa/base T = {fmt(r.T_losa, 1)} kN/m (servicio) centra
+            la presión sobre el suelo.
+          </p>
+        )}
       </section>
 
       {/* Verificaciones */}
@@ -710,7 +841,7 @@ export default function MuroResults() {
         <SectionHeading>Armadura del tabique</SectionHeading>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <BarEditor
-            title="Vertical interior"
+            title="Vertical cara del suelo"
             grupo="vertInt"
             result={r.vertInt}
             asReq={r.As_req}
@@ -718,7 +849,7 @@ export default function MuroResults() {
             setInput={setInput}
           />
           <BarEditor
-            title="Vertical exterior (cara libre)"
+            title="Vertical cara libre (excavación)"
             grupo="vertExt"
             result={r.vertExt}
             asReq={r.As_ext}
@@ -726,7 +857,7 @@ export default function MuroResults() {
             setInput={setInput}
           />
           <BarEditor
-            title="Horizontal interior (cara suelo)"
+            title="Horizontal cara del suelo"
             grupo="horizInt"
             result={r.horizInt}
             asReq={0.0018 * 100 * (input.e_muro * 100)}
@@ -734,7 +865,7 @@ export default function MuroResults() {
             setInput={setInput}
           />
           <BarEditor
-            title="Horizontal exterior (cara libre)"
+            title="Horizontal cara libre (excavación)"
             grupo="horizExt"
             result={r.horizExt}
             asReq={0.0018 * 100 * (input.e_muro * 100)}
@@ -744,9 +875,11 @@ export default function MuroResults() {
         </div>
         <p className="text-xs text-text-muted mt-3">
           Tabique: d = {fmt(r.e_muro * 100, 1)} − {fmt(input.rec_muro / 10, 1)}{" "}
-          ={fmt(r.d_cm, 1)} cm. Vertical exterior = máx(As<sub>mín</sub>, 0.5·As
-          <sub>int</sub>). Horizontales por cara: mínimo de retracción 0.18% (ρ
-          = 0.0018·b·e) por cara, s ≤ 45 cm.
+          ={fmt(r.d_cm, 1)} cm. Cada cara vertical se arma con su propio momento
+          (cara suelo M<sub>u</sub> = {fmt(r.M_u_suelo, 1)}, cara libre M
+          <sub>u</sub> = {fmt(r.M_u_libre, 1)} kN·m/m), con As
+          <sub>mín</sub> como piso. Horizontales por cara: mínimo de retracción
+          0.18% (ρ = 0.0018·b·e) por cara, s ≤ 45 cm.
         </p>
       </section>
 
@@ -783,7 +916,8 @@ export default function MuroResults() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <DataCard
             label="Tipo"
-            value={input.tipo_zapata === "centrada" ? "Centrada" : "Excéntrica"}
+            value={medianera ? "Medianera" : "Centrada"}
+            sub={conLosa ? "con losa superior" : "sin losa (voladizo)"}
           />
           <DataCard
             label="B × H<sub>zap</sub>"
@@ -797,23 +931,50 @@ export default function MuroResults() {
             sub="kPa"
           />
           <DataCard
-            label={
-              input.tipo_zapata === "centrada"
-                ? "σ<sub>centrada</sub>"
-                : "σ<sub>max</sub> exc."
+            label={conLosa ? "σ uniforme" : "σ<sub>max</sub> suelo"}
+            value={
+              !conLosa && r.sigma_max <= 0 ? "vuelca" : `${fmt(r.sigma_max, 0)}`
             }
-            value={`${fmt(r.sigma_max, 0)}`}
             sub={
               <span>
-                {input.tipo_zapata === "centrada"
-                  ? "kPa"
+                {conLosa
+                  ? `≤ ${fmt(r.sigma_adm_kPa, 0)} kPa`
                   : `≤ ${fmt(1.25 * r.sigma_adm_kPa, 0)} kPa`}{" "}
                 <Badge ok={r.sigmaOK} />
               </span>
             }
           />
+          {!conLosa && (
+            <DataCard
+              label="e / B<sub>apoyado</sub>"
+              value={`${fmt(Math.abs(r.e0), 2)} / ${fmt(r.B_contacto, 2)}`}
+              sub={
+                Math.abs(r.e0) > input.B_zap / 6
+                  ? "m · e > B/6 (triángulo)"
+                  : "m · e ≤ B/6"
+              }
+            />
+          )}
+          {!conLosa && (
+            <DataCard
+              label="FS vuelco / deslizamiento"
+              value={`${fmt(r.FS_vuelco, 2)} / ${fmt(r.FS_desl, 2)}`}
+              sub={
+                <span>
+                  ≥ 1.5 <Badge ok={r.FS_vuelco >= 1.5 && r.FS_desl >= 1.5} />
+                </span>
+              }
+            />
+          )}
+          {conLosa && r.T_losa > 0.005 && (
+            <DataCard
+              label="T losa/base"
+              value={`${fmt(r.T_losa, 1)}`}
+              sub="kN/m (cupla que centra la presión)"
+            />
+          )}
           <DataCard
-            label="P<sub>serv</sub>"
+            label="N servicio"
             value={`${fmt(r.P_serv, 1)}`}
             sub="kN/m"
           />

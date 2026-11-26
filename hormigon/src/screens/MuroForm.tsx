@@ -104,6 +104,7 @@ const initialState: MuroFormState = {
   H_zap: 0.5,
   rec_zap: 50,
   tipo_zapata: "centrada",
+  con_losa: true,
 };
 
 const NUM_FIELDS = [
@@ -208,6 +209,8 @@ export default function MuroForm() {
       if (f.tipo_zapata === "centrada" || f.tipo_zapata === "excentrica") {
         next.tipo_zapata = f.tipo_zapata;
       }
+      // Guardados anteriores no tienen el campo: se asume con losa.
+      next.con_losa = f.con_losa === false ? false : true;
       // Adopción manual de armaduras: debe copiarse o el override se pierde al
       // recargar un save desde el formulario.
       if (f.adopcion && typeof f.adopcion === "object") {
@@ -368,7 +371,7 @@ export default function MuroForm() {
                     H<sub>puntal</sub> — apuntalamiento (m)
                   </>
                 }
-                hint="desde la base; estado provisorio"
+                hint="desde la base; estado provisorio (solo con losa)"
               >
                 <input
                   type="number"
@@ -612,12 +615,37 @@ export default function MuroForm() {
             </div>
           </Section>
 
-          {/* ── Cargas de la losa vinculada ─────────────────── */}
+          {/* ── Losa superior ────────────────────────────────── */}
           <Section
-            title="Cargas de la losa vinculada"
-            hint="la losa empuja la cabeza del muro (estado definitivo)"
+            title="Losa superior"
+            hint={
+              state.con_losa === false
+                ? "sin losa: el tabique trabaja en voladizo empotrado en la zapata (se verifica vuelco y deslizamiento)"
+                : "la losa arriostra la cabeza del muro (estado definitivo biapoyado)"
+            }
           >
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Field label="¿Lleva losa superior?">
+                <select
+                  value={state.con_losa === false ? "no" : "si"}
+                  onChange={(e) =>
+                    setState((prev) => ({
+                      ...prev,
+                      con_losa: e.target.value === "si",
+                    }))
+                  }
+                >
+                  <option value="si">
+                    Sí — cabeza arriostrada por la losa
+                  </option>
+                  <option value="no">No — tabique en voladizo</option>
+                </select>
+              </Field>
+            </div>
+            <fieldset
+              disabled={state.con_losa === false}
+              className={`mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 ${state.con_losa === false ? "opacity-50" : ""}`}
+            >
               <Field
                 label={
                   <>
@@ -685,7 +713,7 @@ export default function MuroForm() {
                   }
                 />
               </Field>
-            </div>
+            </fieldset>
           </Section>
 
           {/* ── Zapata ──────────────────────────────────────── */}
@@ -762,8 +790,10 @@ export default function MuroForm() {
                     }))
                   }
                 >
-                  <option value="centrada">Centrada</option>
-                  <option value="excentrica">Excéntrica</option>
+                  <option value="centrada">Centrada (tabique en el eje)</option>
+                  <option value="excentrica">
+                    Excéntrica / medianera (tabique en el borde)
+                  </option>
                 </select>
               </Field>
             </div>

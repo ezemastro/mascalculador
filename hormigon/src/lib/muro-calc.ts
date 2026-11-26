@@ -60,7 +60,11 @@ export interface MuroInput {
   B_zap: number; // m
   H_zap: number; // m
   rec_zap: number; // mm — recubrimiento de la zapata
-  tipo_zapata: MuroTipoZapata;
+  tipo_zapata: MuroTipoZapata; // centrada | excentrica (= medianera: tabique en el borde)
+  // ¿Hay losa superior que arriostra la cabeza del muro? (default true)
+  //   true  → tabique biapoyado (losa + zapata) y estado provisorio apuntalado.
+  //   false → tabique en voladizo empotrado en la zapata (sin puntal).
+  con_losa?: boolean;
   // E. Adopción manual de armaduras (override dentro del input del motor).
   // Si un grupo está presente, el motor sobreescribe la selección automática
   // con ese Ø/separación y recalcula As provisto, verificaciones y cómputo.
@@ -137,8 +141,15 @@ export interface MuroResult {
   M_max_prov: number; // kN·m/m
   z_M_max_prov: number; // m desde coronamiento
   V_max_prov: number; // kN/m
+  // Sin losa: voladizo
+  con_losa: boolean;
+  M_volad: number; // kN·m/m — momento de servicio en la base del voladizo (0 con losa)
+  // Momentos últimos por cara del tabique
+  M_u_suelo: number; // kN·m/m — tracción en la cara del suelo
+  M_u_libre: number; // kN·m/m — tracción en la cara libre (excavación)
+  M_u_nudo: number; // kN·m/m — momento del nudo tabique-zapata (medianera con losa)
   // Gobernante
-  which: "definitivo" | "provisorio";
+  which: "definitivo" | "provisorio" | "voladizo";
   M_gov: number; // kN·m/m (servicio)
   M_u_gov: number; // kN·m/m (último)
   z_M_gov: number; // m desde coronamiento
@@ -150,8 +161,8 @@ export interface MuroResult {
   omega: number;
   As_cal: number; // cm²/m
   As_min: number; // cm²/m
-  As_req: number; // cm²/m
-  As_ext: number; // cm²/m — vertical exterior
+  As_req: number; // cm²/m — vertical cara del suelo (vertInt)
+  As_ext: number; // cm²/m — vertical cara libre (vertExt)
   vertInt: MuroBarSelection;
   vertExt: MuroBarSelection;
   horizInt: MuroBarSelection; // horizontal interior (cara del suelo)
@@ -162,13 +173,21 @@ export interface MuroResult {
   shearRatio: number;
   shearOK: boolean;
   // Zapata
-  P_serv: number; // kN/m
-  M_base: number; // kN·m/m (servicio)
+  P_serv: number; // kN/m — carga vertical total de servicio sobre el suelo
+  M_base: number; // kN·m/m — momento de servicio respecto del centro de la base
   sigma_adm_kPa: number;
-  sigma_cent: number; // kPa (centrada)
-  e0: number; // m (excéntrica)
+  sigma_cent: number; // kPa — N/B (presión media)
+  e0: number; // m — excentricidad de la resultante (+ hacia la puntera)
   sigma_max: number; // kPa
+  sigma_min: number; // kPa
+  B_contacto: number; // m — ancho apoyado (< B si e > B/6)
   sigmaOK: boolean;
+  x_muro: number; // m — eje del tabique medido desde el borde del lado del suelo
+  PP_zap: number; // kN/m
+  W_relleno: number; // kN/m — suelo sobre el talón (zapata centrada)
+  T_losa: number; // kN/m — fuerza de la cupla losa/base que centra la presión (con losa)
+  FS_vuelco: number; // sin losa (0 si no aplica)
+  FS_desl: number; // sin losa (0 si no aplica)
   vuelo: number; // m
   rigidOK: boolean;
   q_u: number; // kPa — presión mayorada en el vuelo
@@ -455,7 +474,12 @@ function staticsProvisorio(
   H: number,
   z_strut: number,
   N = 400,
-): Statics & { R_strut: number; R_base_lower: number; M_cant: number } {
+): Statics & {
+  R_strut: number;
+  R_base_lower: number;
+  M_cant: number;
+  M_low: number;
+} {
   const loads: Array<[number, number]> = [];
   for (let i = 0; i <= N; i++) {
     const z = (i / N) * H;
@@ -528,7 +552,65 @@ function staticsProvisorio(
     R_strut: T_up,
     R_base_lower,
     M_cant,
+    M_low: Math.abs(Mmax_low),
   };
+}
+
+/** Sin losa superior: voladizo empotrado en la zapata (z = H) y libre arriba.
+ *  Devuelve el empuje total W (= corte en la base) y el momento en la base
+ *  M_base = ∫ p(z)·(H − z) dz (tracción en la cara del suelo). */
+function staticsVoladizo(
+  pNet: (z: number) => number,
+  H: number,
+  N = 400,
+): { W: number; M_base: number } {
+  const dz = H / N;
+  let W = 0;
+  let M_base = 0;
+  for (let i = 0; i < N; i++) {
+    const za = i * dz;
+    const zb = za + dz;
+    const w = (pNet(za) + pNet(zb)) / 2;
+    W += w * dz;
+    M_base += w * dz * (H - (za + zb) / 2);
+  }
+  return { W, M_base };
+}
+
+/** Presión del suelo bajo una zapata corrida (por metro) con carga N y
+ *  momento M respecto del centro de la base.
+ *  - |e| ≤ B/6: distribución trapecial σ = N/B·(1 ± 6e/B).
+ *  - B/6 < |e| < B/2: la zapata se despega; distribución triangular sobre el
+ *    ancho apoyado B' = 3·(B/2 − |e|) → σmax = 2N/B', σmin = 0.
+ *  - |e| ≥ B/2: la resultante cae fuera de la base (vuelca). */
+export function soilPressure(
+  N: number,
+  M: number,
+  B: number,
+): {
+  e: number;
+  smax: number;
+  smin: number;
+  contacto: number;
+  vuelca: boolean;
+} {
+  const e = N > 0 ? M / N : 0;
+  const ea = Math.abs(e);
+  if (N <= 0) return { e, smax: 0, smin: 0, contacto: B, vuelca: false };
+  if (ea <= B / 6 + 1e-12) {
+    return {
+      e,
+      smax: (N / B) * (1 + (6 * ea) / B),
+      smin: (N / B) * (1 - (6 * ea) / B),
+      contacto: B,
+      vuelca: false,
+    };
+  }
+  if (ea < B / 2) {
+    const contacto = 3 * (B / 2 - ea);
+    return { e, smax: (2 * N) / contacto, smin: 0, contacto, vuelca: false };
+  }
+  return { e, smax: Infinity, smin: 0, contacto: 0, vuelca: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -619,104 +701,344 @@ export function designMuro(input: MuroInput): MuroResult {
     `   p_net: z=0 → ${f2(p_net_0)} · z=z0 (${f2(z0)} m) → ${f2(p_net_z0)} · z=z_wt (${f2(z_wt)} m) → ${f2(p_net_wt)} · z=H → ${f2(p_net_base)} kN/m²`,
   );
 
-  // ── 2. Estática estado definitivo ──
-  st.push("");
+  // ── Configuración: losa superior y tipo de zapata ──
+  const conLosa = input.con_losa !== false;
+  const medianera = input.tipo_zapata === "excentrica";
+  const b = 100; // cm — ancho de diseño por metro
+  const B = input.B_zap;
+  const H_z = input.H_zap;
   st.push(
-    "2. Estado definitivo — muro biapoyado (cabeza en losa, base en zapata)",
-  );
-  const def = staticsDefinitivo(pm.pNet, H);
-  st.push(
-    `   Empuje W = ${f2(def.W)} kN/m · R_cabeza = ${f2(def.R_sup)} kN/m · R_base = ${f2(def.R_inf)} kN/m`,
-  );
-  st.push(
-    `   M_max = ${f2(Math.abs(def.Mmax))} kN·m/m en z = ${f2(def.zMmax)} m · V_max = ${f2(def.Vmax)} kN/m`,
+    `Configuración: ${conLosa ? "CON losa superior (cabeza arriostrada)" : "SIN losa superior (tabique en voladizo)"} · zapata ${medianera ? "excéntrica / medianera (tabique en el borde, puntera hacia la excavación)" : "centrada (tabique en el eje)"}`,
   );
 
-  // ── 3. Estado provisorio ──
+  // ── 2/3. Estática del tabique ──
+  let def: Statics;
+  let prov: ReturnType<typeof staticsProvisorio>;
+  let z_strut = 0;
+  let M_volad = 0;
   st.push("");
-  st.push(
-    "3. Estado provisorio — muro apuntalado a H_puntal con pie en zapata",
-  );
-  let z_strut = H - input.H_puntal;
-  z_strut = Math.max(0.05 * H, Math.min(0.95 * H, z_strut));
-  st.push(
-    `   Modelo: voladizo libre superior 0..z_strut empotrado en el puntal + tramo inferior z_strut..H apoyado en puntal y pie.`,
-  );
-  const prov = staticsProvisorio(pm.pNet, H, z_strut);
-  st.push(
-    `   Voladizo superior: T_puntal = ${f2(prov.R_strut)} kN/m · M_cant(en puntal) = ${f2(Math.abs(prov.M_cant))} kN·m/m`,
-  );
-  st.push(
-    `   Tramo inferior: R_puntal = ${f2(prov.R_strut)} kN/m · R_pie = ${f2(prov.R_base_lower)} kN/m · M_max = ${f2(Math.abs(prov.Mmax))} kN·m/m en z = ${f2(prov.zMmax)} m`,
-  );
+  if (conLosa) {
+    st.push(
+      "2. Estado definitivo — muro biapoyado (cabeza en losa, base en zapata)",
+    );
+    def = staticsDefinitivo(pm.pNet, H);
+    st.push(
+      `   Empuje W = ${f2(def.W)} kN/m · R_cabeza = ${f2(def.R_sup)} kN/m · R_base = ${f2(def.R_inf)} kN/m`,
+    );
+    st.push(
+      `   M_max = ${f2(Math.abs(def.Mmax))} kN·m/m en z = ${f2(def.zMmax)} m (tracción en la cara libre) · V_max = ${f2(def.Vmax)} kN/m`,
+    );
 
-  // ── 4. Gobernante ──
-  const M_def_abs = Math.abs(def.Mmax);
-  const M_prov_abs = Math.abs(prov.Mmax);
-  const which: "definitivo" | "provisorio" =
-    M_prov_abs > M_def_abs ? "provisorio" : "definitivo";
-  const M_gov = which === "definitivo" ? M_def_abs : M_prov_abs;
-  const z_M_gov = which === "definitivo" ? def.zMmax : prov.zMmax;
-  const V_gov = which === "definitivo" ? def.Vmax : prov.Vmax;
-  const M_u_gov = 1.6 * M_gov;
-  st.push("");
-  st.push(
-    `4. Momento gobernante: estado ${which} · M_s = ${f2(M_gov)} kN·m/m (z = ${f2(z_M_gov)} m) → M_u = 1.6·M_s = ${f2(M_u_gov)} kN·m/m`,
-  );
+    st.push("");
+    st.push(
+      "3. Estado provisorio — muro apuntalado a H_puntal con pie en zapata",
+    );
+    z_strut = H - input.H_puntal;
+    z_strut = Math.max(0.05 * H, Math.min(0.95 * H, z_strut));
+    st.push(
+      `   Modelo: voladizo libre superior 0..z_strut empotrado en el puntal + tramo inferior z_strut..H apoyado en puntal y pie.`,
+    );
+    prov = staticsProvisorio(pm.pNet, H, z_strut);
+    st.push(
+      `   Voladizo superior: T_puntal = ${f2(prov.R_strut)} kN/m · M_cant(en puntal) = ${f2(Math.abs(prov.M_cant))} kN·m/m (tracción en la cara del suelo)`,
+    );
+    st.push(
+      `   Tramo inferior: R_puntal = ${f2(prov.R_strut)} kN/m · R_pie = ${f2(prov.R_base_lower)} kN/m · M_max = ${f2(prov.M_low)} kN·m/m (tracción en la cara libre)`,
+    );
+  } else {
+    st.push(
+      "2. Sin losa superior — tabique en voladizo empotrado en la zapata",
+    );
+    const vol = staticsVoladizo(pm.pNet, H);
+    M_volad = vol.M_base;
+    def = {
+      W: vol.W,
+      R_sup: 0,
+      R_inf: vol.W,
+      Mmax: vol.M_base,
+      zMmax: H,
+      Vmax: vol.W,
+    };
+    prov = {
+      W: 0,
+      R_sup: 0,
+      R_inf: 0,
+      Mmax: 0,
+      zMmax: 0,
+      Vmax: 0,
+      R_strut: 0,
+      R_base_lower: 0,
+      M_cant: 0,
+      M_low: 0,
+    };
+    st.push(`   Empuje W = ∫p·dz = ${f2(vol.W)} kN/m (= corte en la base)`);
+    st.push(
+      `   M_base = ∫p·(H − z)·dz = ${f2(vol.M_base)} kN·m/m (tracción en la cara del suelo)`,
+    );
+    st.push("");
+    st.push(
+      "3. Estado provisorio — no aplica (sin losa el voladizo ya es el estado definitivo)",
+    );
+  }
 
-  // ── 5. Cargas axiales (Pu por metro) ──
+  // ── 4. Cargas verticales ──
   st.push("");
-  st.push("5. Compresión axial de servicio/última (por metro lineal)");
+  st.push("4. Cargas verticales por metro lineal");
   const PP_muro = gammaC * e_muro * H; // kN/m
   const PP_losa = gammaC * input.e_losa; // kN/m²
+  const D_losa = conLosa ? (PP_losa + input.CM_losa) * input.ancho_inf : 0;
+  const L_losa_m = conLosa ? input.L_losa * input.ancho_inf : 0;
   st.push(
     `   PP_muro = γc·e_muro·H = ${f2(gammaC)}·${f2(e_muro)}·${f2(H)} = ${f2(PP_muro)} kN/m`,
   );
+  if (conLosa) {
+    st.push(
+      `   Losa: D = (γc·e_losa + CM)·ancho_inf = (${f2(PP_losa)} + ${f2(input.CM_losa)})·${f2(input.ancho_inf)} = ${f2(D_losa)} kN/m · L = ${f2(input.L_losa)}·${f2(input.ancho_inf)} = ${f2(L_losa_m)} kN/m`,
+    );
+  } else {
+    st.push("   Sin losa: no hay carga de losa sobre el tabique.");
+  }
+  const Pu = 1.2 * (PP_muro + D_losa) + 1.6 * L_losa_m;
   st.push(
-    `   PP_losa = γc·e_losa = ${f2(gammaC)}·${f2(input.e_losa)} = ${f2(PP_losa)} kN/m²`,
-  );
-  const Pu =
-    1.2 * (PP_muro + (PP_losa + input.CM_losa) * input.ancho_inf) +
-    1.6 * (input.L_losa * input.ancho_inf);
-  st.push(
-    `   Pu = 1.2·(PP_muro + (PP_losa+CM_losa)·ancho_inf) + 1.6·(L_losa·ancho_inf) = ${f2(Pu)} kN/m`,
+    `   Pu (tabique) = 1.2·(PP_muro + D_losa) + 1.6·L_losa = ${f2(Pu)} kN/m`,
   );
 
-  // ── 6. Dimensionamiento del tabique ──
+  // ── 5. Zapata: presiones sobre el suelo y estabilidad ──
   st.push("");
-  st.push("6. Dimensionamiento del tabique (flexión + compresión, b = 100 cm)");
-  const b = 100; // cm — ancho de diseño por metro
-  const Mu_kNcm = M_u_gov * 100; // kN·cm/m
-  const mn = Mu_kNcm / (PHI_B * 0.85 * fcKNcm2 * b * d_cm * d_cm);
-  let omega = omegaFromMn(mn);
+  st.push("5. Zapata corrida — presiones sobre el suelo");
+  const sigma_adm_MPa =
+    input.sigma_adm_unit === "kg/cm2"
+      ? input.sigma_adm_suelo * 0.098
+      : input.sigma_adm_suelo;
+  const sigma_adm_kPa = sigma_adm_MPa * 1000;
   st.push(
-    `   m_n = M_u/(φb·0.85·f'c·b·d²) = ${f1(Mu_kNcm)}/(${PHI_B}·0.85·${f2(fcKNcm2)}·${b}·${f2(d_cm)}²) = ${f4(mn)}`,
+    `   σ_adm suelo = ${f2(input.sigma_adm_suelo)} ${input.sigma_adm_unit} = ${f2(sigma_adm_kPa)} kPa`,
   );
-  if (mn > 0.32 || omega >= 1 || !Number.isFinite(omega)) {
-    errors.push(
-      "Sección insuficiente para el momento de diseño: aumentá e_muro (o fc).",
+  // x se mide desde el borde de la zapata del lado del suelo retenido.
+  const heel = medianera ? 0 : (B - e_muro) / 2; // talón (bajo el relleno)
+  const vuelo = medianera ? B - e_muro : (B - e_muro) / 2; // puntera
+  const x_muro = medianera ? e_muro / 2 : B / 2;
+  const PP_zap = gammaC * B * H_z;
+  const W_relleno = input.gamma * H * heel;
+  const P_muro_D = PP_muro + D_losa;
+  const P_muro_L = L_losa_m;
+  const P_serv = P_muro_D + P_muro_L + PP_zap + W_relleno;
+  st.push(
+    `   Tabique a x = ${f2(x_muro)} m del borde del lado del suelo · talón = ${f2(heel)} m · puntera (vuelo) = ${f2(vuelo)} m`,
+  );
+  st.push(
+    `   N = P_tabique (${f2(P_muro_D + P_muro_L)}) + PP_zap γc·B·H_zap (${f2(PP_zap)})${heel > 0 ? ` + relleno sobre talón γ·H·talón (${f2(W_relleno)})` : ""} = ${f2(P_serv)} kN/m`,
+  );
+  // Momento de las cargas verticales respecto del centro de la base
+  // (positivo = la resultante se corre hacia la puntera / excavación).
+  const M_V =
+    (P_muro_D + P_muro_L) * (x_muro - B / 2) + W_relleno * (heel / 2 - B / 2);
+  // Empuje: con losa lo toman la losa y la base; sin losa vuelca la zapata.
+  const M_E = conLosa ? 0 : M_volad + def.W * H_z;
+  let pres: ReturnType<typeof soilPressure>;
+  let sigmaOK: boolean;
+  let T_losa = 0;
+  let FS_vuelco = 0;
+  let FS_desl = 0;
+  const sigma_cent = P_serv / B;
+  if (conLosa) {
+    pres = soilPressure(P_serv, 0, B);
+    T_losa = Math.abs(M_V) / (H + H_z);
+    sigmaOK = pres.smax <= sigma_adm_kPa;
+    st.push(
+      `   Con losa: la losa y la base forman una cupla que centra la reacción → presión uniforme σ = N/B = ${f2(P_serv)}/${f2(B)} = ${f2(pres.smax)} kPa ≤ ${f2(sigma_adm_kPa)} kPa ${sigmaOK ? "✓" : "✗"}`,
     );
-    omega = Math.min(omega, 1);
+    if (T_losa > 0.005)
+      st.push(
+        `   Excentricidad de las cargas M_V = ${f2(M_V)} kN·m/m → T = |M_V|/(H + H_zap) = ${f2(Math.abs(M_V))}/${f2(H + H_z)} = ${f2(T_losa)} kN/m (fuerza horizontal adicional a tomar por la losa y por la base)`,
+      );
+  } else {
+    const M_tot = M_V + M_E;
+    pres = soilPressure(P_serv, M_tot, B);
+    st.push(
+      `   Momentos respecto del centro de la base: cargas M_V = ${f2(M_V)} · empuje M_E = M_base + W·H_zap = ${f2(M_volad)} + ${f2(def.W)}·${f2(H_z)} = ${f2(M_E)} → M = ${f2(M_tot)} kN·m/m`,
+    );
+    st.push(
+      `   e = M/N = ${f2(M_tot)}/${f2(P_serv)} = ${f2(pres.e)} m · B/6 = ${f2(B / 6)} m`,
+    );
+    if (pres.vuelca) {
+      sigmaOK = false;
+      st.push(
+        `   |e| ≥ B/2 = ${f2(B / 2)} m → la resultante cae fuera de la base: VUELCA ✗`,
+      );
+      errors.push(
+        "La zapata vuelca: la resultante cae fuera de la base (e ≥ B/2). Aumentá B_zap.",
+      );
+    } else {
+      if (Math.abs(pres.e) <= B / 6 + 1e-12) {
+        st.push(
+          `   |e| ≤ B/6 → trapecio: σ = N/B·(1 ± 6e/B) → σ_max = ${f2(pres.smax)} kPa · σ_min = ${f2(pres.smin)} kPa`,
+        );
+      } else {
+        st.push(
+          `   |e| > B/6 → la zapata se despega: triángulo sobre B' = 3·(B/2 − |e|) = 3·(${f2(B / 2)} − ${f2(Math.abs(pres.e))}) = ${f2(pres.contacto)} m`,
+        );
+        st.push(
+          `   σ_max = 2·N/B' = 2·${f2(P_serv)}/${f2(pres.contacto)} = ${f2(pres.smax)} kPa · σ_min = 0`,
+        );
+        warnings.push(
+          `Excentricidad e = ${f2(Math.abs(pres.e))} m > B/6 = ${f2(B / 6)} m: la zapata apoya solo en ${f2(pres.contacto)} m de ${f2(B)} m (σ_max con distribución triangular).`,
+        );
+      }
+      const okMed = sigma_cent <= sigma_adm_kPa;
+      const okMax = pres.smax <= 1.25 * sigma_adm_kPa;
+      sigmaOK = okMed && okMax;
+      st.push(
+        `   σ_media = N/B = ${f2(sigma_cent)} ≤ ${f2(sigma_adm_kPa)} kPa ${okMed ? "✓" : "✗"} · σ_max = ${f2(pres.smax)} ≤ 1.25·σ_adm = ${f2(1.25 * sigma_adm_kPa)} kPa ${okMax ? "✓" : "✗"}`,
+      );
+    }
+    // Vuelco respecto de la arista de la puntera (x = B), solo cargas permanentes.
+    const M_est =
+      P_muro_D * (B - x_muro) + PP_zap * (B / 2) + W_relleno * (B - heel / 2);
+    FS_vuelco = M_E > 0 ? M_est / M_E : Infinity;
+    const mu = Math.tan((2 / 3) * ((input.phi * Math.PI) / 180));
+    const N_D = P_muro_D + PP_zap + W_relleno;
+    FS_desl = def.W > 0 ? (mu * N_D) / def.W : Infinity;
+    st.push("");
+    st.push(
+      "5b. Estabilidad (sin losa) — solo cargas permanentes, sin empuje pasivo",
+    );
+    st.push(
+      `   Vuelco respecto de la puntera: FS = M_estab/M_volc = ${f2(M_est)}/${f2(M_E)} = ${f2(FS_vuelco)} ≥ 1.5 ${FS_vuelco >= 1.5 ? "✓" : "✗"}`,
+    );
+    st.push(
+      `   Deslizamiento: μ = tan(2φ/3) = ${f3(mu)} · FS = μ·N_D/W = ${f3(mu)}·${f2(N_D)}/${f2(def.W)} = ${f2(FS_desl)} ≥ 1.5 ${FS_desl >= 1.5 ? "✓" : "✗"}`,
+    );
+    if (FS_vuelco < 1.5)
+      warnings.push("Vuelco: FS < 1.5. Aumentá B_zap (o agregá talón / losa).");
+    if (FS_desl < 1.5)
+      warnings.push(
+        "Deslizamiento: FS < 1.5. Aumentá B_zap, agregá un diente o contá con la losa de piso.",
+      );
   }
-  const As_cal =
-    (omega * 0.85 * fcKNcm2 * b * d_cm) / fyKNcm2 - Pu / (PHI_B * fyKNcm2);
+  const sigma_max = pres.vuelca ? 0 : pres.smax;
+  const e0 = pres.e;
+
+  // Presión mayorada para armar la zapata (1.2D + 1.6L + 1.6 empuje),
+  // neta del peso propio de la zapata (que actúa sobre la puntera).
+  const N_u = 1.2 * (P_muro_D + PP_zap + W_relleno) + 1.6 * P_muro_L;
+  const M_uV =
+    (1.2 * P_muro_D + 1.6 * P_muro_L) * (x_muro - B / 2) +
+    1.2 * W_relleno * (heel / 2 - B / 2);
+  const M_uE = 1.6 * M_E;
+  let q_u_bruta = N_u / B;
+  let e0_u = 0;
+  let vuelcaU = false;
+  if (!conLosa) {
+    const pu = soilPressure(N_u, M_uV + M_uE, B);
+    e0_u = pu.e;
+    if (pu.vuelca) {
+      vuelcaU = true;
+      q_u_bruta = 0;
+      if (!pres.vuelca)
+        errors.push(
+          "Con cargas mayoradas la resultante cae fuera de la base: aumentá B_zap.",
+        );
+    } else q_u_bruta = pu.smax;
+  }
+  const q_u = Math.max(0, q_u_bruta - 1.2 * gammaC * H_z);
+  // Medianera con losa: el momento de la puntera pasa al pie del tabique.
+  const M_u_nudo = conLosa && medianera ? (q_u * vuelo * vuelo) / 2 : 0;
+
+  // ── 6. Momentos de diseño y dimensionamiento del tabique ──
+  let M_u_libre: number;
+  let M_u_suelo: number;
+  let V_u_tab: number;
+  let which: "definitivo" | "provisorio" | "voladizo";
+  let z_M_gov: number;
+  if (conLosa) {
+    const Md = 1.6 * Math.abs(def.Mmax);
+    const Mp = 1.6 * Math.abs(prov.Mmax);
+    M_u_libre = 1.6 * Math.max(Math.abs(def.Mmax), prov.M_low);
+    M_u_suelo = Math.max(1.6 * Math.abs(prov.M_cant), M_u_nudo);
+    V_u_tab =
+      1.6 * Math.max(def.Vmax, prov.Vmax) + (M_u_nudo > 0 ? M_u_nudo / H : 0);
+    which = Mp > Math.max(Md, M_u_nudo) ? "provisorio" : "definitivo";
+    z_M_gov =
+      which === "provisorio" ? prov.zMmax : M_u_nudo > Md ? H : def.zMmax;
+  } else {
+    M_u_libre = 0;
+    M_u_suelo = 1.6 * M_volad;
+    V_u_tab = 1.6 * def.W;
+    which = "voladizo";
+    z_M_gov = H;
+  }
+  const M_u_gov = Math.max(M_u_libre, M_u_suelo);
+  const M_gov = M_u_gov / 1.6;
+  st.push("");
+  st.push(
+    `6. Momentos últimos del tabique (1.6·empuje) y dimensionamiento (b = 100 cm, d = ${f2(d_cm)} cm)`,
+  );
+  if (conLosa) {
+    st.push(
+      `   Cara libre (excavación): M_u = 1.6·máx(M_def = ${f2(Math.abs(def.Mmax))}, M_prov,tramo = ${f2(prov.M_low)}) = ${f2(M_u_libre)} kN·m/m`,
+    );
+    st.push(
+      `   Cara del suelo: M_u = máx(1.6·M_cant = ${f2(1.6 * Math.abs(prov.M_cant))}${medianera ? `, M_nudo = q_u·v²/2 = ${f2(q_u)}·${f2(vuelo)}²/2 = ${f2(M_u_nudo)}` : ""}) = ${f2(M_u_suelo)} kN·m/m`,
+    );
+    if (medianera)
+      st.push(
+        "   (Medianera con losa: el momento de la puntera de la zapata se transmite al pie del tabique y lo toma la cupla losa/base.)",
+      );
+  } else {
+    st.push(
+      `   Cara del suelo (base del voladizo): M_u = 1.6·M_base = 1.6·${f2(M_volad)} = ${f2(M_u_suelo)} kN·m/m`,
+    );
+    st.push("   Cara libre: sin momento de cálculo → armadura mínima.");
+  }
+  st.push(
+    `   Estado gobernante: ${which} · M_u = ${f2(M_u_gov)} kN·m/m (z = ${f2(z_M_gov)} m)`,
+  );
+
   const As_min_flex =
     Math.max((0.25 * Math.sqrt(fcMPa)) / fyMPa, 1.4 / fyMPa) * b * d_cm;
   const As_min_rho = 0.0018 * b * d_cm;
   const As_min = Math.max(As_min_flex, As_min_rho);
-  let As_req = As_cal;
-  if (As_cal < As_min) {
-    As_req = Math.max(As_min, (4 / 3) * As_cal);
-    st.push(
-      `   As_cal (${f2(As_cal)}) < As_mín (${f2(As_min)}) ⇒ As_req = máx(As_mín, 4/3·As_cal) = ${f2(As_req)} cm²/m`,
+  const designFace = (Mu: number) => {
+    const mnF = (Mu * 100) / (PHI_B * 0.85 * fcKNcm2 * b * d_cm * d_cm);
+    let omegaF = omegaFromMn(mnF);
+    let fail = false;
+    if (mnF > 0.32 || omegaF >= 1 || !Number.isFinite(omegaF)) {
+      fail = true;
+      omegaF = Math.min(omegaF, 1);
+    }
+    const AsCal =
+      Mu > 0
+        ? (omegaF * 0.85 * fcKNcm2 * b * d_cm) / fyKNcm2 -
+          Pu / (PHI_B * fyKNcm2)
+        : 0;
+    const AsReq = AsCal < As_min ? Math.max(As_min, (4 / 3) * AsCal) : AsCal;
+    return { mn: mnF, omega: omegaF, As_cal: AsCal, As_req: AsReq, fail };
+  };
+  const faceSuelo = designFace(M_u_suelo);
+  const faceLibre = designFace(M_u_libre);
+  if (faceSuelo.fail || faceLibre.fail)
+    errors.push(
+      "Sección insuficiente para el momento de diseño: aumentá e_muro (o fc).",
     );
-  } else {
-    As_req = Math.max(As_cal, As_min);
-  }
+  const gov = M_u_suelo >= M_u_libre ? faceSuelo : faceLibre;
+  const mn = gov.mn;
+  const omega = gov.omega;
+  const As_cal = gov.As_cal;
+  const As_req = faceSuelo.As_req; // vertical cara del suelo
+  const As_ext = faceLibre.As_req; // vertical cara libre
   st.push(
-    `   ω = 1 − √(1 − 2·m_n) = ${f4(omega)} · As_cal = ${f2(As_cal)} cm²/m · As_mín = ${f2(As_min)} cm²/m`,
+    `   As_mín = máx(0.25√f'c/fy, 1.4/fy, 0.0018)·b·d = ${f2(As_min)} cm²/m`,
   );
-  st.push(`   As_req (tabique interior) = ${f2(As_req)} cm²/m`);
+  st.push(
+    `   Cara del suelo: m_n = ${f4(faceSuelo.mn)} · ω = ${f4(faceSuelo.omega)} · As_cal = ${f2(faceSuelo.As_cal)} → As_req = ${f2(As_req)} cm²/m`,
+  );
+  st.push(
+    `   Cara libre: m_n = ${f4(faceLibre.mn)} · ω = ${f4(faceLibre.omega)} · As_cal = ${f2(faceLibre.As_cal)} → As_req = ${f2(As_ext)} cm²/m`,
+  );
+  st.push(
+    "   (As_cal = ω·0.85·f'c·b·d/fy − Pu/(φ·fy); si As_cal < As_mín ⇒ As_req = máx(As_mín, 4/3·As_cal))",
+  );
 
   const smaxInt = Math.min(3 * e_muro * 100, 30);
   const vertInt = adoptSelection(
@@ -725,29 +1047,32 @@ export function designMuro(input: MuroInput): MuroResult {
     input.adopcion?.vertInt,
   );
   st.push(
-    `   Vertical interior: Ø${vertInt.diam} c/ ${vertInt.sep} cm → As_prov = ${f2(vertInt.asProv)} cm²/m ${vertInt.ok ? "✓" : "✗ insuficiente"}`,
+    `   Vertical cara del suelo: Ø${vertInt.diam} c/ ${vertInt.sep} cm → As_prov = ${f2(vertInt.asProv)} cm²/m ${vertInt.ok ? "✓" : "✗ insuficiente"}`,
   );
   if (vertInt.asProv < As_req)
     warnings.push(
-      "Armadura vertical interior insuficiente con el separado máximo: aumentá e_muro o fc.",
+      "Armadura vertical de la cara del suelo insuficiente con el separado máximo: aumentá e_muro o fc.",
     );
   if (input.adopcion?.vertInt && !vertInt.ok)
     warnings.push(
-      "Vertical interior adoptada insuficiente respecto a As requerido.",
+      "Vertical cara del suelo adoptada insuficiente respecto a As requerido.",
     );
 
-  const As_ext = Math.max(As_min, 0.5 * As_req);
   const vertExt = adoptSelection(
     selectBars(As_ext, smaxInt),
     As_ext,
     input.adopcion?.vertExt,
   );
   st.push(
-    `   Vertical exterior (cara libre): As = máx(As_mín, 0.5·As_int) = ${f2(As_ext)} cm²/m → Ø${vertExt.diam} c/ ${vertExt.sep} cm ${vertExt.ok ? "✓" : "✗"}`,
+    `   Vertical cara libre: Ø${vertExt.diam} c/ ${vertExt.sep} cm → As_prov = ${f2(vertExt.asProv)} cm²/m ${vertExt.ok ? "✓" : "✗ insuficiente"}`,
   );
+  if (vertExt.asProv < As_ext)
+    warnings.push(
+      "Armadura vertical de la cara libre insuficiente con el separado máximo: aumentá e_muro o fc.",
+    );
   if (input.adopcion?.vertExt && !vertExt.ok)
     warnings.push(
-      "Vertical exterior adoptada insuficiente respecto a As requerido (mín 0.5·As_int).",
+      "Vertical cara libre adoptada insuficiente respecto a As requerido.",
     );
 
   const As_h = 0.0018 * b * (e_muro * 100); // cm²/m — mínimo de retracción POR CARA
@@ -764,111 +1089,76 @@ export function designMuro(input: MuroInput): MuroResult {
     input.adopcion?.horizExt,
   );
   st.push(
-    `   Horizontal interior (cara suelo, ρ_mín 0.0018 por cara): As = ${f2(As_h)} cm²/m → Ø${horizInt.diam} c/ ${horizInt.sep} cm (s ≤ 45 cm) ${horizInt.ok ? "✓" : "✗"}`,
+    `   Horizontal cara del suelo (ρ_mín 0.0018 por cara): As = ${f2(As_h)} cm²/m → Ø${horizInt.diam} c/ ${horizInt.sep} cm (s ≤ 45 cm) ${horizInt.ok ? "✓" : "✗"}`,
   );
   st.push(
-    `   Horizontal exterior (cara libre, ρ_mín 0.0018 por cara): As = ${f2(As_h)} cm²/m → Ø${horizExt.diam} c/ ${horizExt.sep} cm (s ≤ 45 cm) ${horizExt.ok ? "✓" : "✗"}`,
+    `   Horizontal cara libre (ρ_mín 0.0018 por cara): As = ${f2(As_h)} cm²/m → Ø${horizExt.diam} c/ ${horizExt.sep} cm (s ≤ 45 cm) ${horizExt.ok ? "✓" : "✗"}`,
   );
   if (horizInt.sep > 45 || horizExt.sep > 45)
     warnings.push("Separación horizontal supera los 45 cm recomendados.");
   if (input.adopcion?.horizInt && !horizInt.ok)
     warnings.push(
-      "Horizontal interior adoptada insuficiente respecto al mínimo de retracción (0.18%).",
+      "Horizontal cara del suelo adoptada insuficiente respecto al mínimo de retracción (0.18%).",
     );
   if (input.adopcion?.horizExt && !horizExt.ok)
     warnings.push(
-      "Horizontal exterior adoptada insuficiente respecto al mínimo de retracción (0.18%).",
+      "Horizontal cara libre adoptada insuficiente respecto al mínimo de retracción (0.18%).",
     );
 
   // ── 7. Corte del tabique ──
   st.push("");
   st.push("7. Verificación al corte del tabique");
-  const Vu = 1.6 * V_gov;
-  // φVc = 0.75·0.53·√f'c·b·d (SI, √f'c en psi) es numéricamente equivalente a
-  // la forma métrica del proyecto 0.75·b·d·√f'c/60 (kN) con f'c MPa y b,d cm.
+  const Vu = V_u_tab;
+  // φVc = 0.75·0.17·√f'c·b·d (SI) ≡ forma métrica 0.75·b·d·√f'c/60 (kN) con
+  // f'c MPa y b,d en cm.
   const phiVcMetric = (PHI_V * b * d_cm * Math.sqrt(fcMPa)) / 60;
   const shearRatio = Vu / phiVcMetric;
   const shearOK = shearRatio <= 1;
-  st.push(`   Vu = 1.6·V_máx = 1.6·${f2(V_gov)} = ${f2(Vu)} kN/m`);
+  if (conLosa)
+    st.push(
+      `   Vu = 1.6·V_máx${M_u_nudo > 0 ? " + M_nudo/H" : ""} = 1.6·${f2(Math.max(def.Vmax, prov.Vmax))}${M_u_nudo > 0 ? ` + ${f2(M_u_nudo)}/${f2(H)}` : ""} = ${f2(Vu)} kN/m`,
+    );
+  else
+    st.push(
+      `   Vu = 1.6·W = 1.6·${f2(def.W)} = ${f2(Vu)} kN/m (base del voladizo)`,
+    );
   st.push(
     `   φVc ≈ 0.75·b·d·√f'c/60 = 0.75·${b}·${f2(d_cm)}·√${fcMPa}/60 = ${f2(phiVcMetric)} kN/m`,
   );
   st.push(
-    `   D/C = Vu/φVc = ${f2(shearRatio)} ${shearOK ? "✓" : "✗ NO cumple — aumentar e_muro o H_zap"}`,
+    `   D/C = Vu/φVc = ${f2(shearRatio)} ${shearOK ? "✓" : "✗ NO cumple — aumentar e_muro"}`,
   );
-  if (!shearOK)
-    warnings.push(
-      "Corte del tabique no verifica: aumentá e_muro o la altura de la zapata.",
-    );
+  if (!shearOK) warnings.push("Corte del tabique no verifica: aumentá e_muro.");
 
-  // ── 8. Zapata ──
+  // ── 8. Zapata: armadura ──
   st.push("");
-  st.push("8. Zapata corrida");
-  const B = input.B_zap;
-  const H_z = input.H_zap;
-  const sigma_adm_MPa =
-    input.sigma_adm_unit === "kg/cm2"
-      ? input.sigma_adm_suelo * 0.098
-      : input.sigma_adm_suelo;
-  const sigma_adm_kPa = sigma_adm_MPa * 1000;
-  st.push(
-    `   σ_adm suelo = ${f2(input.sigma_adm_suelo)} ${input.sigma_adm_unit} = ${f2(sigma_adm_kPa)} kPa`,
-  );
-  const P_serv =
-    PP_muro + (PP_losa + input.CM_losa + input.L_losa) * input.ancho_inf;
-  const M_base = Math.abs(def.Mmax); // momento de servicio en la base
-  st.push(
-    `   P_serv base = PP_muro + (PP_losa+CM_losa+L_losa)·ancho_inf = ${f2(P_serv)} kN/m (M_base servicio = ${f2(M_base)} kN·m/m)`,
-  );
-
-  let sigma_cent = 0;
-  let sigma_max = 0;
-  let e0 = 0;
-  let sigmaOK = true;
-  const vuelo = (B - e_muro) / 2;
-  if (input.tipo_zapata === "centrada") {
-    sigma_cent = P_serv / B;
-    sigma_max = sigma_cent;
-    sigmaOK = sigma_cent <= sigma_adm_kPa;
-    st.push(
-      `   Centrada: σ = P_serv/B = ${f2(sigma_cent)} kPa ≤ ${f2(sigma_adm_kPa)} kPa ${sigmaOK ? "✓" : "✗"}`,
-    );
-  } else {
-    e0 = P_serv > 0 ? M_base / P_serv : 0;
-    sigma_max = (P_serv / B) * (1 + (6 * e0) / B);
-    sigmaOK = sigma_max <= 1.25 * sigma_adm_kPa;
-    st.push(
-      `   Excéntrica: e0 = M_base/P_serv = ${f2(e0)} m · σ_max = ${f2(sigma_max)} kPa ≤ 1.25·${f2(sigma_adm_kPa)} = ${f2(1.25 * sigma_adm_kPa)} kPa ${sigmaOK ? "✓" : "✗"}`,
-    );
-    if (e0 > B / 6)
-      warnings.push(
-        "Excentricidad e0 > B/6: hay tracción/despegue en la zapata (revisar几何).",
-      );
-  }
-
+  st.push("8. Zapata corrida — armadura de la puntera");
   const rigidOK = vuelo <= 2 * H_z;
   st.push(
-    `   Vuelo v = (B − e_muro)/2 = ${f2(vuelo)} m ≤ 2·H_zap = ${f2(2 * H_z)} m ${rigidOK ? "✓" : "✗ — aumentar B o H_zap"}`,
+    `   Vuelo v = ${medianera ? "B − e_muro" : "(B − e_muro)/2"} = ${f2(vuelo)} m ≤ 2·H_zap = ${f2(2 * H_z)} m ${rigidOK ? "✓" : "✗ — aumentar H_zap"}`,
   );
   if (!rigidOK)
     warnings.push(
-      "Vuelo de la zapata excede 2·H_zap (ángulo de biela): aumentá B o H_zap.",
+      "Vuelo de la zapata excede 2·H_zap (ángulo de biela): aumentá H_zap.",
     );
 
   const d_zap_cm = H_z * 100 - recZapCm;
-  const Pu_base =
-    1.2 * (PP_muro + (PP_losa + input.CM_losa) * input.ancho_inf) +
-    1.6 * (input.L_losa * input.ancho_inf);
-  let q_u: number;
-  if (input.tipo_zapata === "centrada") {
-    q_u = Pu_base / B;
-  } else {
-    const e0_u = M_u_gov / Pu_base;
-    q_u = (Pu_base / B) * (1 + (6 * e0_u) / B);
-    st.push(`   e0,u = M_u/M_u,base = ${f2(e0_u)} m → q_u = ${f2(q_u)} kPa`);
-  }
   st.push(`   d_zap = ${f2(H_z * 100)} − ${f2(recZapCm)} = ${f2(d_zap_cm)} cm`);
-  st.push(`   q_u (mayorada 1.2G+1.6Q) en el vuelo = ${f2(q_u)} kPa`);
+  st.push(
+    `   Cargas mayoradas: N_u = 1.2·(P_D + PP_zap${heel > 0 ? " + relleno" : ""}) + 1.6·L = ${f2(N_u)} kN/m`,
+  );
+  if (conLosa) {
+    st.push(
+      `   Con losa (presión uniforme): q_u = N_u/B = ${f2(q_u_bruta)} kPa`,
+    );
+  } else {
+    st.push(
+      `   M_u = M_uV + 1.6·M_E = ${f2(M_uV)} + ${f2(M_uE)} = ${f2(M_uV + M_uE)} kN·m/m → e_u = M_u/N_u = ${f2(e0_u)} m → ${vuelcaU ? "|e_u| ≥ B/2: VUELCA — la puntera no se puede dimensionar ✗" : `q_u,max = ${f2(q_u_bruta)} kPa ${Math.abs(e0_u) > B / 6 ? `(triángulo sobre B' = ${f2(3 * (B / 2 - Math.abs(e0_u)))} m, e_u > B/6)` : "(trapecio)"}`}`,
+    );
+  }
+  st.push(
+    `   q_u neta en la puntera = q_u − 1.2·γc·H_zap = ${f2(q_u_bruta)} − ${f2(1.2 * gammaC * H_z)} = ${f2(q_u)} kPa (se toma uniforme en el vuelo, del lado seguro)`,
+  );
   const M_u_zap = (q_u * Math.pow(vuelo, 2)) / 2; // kN·m/m
   const Mu_zap_kNcm = M_u_zap * 100;
   const mn_zap =
@@ -978,13 +1268,14 @@ export function designMuro(input: MuroInput): MuroResult {
   // ── 9. Compresión axial ──
   st.push("");
   st.push("9. Verificación a compresión axial del tabique");
-  const Ag = b * (H * 100); // cm²
-  const As_total = (vertInt.asProv + vertExt.asProv) * 100; // cm²
+  // Por metro lineal: Ag = b·e_muro (antes usaba la altura H por error).
+  const Ag = b * (e_muro * 100); // cm²/m
+  const As_total = vertInt.asProv + vertExt.asProv; // cm²/m
   const Pn = 0.85 * fcKNcm2 * Ag + As_total * fyKNcm2;
   const axialRatio = Pu / (PHI_P * Pn);
   const axialOK = axialRatio <= 1;
   st.push(
-    `   Ag = 100·${f2(H * 100)} = ${f2(Ag)} cm² · As ≈ ${f2(As_total)} cm²`,
+    `   Ag = b·e_muro = 100·${f2(e_muro * 100)} = ${f2(Ag)} cm²/m · As = ${f2(As_total)} cm²/m`,
   );
   st.push(
     `   Pn = 0.85·f'c·Ag + As·fy = ${f2(0.85 * fcKNcm2 * Ag)} + ${f2(As_total * fyKNcm2)} = ${f2(Pn)} kN`,
@@ -994,13 +1285,23 @@ export function designMuro(input: MuroInput): MuroResult {
     warnings.push("Compresión axial del tabique no verifica: aumentá e_muro.");
 
   // ── Verificaciones (D/C) ──
-  const flexCap = phiB_Mn(omega, fcKNcm2, b, d_cm);
+  // Capacidad a flexión con la armadura PROVISTA de cada cara.
+  const capOf = (asProv: number) =>
+    phiB_Mn((asProv * fyKNcm2) / (0.85 * fcKNcm2 * b * d_cm), fcKNcm2, b, d_cm);
+  const capSuelo = capOf(vertInt.asProv);
+  const capLibre = capOf(vertExt.asProv);
   const verifications: MuroVerification[] = [
     {
-      label: "Flexión tabique",
-      value: `M_u = ${f2(M_u_gov)} kN·m/m`,
-      ratio: M_u_gov / Math.max(1e-9, flexCap),
-      ok: M_u_gov <= flexCap + 1e-6,
+      label: "Flexión tabique (cara suelo)",
+      value: `M_u = ${f2(M_u_suelo)} kN·m/m`,
+      ratio: M_u_suelo / Math.max(1e-9, capSuelo),
+      ok: M_u_suelo <= capSuelo + 1e-6,
+    },
+    {
+      label: "Flexión tabique (cara libre)",
+      value: `M_u = ${f2(M_u_libre)} kN·m/m`,
+      ratio: M_u_libre / Math.max(1e-9, capLibre),
+      ok: M_u_libre <= capLibre + 1e-6,
     },
     {
       label: "Corte tabique",
@@ -1015,16 +1316,35 @@ export function designMuro(input: MuroInput): MuroResult {
       ok: axialOK,
     },
     {
-      label: `Tensión de suelo (${input.tipo_zapata})`,
-      value: `σ_max = ${f2(sigma_max)} kPa`,
-      ratio:
-        sigma_max /
-        (input.tipo_zapata === "centrada"
-          ? sigma_adm_kPa
-          : 1.25 * sigma_adm_kPa),
+      label: `Tensión de suelo (${medianera ? "medianera" : "centrada"})`,
+      value: pres.vuelca ? "vuelca (e ≥ B/2)" : `σ_max = ${f2(sigma_max)} kPa`,
+      ratio: pres.vuelca
+        ? 99
+        : conLosa
+          ? sigma_max / sigma_adm_kPa
+          : Math.max(
+              sigma_cent / sigma_adm_kPa,
+              sigma_max / (1.25 * sigma_adm_kPa),
+            ),
       ok: sigmaOK,
     },
   ];
+  if (!conLosa) {
+    verifications.push(
+      {
+        label: "Vuelco (FS ≥ 1.5)",
+        value: `FS = ${f2(FS_vuelco)}`,
+        ratio: 1.5 / Math.max(1e-9, FS_vuelco),
+        ok: FS_vuelco >= 1.5,
+      },
+      {
+        label: "Deslizamiento (FS ≥ 1.5)",
+        value: `FS = ${f2(FS_desl)}`,
+        ratio: 1.5 / Math.max(1e-9, FS_desl),
+        ok: FS_desl >= 1.5,
+      },
+    );
+  }
 
   st.push("");
   st.push(
@@ -1060,6 +1380,11 @@ export function designMuro(input: MuroInput): MuroResult {
     M_max_prov: prov.Mmax,
     z_M_max_prov: prov.zMmax,
     V_max_prov: prov.Vmax,
+    con_losa: conLosa,
+    M_volad,
+    M_u_suelo,
+    M_u_libre,
+    M_u_nudo,
     which,
     M_gov,
     M_u_gov,
@@ -1082,12 +1407,20 @@ export function designMuro(input: MuroInput): MuroResult {
     shearRatio,
     shearOK,
     P_serv,
-    M_base,
+    M_base: conLosa ? M_V : M_V + M_E,
     sigma_adm_kPa,
     sigma_cent,
     e0,
     sigma_max,
+    sigma_min: pres.smin,
+    B_contacto: pres.contacto,
     sigmaOK,
+    x_muro,
+    PP_zap,
+    W_relleno,
+    T_losa,
+    FS_vuelco: Number.isFinite(FS_vuelco) ? FS_vuelco : 99,
+    FS_desl: Number.isFinite(FS_desl) ? FS_desl : 99,
     vuelo,
     rigidOK,
     q_u,
@@ -1153,6 +1486,11 @@ function emptyResult(
     M_max_prov: 0,
     z_M_max_prov: 0,
     V_max_prov: 0,
+    con_losa: input.con_losa !== false,
+    M_volad: 0,
+    M_u_suelo: 0,
+    M_u_libre: 0,
+    M_u_nudo: 0,
     which: "definitivo",
     M_gov: 0,
     M_u_gov: 0,
@@ -1180,7 +1518,15 @@ function emptyResult(
     sigma_cent: 0,
     e0: 0,
     sigma_max: 0,
+    sigma_min: 0,
+    B_contacto: 0,
     sigmaOK: true,
+    x_muro: 0,
+    PP_zap: 0,
+    W_relleno: 0,
+    T_losa: 0,
+    FS_vuelco: 0,
+    FS_desl: 0,
     vuelo: 0,
     rigidOK: true,
     q_u: 0,

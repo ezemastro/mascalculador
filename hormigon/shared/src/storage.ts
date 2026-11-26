@@ -540,6 +540,7 @@ export interface MuroFormState {
   H_zap: number; // m
   rec_zap: number; // mm — recubrimiento de la zapata (def 50)
   tipo_zapata: "centrada" | "excentrica";
+  con_losa?: boolean; // losa superior que arriostra la cabeza (default true)
   adopcion?: MuroAdopcion; // override manual de armaduras (persistido en el save)
 }
 
