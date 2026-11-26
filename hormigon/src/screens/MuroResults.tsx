@@ -290,6 +290,91 @@ function StirrupEditor({
  *  bajo el relleno + puntera). Zapata excéntrica / medianera: tabique en el
  *  borde (eje medianero) y toda la zapata hacia la excavación. Con losa se
  *  dibuja la losa superior; abajo, el diagrama de presiones del suelo. */
+/** Flechas de las cargas del vecino sobre el suelo retenido: Q (franja/línea
+ *  paralela al muro, kN/m) y P (columna, kN), a distancia x del paramento y
+ *  a profundidad D (si D > 0 se dibuja la zapata del vecino). */
+function VecinoLoads({
+  wallX,
+  wallTop,
+  scale,
+  D,
+  arrowL,
+  Q,
+  P,
+  stagger,
+}: {
+  wallX: number;
+  wallTop: number;
+  scale: number;
+  D: number;
+  arrowL: number;
+  Q: { v: number; x: number } | null;
+  P: { v: number; x: number } | null;
+  stagger: boolean;
+}) {
+  const color = "var(--color-danger, #ef4444)";
+  const yLoad = wallTop + D * scale;
+  const one = (
+    key: string,
+    load: { v: number; x: number },
+    label: string,
+    lift: number,
+    thick: boolean,
+  ) => {
+    const x = wallX - load.x * scale;
+    const yTop = yLoad - arrowL - lift;
+    return (
+      <g key={key}>
+        {D > 0 && (
+          <rect
+            x={x - 9}
+            y={yLoad}
+            width={18}
+            height={4}
+            fill={color}
+            opacity="0.5"
+          />
+        )}
+        <line
+          x1={x}
+          y1={yTop}
+          x2={x}
+          y2={yLoad - 5}
+          stroke={color}
+          strokeWidth={thick ? 2.5 : 1.5}
+        />
+        <polygon
+          points={`${x - 4},${yLoad - 6} ${x + 4},${yLoad - 6} ${x},${yLoad}`}
+          fill={color}
+        />
+        <text x={x} y={yTop - 14} fontSize="9" textAnchor="middle" fill={color}>
+          {label}
+        </text>
+        <text x={x} y={yTop - 4} fontSize="8" textAnchor="middle" fill={color}>
+          x {fmt(load.x, 2)} m
+        </text>
+      </g>
+    );
+  };
+  return (
+    <>
+      {D > 0 && (
+        <line
+          x1={wallX - Math.max(Q?.x ?? 0, P?.x ?? 0) * scale - 12}
+          y1={yLoad}
+          x2={wallX}
+          y2={yLoad}
+          stroke={color}
+          strokeWidth="0.8"
+          strokeDasharray="2 3"
+        />
+      )}
+      {Q && one("q", Q, `Q ${fmt(Q.v, 0)} kN/m`, 0, false)}
+      {P && one("p", P, `P ${fmt(P.v, 0)} kN`, stagger ? 22 : 0, true)}
+    </>
+  );
+}
+
 function MuroSketch({ r, input }: { r: MuroResult; input: MuroInput }) {
   const H = r.H;
   const em = r.e_muro;
@@ -303,11 +388,31 @@ function MuroSketch({ r, input }: { r: MuroResult; input: MuroInput }) {
   const wB = Math.max(wM + 20, B * scale);
   const hH = Math.max(40, H * scale);
   const hZ = Math.max(14, Hz * scale);
-  const soilW = 46; // franja de suelo retenido a la izquierda de la zapata
   const losaW = 56; // tramo de losa dibujado
   const hLosa = Math.max(6, input.e_losa * scale);
   const padX = 12;
-  const padY = 22;
+
+  // Cargas del vecino (del lado del suelo, a x del paramento del tabique y a
+  // profundidad D bajo el coronamiento).
+  const Qv = input.Q_vec ?? 0;
+  const Pv = input.P_vec ?? 0;
+  const xQ = Math.max(0, input.x_Q_vec ?? 0);
+  const xP = Math.max(0, input.x_P_vec ?? 0);
+  const Dv = Math.min(Math.max(0, input.D_vec ?? 0), H);
+  const hasQ = Qv > 0;
+  const hasP = Pv > 0;
+  const hasVec = hasQ || hasP;
+  // Si las dos flechas quedan cerca, el rótulo de P va un renglón más arriba.
+  const stagger = hasQ && hasP && Math.abs(xQ - xP) * scale < 70;
+  const arrowL = 20;
+  const topExtra = hasVec
+    ? Math.max(0, arrowL + 25 + (stagger ? 22 : 0) - Dv * scale)
+    : 0;
+  const padY = 22 + topExtra;
+  // Franja de suelo a la izquierda: alcanza para ubicar las cargas a escala.
+  const xVecMax = Math.max(hasQ ? xQ : 0, hasP ? xP : 0);
+  const wallOff = medianera ? 0 : Math.max(wM + 20, B * scale) / 2 - wM / 2;
+  const soilW = Math.max(46, xVecMax * scale + 30 - wallOff);
   const presH = 34; // altura máxima del diagrama de presiones
   const x0 = padX + soilW; // borde izquierdo de la zapata
   const wallX = medianera ? x0 : x0 + wB / 2 - wM / 2;
@@ -468,6 +573,19 @@ function MuroSketch({ r, input }: { r: MuroResult; input: MuroInput }) {
         >
           vuelca (e ≥ B/2)
         </text>
+      )}
+      {/* Cargas del vecino */}
+      {hasVec && (
+        <VecinoLoads
+          wallX={wallX}
+          wallTop={wallTop}
+          scale={scale}
+          D={Dv}
+          arrowL={arrowL}
+          Q={hasQ ? { v: Qv, x: xQ } : null}
+          P={hasP ? { v: Pv, x: xP } : null}
+          stagger={stagger}
+        />
       )}
       {/* Cotas */}
       <text x={x0} y={svgH - 6} fontSize="10" fill="currentColor">
