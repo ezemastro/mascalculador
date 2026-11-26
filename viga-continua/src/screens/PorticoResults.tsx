@@ -8,8 +8,10 @@
  *      triple `{ uls, slsD, slsL }` en useMemo (la toggle selecciona
  *      el slice sin re-resolver).
  *   3. Muestra el slice activo (`envMode`):
- *        - envolvente → `result.uls` (U = 1.2·D + 1.6·L).
- *        - servicio   → dos cards: D (slsD) y L (slsL) por separado.
+ *        - envolvente → `result.envelope` (U = máx(1.4·D ; 1.2·D + 1.6·L)
+ *          con sobrecarga alternada barra por barra) para reacciones y
+ *          esfuerzos; el diagrama dibuja `result.uls` (L en todas).
+ *        - servicio   → `result.slsDL` (D + L), más D y L por separado.
  *
  * Convenciones visuales:
  *   - Y positivo hacia abajo (coincide con Mafs / world).
@@ -33,6 +35,8 @@ import { MainLayout } from "@mascalculador/shared";
 import { solvePortico } from "../lib/portico-analysis";
 import { savePorticoInput, updatePorticoInput } from "../lib/storage";
 import type {
+  EnvRange,
+  PorticoEnvelope,
   PorticoNode,
   PorticoReaction,
   PorticoState,
@@ -90,7 +94,7 @@ interface MomentTerm {
 interface LoadAccounts {
   reference: PorticoNode | undefined;
   uls: LoadResultant;
-  d: LoadResultant;
+  dl: LoadResultant;
 }
 
 function calculateLoadResultant(
@@ -141,7 +145,7 @@ function activeLoadResultant(
   accounts: LoadAccounts,
   envMode: EnvMode,
 ): LoadResultant {
-  return envMode === "envolvente" ? accounts.uls : accounts.d;
+  return envMode === "envolvente" ? accounts.uls : accounts.dl;
 }
 
 function reactionMomentTerms(
@@ -213,8 +217,10 @@ export default function PorticoResults() {
         ok: true;
         porticoState: PorticoState;
         uls: SolvedPortico;
+        envelope: PorticoEnvelope;
         slsD: SolvedPortico;
         slsL: SolvedPortico;
+        slsDL: SolvedPortico;
       }
     | { ok: false; error: string }
   >(() => {
@@ -230,8 +236,10 @@ export default function PorticoResults() {
         ok: true,
         porticoState: raw.state,
         uls: out.uls,
+        envelope: out.envelope,
         slsD: out.slsD,
         slsL: out.slsL,
+        slsDL: out.slsDL,
       };
     } catch (err: unknown) {
       return {
@@ -252,6 +260,10 @@ export default function PorticoResults() {
   const uls = solved.ok ? solved.uls : fallback;
   const slsD = solved.ok ? solved.slsD : fallback;
   const slsL = solved.ok ? solved.slsL : fallback;
+  const slsDL = solved.ok ? solved.slsDL : fallback;
+  const envelope: PorticoEnvelope = solved.ok
+    ? solved.envelope
+    : { bars: [], reactions: [], liveBarIds: [] };
   const porticoState: PorticoState = useMemo(
     () =>
       solved.ok
@@ -260,7 +272,7 @@ export default function PorticoResults() {
     [solved],
   );
 
-  const active: SolvedPortico = envMode === "envolvente" ? uls : slsD;
+  const active: SolvedPortico = envMode === "envolvente" ? uls : slsDL;
   const loadAccounts: LoadAccounts = useMemo(() => {
     const reference =
       porticoState.nodes.find((node) => node.id === "A") ??
@@ -268,7 +280,7 @@ export default function PorticoResults() {
     return {
       reference,
       uls: calculateLoadResultant(porticoState, 1.2, 1.6, reference),
-      d: calculateLoadResultant(porticoState, 1, 0, reference),
+      dl: calculateLoadResultant(porticoState, 1, 1, reference),
     };
   }, [porticoState]);
   const activeReactionTotals = active.reactions.reduce(
@@ -440,7 +452,8 @@ export default function PorticoResults() {
       <div className="flex flex-col items-center gap-1">
         <EnvToggle envMode={envMode} setEnvMode={setEnvMode} />
         <p className="text-xs text-text-muted">
-          Envolvente: U = 1.2·D + 1.6·L · Estado de servicio: D (sin mayorar)
+          Envolvente: U = máx(1.4·D ; 1.2·D + 1.6·L) con la sobrecarga alternada
+          barra por barra · Estado de servicio: D + L (sin mayorar)
         </p>
       </div>
 
@@ -448,7 +461,13 @@ export default function PorticoResults() {
       <section className="bg-surface rounded-xl border border-border p-5">
         <h2 className="section-title mb-3">Reacciones</h2>
         {envMode === "servicio" ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <ReactionsTable
+              title="Servicio D + L"
+              rows={slsDL.reactions}
+              supports={porticoState.supports}
+              nodes={porticoState.nodes}
+            />
             <ReactionsTable
               title="Servicio D (sin factor)"
               rows={slsD.reactions}
@@ -463,9 +482,8 @@ export default function PorticoResults() {
             />
           </div>
         ) : (
-          <ReactionsTable
-            title="Envolvente"
-            rows={active.reactions}
+          <EnvelopeReactionsTable
+            envelope={envelope}
             supports={porticoState.supports}
             nodes={porticoState.nodes}
           />
@@ -475,8 +493,10 @@ export default function PorticoResults() {
       <section className="bg-surface rounded-xl border border-border p-5">
         <h2 className="section-title mb-3">Equilibrio global</h2>
         <p className="text-xs text-text-muted mb-3">
-          {envMode === "envolvente" ? "U = 1.2D + 1.6L" : "D (slsD)"} ·
-          referencia: Nudo {loadAccounts.reference?.id ?? "A"}. Las fuerzas
+          {envMode === "envolvente"
+            ? "U = 1.2D + 1.6L con L en todas las barras"
+            : "Servicio D + L"}{" "}
+          · referencia: Nudo {loadAccounts.reference?.id ?? "A"}. Las fuerzas
           internas se cancelan por pares; esto verifica el equilibrio externo
           global.
         </p>
@@ -544,6 +564,11 @@ export default function PorticoResults() {
           />
         </div>
         <div className="px-4 py-2 border-t border-border text-xs text-text-muted flex flex-wrap gap-3">
+          <span className="w-full">
+            {envMode === "envolvente"
+              ? "Diagrama del caso U = 1.2D + 1.6L con sobrecarga en todas las barras. Los máximos con alternancia de sobrecarga y 1.4D están en «Fuerzas por barra»."
+              : "Diagrama de servicio D + L (sin mayorar)."}
+          </span>
           {diagramMode === "geometria" && (
             <>
               <span>
@@ -628,44 +653,50 @@ export default function PorticoResults() {
         <h2 className="section-title mb-3">Fuerzas por barra</h2>
         <p className="text-xs text-text-muted mb-3">
           Componentes N, V y M en el sistema local de cada barra ·{" "}
-          {envMode === "envolvente" ? "U = 1.2D + 1.6L" : "D (slsD)"}
+          {envMode === "envolvente"
+            ? "envolvente U = máx(1.4D ; 1.2D + 1.6L), sobrecarga alternada"
+            : "servicio D + L"}
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {active.bars.map((bar) => {
-            const values = (key: "N" | "V" | "M") => [
-              bar.forces.start[key],
-              ...bar.forces.samples.map((sample) => sample[key]),
-              bar.forces.end[key],
-            ];
-            const maxAbs = (key: "N" | "V" | "M") =>
-              Math.max(...values(key).map((value) => Math.abs(value)));
-            return (
-              <div
-                key={bar.barId}
-                className="bg-surface-alt rounded-lg p-3 text-xs"
-              >
-                <p className="font-semibold text-text mb-1">
-                  Barra {bar.barId}
-                </p>
-                <p>
-                  Inicio: N={bar.forces.start.N.toFixed(3)} kN · V=
-                  {bar.forces.start.V.toFixed(3)} kN · M=
-                  {bar.forces.start.M.toFixed(3)} kN·m
-                </p>
-                <p>
-                  Fin: N={bar.forces.end.N.toFixed(3)} kN · V=
-                  {bar.forces.end.V.toFixed(3)} kN · M=
-                  {bar.forces.end.M.toFixed(3)} kN·m
-                </p>
-                <p className="mt-1 font-medium text-text">
-                  Máximos absolutos: |N|={maxAbs("N").toFixed(3)} kN · |V|=
-                  {maxAbs("V").toFixed(3)} kN · |M|={maxAbs("M").toFixed(3)}{" "}
-                  kN·m
-                </p>
-              </div>
-            );
-          })}
-        </div>
+        {envMode === "envolvente" ? (
+          <EnvelopeBarTable envelope={envelope} />
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {active.bars.map((bar) => {
+              const values = (key: "N" | "V" | "M") => [
+                bar.forces.start[key],
+                ...bar.forces.samples.map((sample) => sample[key]),
+                bar.forces.end[key],
+              ];
+              const maxAbs = (key: "N" | "V" | "M") =>
+                Math.max(...values(key).map((value) => Math.abs(value)));
+              return (
+                <div
+                  key={bar.barId}
+                  className="bg-surface-alt rounded-lg p-3 text-xs"
+                >
+                  <p className="font-semibold text-text mb-1">
+                    Barra {bar.barId}
+                  </p>
+                  <p>
+                    Inicio: N={bar.forces.start.N.toFixed(3)} kN · V=
+                    {bar.forces.start.V.toFixed(3)} kN · M=
+                    {bar.forces.start.M.toFixed(3)} kN·m
+                  </p>
+                  <p>
+                    Fin: N={bar.forces.end.N.toFixed(3)} kN · V=
+                    {bar.forces.end.V.toFixed(3)} kN · M=
+                    {bar.forces.end.M.toFixed(3)} kN·m
+                  </p>
+                  <p className="mt-1 font-medium text-text">
+                    Máximos absolutos: |N|={maxAbs("N").toFixed(3)} kN · |V|=
+                    {maxAbs("V").toFixed(3)} kN · |M|={maxAbs("M").toFixed(3)}{" "}
+                    kN·m
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </section>
       {showPrintSelection && (
         <PrintSelection
@@ -716,6 +747,103 @@ function ReactionsTable({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// ---- Envolvente: reacciones y esfuerzos por barra ----
+
+function rangeText(r: EnvRange, digits = 2): string {
+  return `${r.min.toFixed(digits)} … ${r.max.toFixed(digits)}`;
+}
+
+function EnvelopeReactionsTable({
+  envelope,
+  supports,
+  nodes,
+}: {
+  envelope: PorticoEnvelope;
+  supports: PorticoSupport[];
+  nodes: PorticoNode[];
+}) {
+  return (
+    <div className="bg-surface rounded-xl border border-border p-3">
+      <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
+        Envolvente (mínimo … máximo)
+      </h3>
+      <div className="flex flex-col gap-1.5">
+        {supports.map((sup) => {
+          const r = envelope.reactions.find((row) => row.supportId === sup.id);
+          const n = nodes.find((nn) => nn.id === sup.nodeId);
+          if (!r || !n) return null;
+          return (
+            <div key={`env-${sup.id}`} className="text-xs">
+              <p className="font-semibold text-text">
+                Apoyo {n.id} ·{" "}
+                {sup.kind === "hinge" ? "articulado" : "empotrado"}
+              </p>
+              <p className="text-text-muted">
+                Rx = {rangeText(r.Fx)} kN · Ry = {rangeText(r.Fy)} kN · Mz ={" "}
+                {sup.kind === "fixed" ? `${rangeText(r.Mz)} kN·m` : "0"}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+      <p className="mt-2 text-[11px] text-text-muted">
+        Ry positivo hacia abajo (una reacción hacia arriba es negativa).
+        {envelope.liveBarIds.length > 0
+          ? ` Sobrecarga alternada en: ${envelope.liveBarIds.join(", ")}.`
+          : " Sin sobrecarga: gobierna 1.4·D."}
+      </p>
+    </div>
+  );
+}
+
+function EnvelopeBarTable({ envelope }: { envelope: PorticoEnvelope }) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {envelope.bars.map((bar) => {
+        const mMax = Math.max(0, ...bar.samples.map((p) => p.M.max));
+        const mMin = Math.min(0, ...bar.samples.map((p) => p.M.min));
+        const vAbs = Math.max(
+          0,
+          ...bar.samples.map((p) =>
+            Math.max(Math.abs(p.V.max), Math.abs(p.V.min)),
+          ),
+        );
+        const nMax = Math.max(0, ...bar.samples.map((p) => p.N.max));
+        const nMin = Math.min(0, ...bar.samples.map((p) => p.N.min));
+        const first = bar.samples[0];
+        const last = bar.samples[bar.samples.length - 1];
+        return (
+          <div
+            key={bar.barId}
+            className="bg-surface-alt rounded-lg p-3 text-xs"
+          >
+            <p className="font-semibold text-text mb-1">Barra {bar.barId}</p>
+            {first && (
+              <p>
+                Inicio: M = {rangeText(first.M)} kN·m · V = {rangeText(first.V)}{" "}
+                kN
+              </p>
+            )}
+            {last && (
+              <p>
+                Fin: M = {rangeText(last.M)} kN·m · V = {rangeText(last.V)} kN
+              </p>
+            )}
+            <p className="mt-1 font-medium text-text">
+              M⁺ máx = {mMax.toFixed(2)} kN·m · M⁻ máx = {mMin.toFixed(2)} kN·m
+              · |V| máx = {vAbs.toFixed(2)} kN
+            </p>
+            <p className="font-medium text-text">
+              N máx tracción = {nMax.toFixed(2)} kN · N máx compresión ={" "}
+              {nMin.toFixed(2)} kN
+            </p>
+          </div>
+        );
+      })}
     </div>
   );
 }

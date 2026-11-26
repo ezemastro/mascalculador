@@ -141,7 +141,7 @@ function BeamPrint({
           Cargas consideradas: {data.state.loads.length} · Combinación:{" "}
           {data.envMode === "servicio"
             ? "Servicio — D + L sin mayorar"
-            : "Envolvente — U = 1.2·D + 1.6·L"}
+            : "Envolvente — U = máx(1.4·D ; 1.2·D + 1.6·L) con alternancia"}
         </p>
         <div className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
           {solved.reactionsD.map((reaction, index) => (
@@ -183,7 +183,7 @@ function PorticoPrint({
   data: Extract<PrintState, { kind: "portico" }>;
   solved: ReturnType<typeof solvePortico>;
 }) {
-  const active = data.envMode === "servicio" ? solved.slsD : solved.uls;
+  const active = data.envMode === "servicio" ? solved.slsDL : solved.uls;
   return (
     <>
       <section className="print-card mt-5 rounded border border-gray-300 p-4">
@@ -195,11 +195,15 @@ function PorticoPrint({
         <p className="text-sm">
           Combinación:{" "}
           {data.envMode === "servicio"
-            ? "Servicio — D y L por separado"
-            : "U = 1.2·D + 1.6·L"}
+            ? "Servicio — D + L sin mayorar (y D, L por separado)"
+            : "Envolvente U = máx(1.4·D ; 1.2·D + 1.6·L) con sobrecarga alternada por barra (diagramas: 1.2·D + 1.6·L con L en todas las barras)"}
         </p>
         {data.envMode === "servicio" ? (
-          <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+          <div className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
+            <PorticoReactions
+              title="Servicio D + L"
+              reactions={solved.slsDL.reactions}
+            />
             <PorticoReactions
               title="Servicio D (sin factor)"
               reactions={solved.slsD.reactions}
@@ -211,13 +215,16 @@ function PorticoPrint({
           </div>
         ) : (
           <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-            {active.reactions.map((reaction) => (
+            {solved.envelope.reactions.map((reaction) => (
               <div
                 key={reaction.supportId}
                 className="rounded border border-gray-200 p-2"
               >
-                <b>{reaction.supportId}</b>: Fx {reaction.Fx.toFixed(2)} kN · Fy{" "}
-                {reaction.Fy.toFixed(2)} kN · Mz {reaction.Mz.toFixed(2)} kN·m
+                <b>{reaction.supportId}</b> (mín … máx): Fx{" "}
+                {reaction.Fx.min.toFixed(2)} … {reaction.Fx.max.toFixed(2)} kN ·
+                Fy {reaction.Fy.min.toFixed(2)} … {reaction.Fy.max.toFixed(2)}{" "}
+                kN · Mz {reaction.Mz.min.toFixed(2)} …{" "}
+                {reaction.Mz.max.toFixed(2)} kN·m
               </div>
             ))}
           </div>

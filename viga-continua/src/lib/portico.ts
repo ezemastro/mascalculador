@@ -131,8 +131,42 @@ export interface SolvedPortico {
   bars: Array<{ barId: string; forces: PorticoBarForces }>;
 }
 
+/** Valor envolvente (máximo y mínimo con signo). */
+export interface EnvRange {
+  max: number;
+  min: number;
+}
+
+export interface PorticoEnvelopeSample {
+  s: number;
+  N: EnvRange;
+  V: EnvRange;
+  M: EnvRange;
+}
+
+/** Envolvente de estado último: U = máx(1.4·D ; 1.2·D + 1.6·L) con la
+ *  sobrecarga de cada barra activada o no en forma independiente
+ *  (alternancia de cargas), por superposición lineal. */
+export interface PorticoEnvelope {
+  bars: Array<{ barId: string; samples: PorticoEnvelopeSample[] }>;
+  reactions: Array<{
+    supportId: string;
+    Fx: EnvRange;
+    Fy: EnvRange;
+    Mz: EnvRange;
+  }>;
+  /** Barras con sobrecarga (las que se alternan). */
+  liveBarIds: string[];
+}
+
 export interface PorticoResults {
+  /** 1.2·D + 1.6·L con la sobrecarga en todas las barras (un estado en
+   *  equilibrio; se usa para el diagrama y el equilibrio global). */
   uls: SolvedPortico;
+  /** Envolvente con alternancia de sobrecarga y 1.4·D. */
+  envelope: PorticoEnvelope;
   slsD: SolvedPortico;
   slsL: SolvedPortico;
+  /** Servicio D + L sin mayorar. */
+  slsDL: SolvedPortico;
 }

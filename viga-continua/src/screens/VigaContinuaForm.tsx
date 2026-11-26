@@ -134,7 +134,7 @@ export default function VigaContinuaForm() {
       fieldDocs: `Campos (nombres exactos, unidades de UI):
 - spans: array de luces por tramo en metros (ej [6, 5]); define la cantidad de tramos (1 a 5).
 - supportTypes: array de apoyos, largo = tramos + 1; valores "simple" (articulado/apoyado), "fixed" (empotrado/encastrado), "free" (libre/voladizo, solo en extremos).
-- loads: array de cargas. Puntual: {type:"point", D, L, position} (kN, posición en metros desde el apoyo izquierdo). Distribuida: {type:"distributed", D, L, start, end} (kN/m). D=muerta, L=viva; U=1.2·D+1.6·L.`,
+- loads: array de cargas. Puntual: {type:"point", D, L, position} (kN, posición en metros desde el apoyo izquierdo). Distribuida: {type:"distributed", D, L, start, end} (kN/m). D=muerta, L=viva; U=máx(1.4·D ; 1.2·D+1.6·L).`,
       getState: () => assistantStateRef.current,
       apply: (values: Record<string, unknown>) => {
         const applied: string[] = [];

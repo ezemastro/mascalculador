@@ -165,6 +165,25 @@ export function calculateBeamEnvelope(
       }
       patterns.push(calculateBeam(config, cfgLoads));
     }
+
+    // ---- Combinación U = 1.4·D (CIRSOC 201-05 Art. 9.2.1, ec. 9-1) ----
+    // Gobierna cuando la carga viva es chica (L < D/8): con L = 0, 1.2·D
+    // subestima un 14 % respecto de 1.4·D. Se agrega como un patrón más.
+    const d14Loads: Load[] = [];
+    let idx14 = 0;
+    for (const seg of segments) {
+      const magnitude = 1.4 * seg.D;
+      if (magnitude === 0) continue;
+      d14Loads.push({
+        id: `d14-${idx14++}`,
+        type: seg.type,
+        magnitude,
+        position: seg.position,
+        start: seg.start,
+        end: seg.end,
+      });
+    }
+    if (d14Loads.length > 0) patterns.push(calculateBeam(config, d14Loads));
   }
 
   // ---- Envelope query functions ----

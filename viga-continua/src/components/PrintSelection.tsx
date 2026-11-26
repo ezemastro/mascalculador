@@ -22,7 +22,7 @@ const porticoOptions: Array<[PorticoPrintGraphic, string]> = [
 ];
 
 const envModeOptions: Array<{ id: EnvMode; label: string }> = [
-  { id: "envolvente", label: "Envolvente (U = 1.2D + 1.6L)" },
+  { id: "envolvente", label: "Envolvente (U = máx(1.4D ; 1.2D + 1.6L))" },
   { id: "servicio", label: "Servicio (D + L sin mayorar)" },
 ];
 

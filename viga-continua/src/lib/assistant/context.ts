@@ -25,7 +25,7 @@ const SCREEN_TERMS: Record<string, string> = {
 - Tramo N (m): luz de cada tramo, en metros.
 - Apoyos: tipo de cada apoyo. Articulado = simple (empotramiento nulo);
   Empotrado = fixed; Libre = voladizo (solo en extremos).
-- Cargas D + L → U: D es carga muerta y L carga viva; U = 1.2·D + 1.6·L.
+- Cargas D + L → U: D es carga muerta y L carga viva; U = máx(1.4·D ; 1.2·D + 1.6·L), con alternancia de sobrecarga.
 - Puntual: carga concentrada en kN, con Pos = posición desde el apoyo
   izquierdo (m). Distribuida: carga en kN/m con rango Inicio–Fin (m).
 - U: carga última combinada.`,
@@ -33,7 +33,7 @@ const SCREEN_TERMS: Record<string, string> = {
 - Tramo N (m): luz de cada tramo, en metros.
 - Apoyos: tipo de cada apoyo. Articulado = simple (empotramiento nulo);
   Empotrado = fixed; Libre = voladizo (solo en extremos).
-- Cargas D + L → U: D es carga muerta y L carga viva; U = 1.2·D + 1.6·L.
+- Cargas D + L → U: D es carga muerta y L carga viva; U = máx(1.4·D ; 1.2·D + 1.6·L), con alternancia de sobrecarga.
 - Puntual: carga concentrada en kN, con Pos = posición desde el apoyo
   izquierdo (m). Distribuida: carga en kN/m con rango Inicio–Fin (m).
 - U: carga última combinada.`,

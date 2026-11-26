@@ -319,8 +319,8 @@ export default function VigaContinuaResults() {
       <div className="flex flex-col items-center gap-1">
         <EnvToggle envMode={envMode} setEnvMode={setEnvMode} />
         <p className="text-xs text-text-muted">
-          Envolvente: U = 1.2·D + 1.6·L con alternancia de cargas · Estado de
-          servicio: D + L sin mayorar
+          Envolvente: U = máx(1.4·D ; 1.2·D + 1.6·L con alternancia de cargas) ·
+          Estado de servicio: D + L sin mayorar
         </p>
       </div>
 
@@ -369,7 +369,7 @@ export default function VigaContinuaResults() {
         </h2>
         <p className="text-xs text-text-muted mb-3">
           {envMode === "envolvente"
-            ? "U = 1.2·D + 1.6·L"
+            ? "U = máx(1.4·D ; 1.2·D + 1.6·L)"
             : "Servicio — D + L sin mayorar (sin envolvente)"}
         </p>
         <div className="flex flex-col gap-2">
@@ -427,7 +427,7 @@ export default function VigaContinuaResults() {
         <h2 className="section-title">Diagramas</h2>
         <p className="text-xs text-text-muted">
           {envMode === "envolvente"
-            ? "Envolventes factoradas (U = 1.2·D + 1.6·L)."
+            ? "Envolventes factoradas (U = máx(1.4·D ; 1.2·D + 1.6·L alternada))."
             : "Servicio — D + L sin mayorar (sin envolvente)."}
         </p>
       </div>

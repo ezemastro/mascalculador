@@ -15,6 +15,9 @@
  * ## Modos de carga
  *
  * - `uls` = `1.2·D + 1.6·L` aplicadas en simultáneo sobre todas las cargas.
+ * - `envelope` = máx(1.4·D ; 1.2·D + 1.6·L) con alternancia de la
+ *   sobrecarga barra por barra (superposición de un caso L por barra).
+ * - `sls-dl` = D + L sin factor (servicio).
  * - `sls-d` = solo cargas muertas D, sin factor.
  * - `sls-l` = solo cargas vivas L, sin factor.
  *
@@ -32,6 +35,9 @@
  */
 import type { PorticoState } from "./portico";
 import type {
+  EnvRange,
+  PorticoBarLoad,
+  PorticoEnvelope,
   PorticoBarForces,
   PorticoBarSample,
   PorticoNodeDisplacement,
@@ -603,6 +609,10 @@ function recoverBarForces(
   u: number[],
   localLoad: Map<string, number[]>,
   factor: (D: number, L: number) => number,
+  /** Cargas que definen las posiciones de muestreo (por defecto, las del
+   *  estado). La envolvente las fija para que todos los casos compartan
+   *  las mismas posiciones. */
+  positionLoads: PorticoBarLoad[] = state.loads,
 ): Array<{ barId: string; forces: PorticoBarForces }> {
   const out: Array<{ barId: string; forces: PorticoBarForces }> = [];
   for (const bar of state.bars) {
@@ -669,7 +679,7 @@ function recoverBarForces(
     const samplePositions = new Set<number>();
     for (let i = 0; i <= 12; i++) samplePositions.add((i / 12) * L);
     const loadEpsilon = Math.max(1e-8, L * 1e-6);
-    for (const load of state.loads) {
+    for (const load of positionLoads) {
       if (load.barId !== bar.id || load.kind !== "point") continue;
       const point = Math.max(0, Math.min(load.a, L));
       samplePositions.add(Math.max(0, point - loadEpsilon));
@@ -767,17 +777,21 @@ export function solvePortico(
   const factorD = (D: number) => D;
   const factorL = (_D: number, L: number) => L;
 
+  const factorDL = (D: number, L: number) => D + L;
+
   const ulsRun = runMode(state, map, K, constrained, factorUls);
   const dRun = runMode(state, map, K, constrained, factorD);
   const lRun = runMode(state, map, K, constrained, factorL);
+  const dlRun = runMode(state, map, K, constrained, factorDL);
 
   function toSolved(
     u: number[],
     F: number[],
     factor: (D: number, L: number) => number,
+    st: PorticoState = state,
   ): SolvedPortico {
-    const reactions = recoverReactions(state, map, K, u, F, constrained);
-    const localLoad = buildLocalLoadVectors(state, map, factor);
+    const reactions = recoverReactions(st, map, K, u, F, constrained);
+    const localLoad = buildLocalLoadVectors(st, map, factor);
     return {
       displacements: state.nodes.map((n) => {
         const start = map.nodeStart.get(n.id) ?? 0;
@@ -789,13 +803,79 @@ export function solvePortico(
         };
       }),
       reactions,
-      bars: recoverBarForces(state, map, u, localLoad, factor),
+      bars: recoverBarForces(st, map, u, localLoad, factor, state.loads),
     };
   }
 
+  const slsD = toSolved(dRun.u, dRun.F, factorD);
+
+  // ---- Envolvente: un caso de sobrecarga por barra (superposición) ----
+  const liveBarIds = state.bars
+    .map((b) => b.id)
+    .filter((id) => state.loads.some((l) => l.barId === id && l.L !== 0));
+  const liveCases = liveBarIds.map((barId) => {
+    const st: PorticoState = {
+      ...state,
+      loads: state.loads.filter((l) => l.barId === barId),
+    };
+    const run = runMode(st, map, K, constrained, factorL);
+    return toSolved(run.u, run.F, factorL, st);
+  });
+
   return {
     uls: toSolved(ulsRun.u, ulsRun.F, factorUls),
-    slsD: toSolved(dRun.u, dRun.F, factorD),
+    envelope: buildEnvelope(slsD, liveCases, liveBarIds),
+    slsD,
     slsL: toSolved(lRun.u, lRun.F, factorL),
+    slsDL: toSolved(dlRun.u, dlRun.F, factorDL),
   };
+}
+
+/** U = máx(1.4·D ; 1.2·D + 1.6·ΣLk) eligiendo, para cada valor, las barras
+ *  k cuya sobrecarga lo aumenta (máximo) o lo disminuye (mínimo). Equivale
+ *  a recorrer los 2^n patrones de alternancia, por ser el análisis lineal. */
+function envRange(d: number, ls: number[]): EnvRange {
+  let pos = 0;
+  let neg = 0;
+  for (const l of ls) {
+    if (l > 0) pos += l;
+    else neg += l;
+  }
+  const d14 = 1.4 * d;
+  return {
+    max: Math.max(d14, 1.2 * d + 1.6 * pos),
+    min: Math.min(d14, 1.2 * d + 1.6 * neg),
+  };
+}
+
+function buildEnvelope(
+  dCase: SolvedPortico,
+  liveCases: SolvedPortico[],
+  liveBarIds: string[],
+): PorticoEnvelope {
+  const bars = dCase.bars.map((bar, bi) => ({
+    barId: bar.barId,
+    samples: bar.forces.samples.map((sample, si) => {
+      const pick = (key: "N" | "V" | "M") =>
+        envRange(
+          sample[key],
+          liveCases.map((c) => c.bars[bi].forces.samples[si][key]),
+        );
+      return { s: sample.s, N: pick("N"), V: pick("V"), M: pick("M") };
+    }),
+  }));
+  const reactions = dCase.reactions.map((r, ri) => {
+    const pick = (key: "Fx" | "Fy" | "Mz") =>
+      envRange(
+        r[key],
+        liveCases.map((c) => c.reactions[ri][key]),
+      );
+    return {
+      supportId: r.supportId,
+      Fx: pick("Fx"),
+      Fy: pick("Fy"),
+      Mz: pick("Mz"),
+    };
+  });
+  return { bars, reactions, liveBarIds };
 }
