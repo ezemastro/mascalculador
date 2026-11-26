@@ -677,7 +677,13 @@ export default function MuroResults() {
             value={`${fmt(r.Pu, 1)}`}
             sub="kN/m"
           />
-          <DataCard label="K<sub>a</sub> (Rankine)" value={fmt(r.Ka, 3)} />
+          <DataCard
+            label={
+              conLosa ? "K<sub>0</sub> (en reposo)" : "K<sub>a</sub> (Rankine)"
+            }
+            value={fmt(r.K, 3)}
+            sub={conLosa ? `Ka = ${fmt(r.Ka, 3)} (provisorio)` : undefined}
+          />
           <DataCard
             label="z<sub>0</sub> (tracción)"
             value={`${fmt(r.z0, 2)}`}
@@ -698,7 +704,9 @@ export default function MuroResults() {
 
       {/* Empuje activo */}
       <section className="bg-surface rounded-xl border border-border p-5">
-        <SectionHeading>Empuje activo de Rankine</SectionHeading>
+        <SectionHeading>
+          {conLosa ? "Empuje en reposo (con losa)" : "Empuje activo de Rankine"}
+        </SectionHeading>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <DataCard
             label="p<sub>q</sub> (sobrecarga)"
@@ -729,12 +737,32 @@ export default function MuroResults() {
             value={`${fmt(r.p_net_base, 1)}`}
             sub="kN/m²"
           />
+          {r.W_vec > 0 && (
+            <DataCard
+              label="Empuje cargas vecino"
+              value={`${fmt(r.W_vec, 1)}`}
+              sub="kN/m (resultante)"
+            />
+          )}
+          {r.U_sub > 0 && (
+            <DataCard
+              label="Subpresión U"
+              value={`${fmt(r.U_sub, 1)}`}
+              sub="kN/m bajo la zapata"
+            />
+          )}
         </div>
         <p className="text-xs text-text-muted mt-3">
-          Ka = tan²(45°−φ/2); z<sub>0</sub> = max(0, 2·c/(FS<sub>c</sub>·γ·√Ka)
-          − q/γ). p<sub>net</sub> = 0 por encima de z<sub>0</sub> (grieta de
-          tracción). Con napa, suma la presión efectiva del suelo sumergido y la
-          hidrostática desde z<sub>wt</sub>.
+          Ka = tan²(45°−φ/2), K0 = 1 − sen φ. Con losa el muro no se desplaza y
+          el estado definitivo usa K0 (empuje en reposo); el provisorio
+          apuntalado y el voladizo sin losa usan Ka. z<sub>0</sub> = max(0,
+          2·c/(FS<sub>c</sub>·γ·√K) − q/γ). p<sub>net</sub> = 0 por encima de z
+          <sub>0</sub> (grieta de tracción). Con napa, suma la presión efectiva
+          del suelo sumergido y la hidrostática desde z<sub>wt</sub>; bajo la
+          zapata actúa la subpresión u = γw·(h<sub>napa</sub> + H<sub>zap</sub>
+          ), que se descuenta de la carga sobre el suelo y del deslizamiento y
+          suma al vuelco. Las cargas del vecino se suman como presión lateral
+          por Boussinesq modificado (NAVFAC DM-7.2).
         </p>
       </section>
 

@@ -105,6 +105,11 @@ const initialState: MuroFormState = {
   rec_zap: 50,
   tipo_zapata: "centrada",
   con_losa: true,
+  Q_vec: 0,
+  x_Q_vec: 0,
+  P_vec: 0,
+  x_P_vec: 0,
+  D_vec: 0,
 };
 
 const NUM_FIELDS = [
@@ -129,6 +134,11 @@ const NUM_FIELDS = [
   "B_zap",
   "H_zap",
   "rec_zap",
+  "Q_vec",
+  "x_Q_vec",
+  "P_vec",
+  "x_P_vec",
+  "D_vec",
 ] as const;
 
 export default function MuroForm() {
@@ -488,7 +498,7 @@ export default function MuroForm() {
                     h<sub>napa</sub> — napa (m)
                   </>
                 }
-                hint="desde la base; 0 = sin napa"
+                hint="desde la base; 0 = sin napa (genera subpresión bajo la zapata)"
               >
                 <input
                   type="number"
@@ -563,6 +573,44 @@ export default function MuroForm() {
                   </select>
                 </div>
               </Field>
+            </div>
+          </Section>
+
+          {/* ── Cargas del vecino ────────────────────────────── */}
+          <Section
+            title="Cargas concentradas del vecino"
+            hint="empuje lateral por Boussinesq (NAVFAC DM-7.2); 0 = no hay. x se mide desde la cara del suelo del tabique"
+          >
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+              {(
+                [
+                  [
+                    "Q_vec",
+                    "Q franja / medianera (kN/m)",
+                    "carga lineal paralela al muro",
+                  ],
+                  ["x_Q_vec", "x de la franja (m)", "distancia al muro"],
+                  ["P_vec", "P columna (kN)", "carga puntual"],
+                  ["x_P_vec", "x de la columna (m)", "distancia al muro"],
+                  ["D_vec", "D apoyo (m)", "profundidad desde el coronamiento"],
+                ] as const
+              ).map(([k, label, hint]) => (
+                <Field key={k} label={label} hint={hint}>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={state[k] || ""}
+                    onKeyDown={handleCommaKey}
+                    onChange={(e) =>
+                      setState((prev) => ({
+                        ...prev,
+                        [k]: Number(e.target.value),
+                      }))
+                    }
+                  />
+                </Field>
+              ))}
             </div>
           </Section>
 
