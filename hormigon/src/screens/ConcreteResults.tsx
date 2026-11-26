@@ -231,7 +231,8 @@ export default function ConcreteResults() {
   // ---- Flechas (estado de servicio, sección fisurada) ----
   const [sustainedPct, setSustainedPct] = useState(s?.sustainedPct ?? 100); // % de L sostenida
   const [timeFactor, setTimeFactor] = useState(s?.timeFactor ?? 2); // ξ: ≥5 años
-  const [ieMethod, setIeMethod] = useState<"branson" | "bischoff">(
+  // Ya no se elige: se muestran ambos métodos. Se conserva el campo guardado.
+  const [ieMethod] = useState<"branson" | "bischoff">(
     s?.ieMethod ?? "branson",
   );
 
@@ -389,7 +390,9 @@ export default function ConcreteResults() {
     const asTopSup = supBarQty.map(
       (q, i) => q * (BAR_AREA[supBarDiam[i]] || 0),
     );
-    return computeDeflections({
+    // Se calculan las dos fórmulas de Ie y se muestran juntas (comparación):
+    // Branson (CIRSOC 201-05 Art. 9.5.2.3) y Bischoff (ACI 318-19 / CIRSOC 201-25).
+    const base = {
       spans: s.spans,
       supportTypes: s.supportTypes,
       loads: envelopeLoads,
@@ -405,8 +408,11 @@ export default function ConcreteResults() {
       supportWidthsMm: supportWidths,
       sustainedPct,
       timeFactor,
-      useBischoff: ieMethod === "bischoff",
-    });
+    };
+    return {
+      branson: computeDeflections({ ...base, useBischoff: false }),
+      bischoff: computeDeflections({ ...base, useBischoff: true }),
+    };
   }, [
     s,
     envelope,
@@ -1419,7 +1425,8 @@ export default function ConcreteResults() {
         </h2>
         <p className="text-xs text-text-muted mb-3">
           CIRSOC 201-25 Cap. 24: ΔLL ≤ L/360 · Δtotal ≤ L/240 · voladizos con
-          2·L. Hormigón fisurado: Ie por Branson/Bischoff.
+          2·L. Hormigón fisurado: se muestran Ie por Branson y por Bischoff
+          para comparar.
         </p>
         <div className="flex flex-wrap items-end gap-3 mb-4">
           <label className="flex flex-col gap-1">
@@ -1447,76 +1454,88 @@ export default function ConcreteResults() {
               <option value={0.4}>3 meses (ξ = 0.4)</option>
             </select>
           </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-text-muted font-medium">
-              Fórmula de Ie
-            </span>
-            <select
-              value={ieMethod}
-              onChange={(e) =>
-                setIeMethod(e.target.value as "branson" | "bischoff")
-              }
-              className="w-48"
-            >
-              <option value="branson">Branson (CIRSOC)</option>
-              <option value="bischoff">Bischoff (CSA)</option>
-            </select>
-          </label>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-          {defl.spans.map((sp) => (
-            <div
-              key={sp.index}
-              className="bg-surface-alt rounded-lg p-3 flex flex-col gap-1.5"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-text">
-                  Tramo {sp.index + 1} — {sp.lengthM.toFixed(2)} m
-                </span>
-                {sp.isCantilever && (
-                  <span className="text-xs text-warning font-semibold">
-                    voladizo
+        {/* Comparación: se muestran los dos métodos de Ie a la vez. */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+          {defl.branson.spans.map((sp) => {
+            const bi = defl.bischoff.spans[sp.index];
+            const methods = [
+              { name: "Branson", ref: "CIRSOC 201-05 Art. 9.5.2.3", r: sp },
+              { name: "Bischoff", ref: "ACI 318-19 / CIRSOC 201-25", r: bi },
+            ];
+            return (
+              <div
+                key={sp.index}
+                className="bg-surface-alt rounded-lg p-3 flex flex-col gap-2"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-text">
+                    Tramo {sp.index + 1} — {sp.lengthM.toFixed(2)} m · luz
+                    libre {sp.clearM.toFixed(2)} m
                   </span>
-                )}
+                  {sp.isCantilever && (
+                    <span className="text-xs text-warning font-semibold">
+                      voladizo
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {methods.map(({ name, ref, r }) => (
+                    <div
+                      key={name}
+                      className="rounded-md border border-border p-2 flex flex-col gap-1"
+                    >
+                      <span className="text-xs font-semibold text-text">
+                        {name}{" "}
+                        <span className="font-normal text-text-muted">
+                          ({ref})
+                        </span>
+                      </span>
+                      <p className="text-xs text-text-muted">
+                        δi(D+L) ={" "}
+                        <span className="font-semibold text-text">
+                          {r.comboDL.delta.toFixed(2)} mm
+                        </span>{" "}
+                        · δi(D) ={" "}
+                        <span className="font-semibold text-text">
+                          {r.comboD.delta.toFixed(2)} mm
+                        </span>
+                      </p>
+                      <p
+                        className={`text-xs font-semibold ${r.okLL ? "text-success" : "text-danger"}`}
+                      >
+                        ΔLL = {r.deltaLL.toFixed(2)} mm ≤ L/360 ={" "}
+                        {r.limLL.toFixed(2)} mm {r.okLL ? "✓" : "✗"}
+                      </p>
+                      <p className="text-xs text-text-muted">
+                        Δcp+sh = ξ={r.xiUsed.toFixed(2)} · δi(
+                        {r.comboSus.name})={r.comboSus.delta.toFixed(2)} ={" "}
+                        {r.deltaCpSh.toFixed(2)} mm
+                      </p>
+                      <p
+                        className={`text-xs font-semibold ${r.okTotal ? "text-success" : "text-danger"}`}
+                      >
+                        Δtotal = {r.deltaTotal.toFixed(2)} mm ≤ L/240 ={" "}
+                        {r.limTotal.toFixed(2)} mm {r.okTotal ? "✓" : "✗"}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <p className="text-xs text-text-muted">
-                luz libre {sp.clearM.toFixed(2)} m
-              </p>
-              <p className="text-xs text-text-muted">
-                δi(D+L) ={" "}
-                <span className="font-semibold text-text">
-                  {sp.comboDL.delta.toFixed(2)} mm
-                </span>{" "}
-                · δi(D) ={" "}
-                <span className="font-semibold text-text">
-                  {sp.comboD.delta.toFixed(2)} mm
-                </span>
-              </p>
-              <p
-                className={`text-xs font-semibold ${sp.okLL ? "text-success" : "text-danger"}`}
-              >
-                ΔLL = {sp.deltaLL.toFixed(2)} mm ≤ L/360 = {sp.limLL.toFixed(2)}{" "}
-                mm {sp.okLL ? "✓" : "✗"}
-              </p>
-              <p className="text-xs text-text-muted">
-                Δcp+sh = ξ={sp.xiUsed.toFixed(2)} · δi(
-                {sp.comboSus.name})={sp.comboSus.delta.toFixed(2)} ={" "}
-                {sp.deltaCpSh.toFixed(2)} mm
-              </p>
-              <p
-                className={`text-xs font-semibold ${sp.okTotal ? "text-success" : "text-danger"}`}
-              >
-                Δtotal = {sp.deltaTotal.toFixed(2)} mm ≤ L/240 ={" "}
-                {sp.limTotal.toFixed(2)} mm {sp.okTotal ? "✓" : "✗"}
-              </p>
-            </div>
-          ))}
+            );
+          })}
         </div>
         <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mt-4 mb-1">
-          Cuentas
+          Cuentas — Branson
         </p>
         <pre className="p-3 bg-surface-alt rounded-lg text-xs text-text-muted font-mono whitespace-pre-wrap overflow-x-auto max-h-96 overflow-y-auto">
-          {defl.steps.join("\n")}
+          {defl.branson.steps.join("\n")}
+        </pre>
+        <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mt-4 mb-1">
+          Cuentas — Bischoff
+        </p>
+        <pre className="p-3 bg-surface-alt rounded-lg text-xs text-text-muted font-mono whitespace-pre-wrap overflow-x-auto max-h-96 overflow-y-auto">
+          {defl.bischoff.steps.join("\n")}
         </pre>
       </section>
 

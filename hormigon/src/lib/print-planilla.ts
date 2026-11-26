@@ -316,7 +316,8 @@ function buildVigaRows(save: SavedBeam): PlanillaCell[][] {
       supportWidthsMm: supportWidths,
       sustainedPct: d.sustainedPct ?? 100,
       timeFactor: d.timeFactor ?? 2,
-      useBischoff: d.ieMethod === "bischoff",
+      // Planilla: Branson (CIRSOC 201-05 Art. 9.5.2.3). Bischoff se ve en pantalla.
+      useBischoff: false,
     });
   } catch {
     defl = null;

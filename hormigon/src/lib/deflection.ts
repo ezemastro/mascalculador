@@ -324,7 +324,12 @@ export function computeDeflections(p: DeflectionParams): DeflectionResult {
     `Mcr = fr·Ig/yt = ${fmt(fr, 2)}·${fmt(Ig / 1e4, 0)}/${fmt(yt / 10, 1)} = ${fmt(Mcr, 2)} kN·m`,
   );
   st.push(
-    `Carga sostenida: ${fmt(p.sustainedPct, 0)} % de L · ξ = ${fmt(p.timeFactor, 1)} · Ie: ${p.useBischoff ? "Bischoff" : "Branson"}`,
+    `Carga sostenida: ${fmt(p.sustainedPct, 0)} % de L · ξ = ${fmt(p.timeFactor, 1)} · Ie: ${p.useBischoff ? "Bischoff (ACI 318-19 / CIRSOC 201-25)" : "Branson (CIRSOC 201-05 Art. 9.5.2.3)"}`,
+  );
+  st.push(
+    p.useBischoff
+      ? `Fisura si Ma > (2/3)·Mcr = ${fmt((2 / 3) * Mcr, 2)} kN·m · Ie = Icr/(1−((2/3)·Mcr/Ma)²·(1−Icr/Ig)) ≤ Ig`
+      : `Fisura si Ma > Mcr = ${fmt(Mcr, 2)} kN·m · Ie = (Mcr/Ma)³·Ig + [1−(Mcr/Ma)³]·Icr ≤ Ig`,
   );
   st.push("");
 
@@ -353,7 +358,12 @@ export function computeDeflections(p: DeflectionParams): DeflectionResult {
   ): SectionIe {
     let c = 0;
     let Icr = 0;
-    const cracked = Ma > Mcr && As > 0;
+    // Umbral de fisuración: Branson (CIRSOC 201-05 Art. 9.5.2.3) fisura con
+    // Ma > Mcr. Bischoff (ACI 318-19 Tabla 24.2.3.5) fisura con Ma > (2/3)·Mcr:
+    // el 2/3 tiene en cuenta la fisuración por contracción restringida, que
+    // reduce el momento de fisuración efectivo.
+    const McrLim = p.useBischoff ? (2 / 3) * Mcr : Mcr;
+    const cracked = Ma > McrLim && As > 0;
     if (cracked) {
       const q = (n * As) / b;
       c = q * (-1 + Math.sqrt(1 + (2 * d) / q)); // mm
@@ -364,9 +374,14 @@ export function computeDeflections(p: DeflectionParams): DeflectionResult {
     if (!cracked) {
       Ie = Ig;
     } else if (p.useBischoff) {
-      Ie = Icr / (1 - (Mcr / Ma) ** 3 * (1 - Icr / Ig));
+      // Bischoff — ACI 318-19 Tabla 24.2.3.5 (CIRSOC 201-25):
+      //   Ie = Icr / (1 − ((2/3)·Mcr/Ma)²·(1 − Icr/Ig))
+      // Corrección: antes usaba (Mcr/Ma)³ y fisuraba desde Mcr (mezcla con
+      // Branson); eso sobrestimaba la rigidez, sobre todo con poca armadura.
+      Ie = Icr / (1 - (((2 / 3) * Mcr) / Ma) ** 2 * (1 - Icr / Ig));
     } else {
-      // Branson completo: Ie = Icr + (Ig − Icr)·(Mcr/Ma)³
+      // Branson — CIRSOC 201-05 Art. 9.5.2.3:
+      //   Ie = (Mcr/Ma)³·Ig + [1 − (Mcr/Ma)³]·Icr = Icr + (Ig − Icr)·(Mcr/Ma)³
       Ie = Icr + (Ig - Icr) * (Mcr / Ma) ** 3;
     }
     Ie = Math.min(Ie, Ig);
@@ -570,7 +585,7 @@ export function computeDeflections(p: DeflectionParams): DeflectionResult {
       if (secP.cracked && secP.As > 0) {
         if (p.useBischoff) {
           st.push(
-            `    Mcr/Ma = ${fmt(Mcr, 2)}/${fmt(secP.Ma, 2)} = ${fmt(Mcr / secP.Ma, 3)} → Ie⁺ = Icr/(1−(Mcr/Ma)³·(1−Icr/Ig)) = ${fmt(secP.Ie / 1e4, 0)} cm⁴`,
+            `    (2/3)·Mcr/Ma = (2/3)·${fmt(Mcr, 2)}/${fmt(secP.Ma, 2)} = ${fmt(((2 / 3) * Mcr) / secP.Ma, 3)} → Ie⁺ = Icr/(1−((2/3)·Mcr/Ma)²·(1−Icr/Ig)) = ${fmt(secP.Icr / 1e4, 0)}/(1−${fmt((((2 / 3) * Mcr) / secP.Ma) ** 2, 4)}·(1−${fmt(secP.Icr / 1e4, 0)}/${fmt(Ig / 1e4, 0)})) = ${fmt(secP.Ie / 1e4, 0)} cm⁴`,
           );
         } else {
           st.push(
