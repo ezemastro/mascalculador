@@ -405,12 +405,28 @@ function step7_EffectiveDepth(
   return { d, method };
 }
 
-/** Paso 8: Verificación al punzonado (CIRSOC 201, 11.11.2)
- *  Vu = Pu − qu·A0  donde A0 = (cx+d)·(cy+d), b0 = 2·(cx+d)+2·(cy+d)
+/** Paso 8: Verificación al punzonado (CIRSOC 201-05 Art. 11.12.2.1)
+ *
+ *  Perímetro crítico a d/2 de las caras de la columna (Art. 11.12.1.2),
+ *  cortado en el borde de la base. Igual que los "Ejemplos de Aplicación del
+ *  CIRSOC 201-2005", cap. 7 (Bases), Fig. 7.2.2.3.1 y Ejemplos 7.I a 7.III:
+ *    Centrada:      b0 = 2·(cx+d) + 2·(cy+d)        A0 = (cx+d)·(cy+d)
+ *    Medianera (excentricidad en X, "medianera-y"):
+ *                   b0 = 2·(cx+d/2) + (cy+d)        A0 = (cx+d/2)·(cy+d)
+ *    Medianera (excentricidad en Y, "medianera-x"):
+ *                   b0 = (cx+d) + 2·(cy+d/2)        A0 = (cx+d)·(cy+d/2)
+ *    Esquina:       b0 = (cx+d/2) + (cy+d/2)        A0 = (cx+d/2)·(cy+d/2)
+ *  Corrección: antes se usaba siempre el perímetro y el área de 4 lados
+ *  (como base centrada) también en medianeras y esquinas, lo que
+ *  sobrestimaba φVc y subestimaba Vu.
+ *
+ *  Vu = Pu − qu·A0
  *  φVc = 0.75 · Y · F · b0 · d · √f'c / 120   (kN·cm)
  *  F = mín(F1, F2):  F1 = 4 (β≤2) o (2+4/β) (β>2) ; F2 = (αs·d/b0 + 2)
- *  Y = 1 centrada, 0.75 medianera, 0.5 esquina ; αs = 40/30/20 */
-function step8_Punching(
+ *  Y = 1 centrada, 0.75 medianera, 0.5 esquina (Ejemplos cap. 7, punto
+ *  7.2.2.3, según Art. 13.5.3.3: Vu ≤ 0.75·φVc borde / 0.5·φVc esquina, que
+ *  permite no calcular la transferencia de momento) ; αs = 40/30/20 */
+export function step8_Punching(
   Pu: number,
   qu: number,
   cx: number,
@@ -419,26 +435,65 @@ function step8_Punching(
   fc: number,
   Y: number,
   alphaS: number,
+  type: BaseType,
 ): {
   Vu: number;
   phiVc: number;
   OK: boolean;
   b0: number;
   A0: number;
+  /** Lados del rectángulo crítico (cm) y expresión de b0 para las cuentas. */
+  ax: number;
+  ay: number;
+  b0Expr: string;
   beta: number;
   F1: number;
   F2: number;
   F: number;
 } {
-  const b0 = 2 * (cx + d) + 2 * (cy + d);
-  const A0 = (cx + d) * (cy + d);
+  // Lado del rectángulo crítico en cada eje: c + d si hay hormigón a ambos
+  // lados de la columna; c + d/2 si la columna está contra el borde.
+  const t = type === "medianera" ? "medianera-y" : type;
+  const cutX = t === "medianera-y" || t === "esquina";
+  const cutY = t === "medianera-x" || t === "esquina";
+  const ax = cutX ? cx + d / 2 : cx + d;
+  const ay = cutY ? cy + d / 2 : cy + d;
+  let b0: number;
+  let b0Expr: string;
+  if (t === "esquina") {
+    b0 = ax + ay;
+    b0Expr = "(cx+d/2) + (cy+d/2)";
+  } else if (t === "medianera-y") {
+    b0 = 2 * ax + ay;
+    b0Expr = "2·(cx+d/2) + (cy+d)";
+  } else if (t === "medianera-x") {
+    b0 = ax + 2 * ay;
+    b0Expr = "(cx+d) + 2·(cy+d/2)";
+  } else {
+    b0 = 2 * ax + 2 * ay;
+    b0Expr = "2·(cx+d) + 2·(cy+d)";
+  }
+  const A0 = ax * ay;
   const Vu = Pu - qu * A0;
   const beta = Math.max(cx, cy) / Math.min(cx, cy);
   const F1 = beta <= 2 ? 4 : 2 + 4 / beta;
   const F2 = (alphaS * d) / b0 + 2;
   const F = Math.min(F1, F2);
   const phiVc = (0.75 * Y * F * b0 * d * Math.sqrt(fc)) / 120;
-  return { Vu, phiVc, OK: Vu <= phiVc, b0, A0, beta, F1, F2, F };
+  return {
+    Vu,
+    phiVc,
+    OK: Vu <= phiVc,
+    b0,
+    A0,
+    ax,
+    ay,
+    b0Expr,
+    beta,
+    F1,
+    F2,
+    F,
+  };
 }
 
 /** Paso 9: Verificación a corte unidireccional (CIRSOC 201, 11.3)
@@ -685,9 +740,16 @@ function designCentrada(input: BaseInput, quOverride?: number): BaseResult {
     input.fc,
     Y,
     alphaS,
+    input.type,
   );
   st.push(
-    `8. Punzonado: b0 = 2·(${input.cx}+${f1(d)})+2·(${input.cy}+${f1(d)}) = ${f1(punch.b0)} cm`,
+    `8. Punzonado (CIRSOC 201-05 Art. 11.12.2.1; perímetro a d/2 cortado en el borde de la base):`,
+  );
+  st.push(
+    `   b0 = ${punch.b0Expr} = ${f1(punch.b0)} cm (lados ${f1(punch.ax)} × ${f1(punch.ay)} cm)`,
+  );
+  st.push(
+    `   A0 = ${f1(punch.ax)}·${f1(punch.ay)} = ${f1(punch.A0)} cm²`,
   );
   st.push(
     `   β = ${f1(punch.beta)}, Y = ${Y}, αs = ${alphaS}, F1 = ${f1(punch.F1)}, F2 = ${f1(punch.F2)} → F = ${f1(punch.F)}`,
