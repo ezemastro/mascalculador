@@ -129,9 +129,10 @@ function RCColumnResultsInner({ state }: { state: RCColumnState }) {
   );
 
   // ─── Initial armado proposal ───
-  const astNeeded = resultBase.Ast;
-
-  const proposedArmado = useMemo(() => proposeArmado(astNeeded), [astNeeded]);
+  const proposedArmado = useMemo(
+    () => proposeArmado(resultBase.barLayout),
+    [resultBase.barLayout],
+  );
 
   // ─── Interactive armado state ───
   const [nEsquinas, setNEsquinas] = useState<number>(
@@ -545,8 +546,7 @@ function RCColumnResultsInner({ state }: { state: RCColumnState }) {
                   : "Contorno: Mux/φMnx + Muy/φMny"
               }
             >
-              Biaxial: {result.biaxial.ratio.toFixed(2)}{" "}
-              {biaxialOK ? "✓" : "✗"}
+              Biaxial: {result.biaxial.ratio.toFixed(2)} {biaxialOK ? "✓" : "✗"}
             </span>
           )}
         </div>
@@ -569,8 +569,7 @@ function RCColumnResultsInner({ state }: { state: RCColumnState }) {
                 : !dirYOK
                   ? "Y"
                   : "flexión biaxial (X e Y combinadas)"}
-            .
-            Aumentar sección o modificar geometría.
+            . Aumentar sección o modificar geometría.
           </p>
         )}
       </div>

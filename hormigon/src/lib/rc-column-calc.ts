@@ -112,6 +112,9 @@ export interface BiaxialBarLayout {
   // Totales
   totalBars: number; // total de barras distintas (nXtotal + nYadditionalTotal)
   astTotalProvided: number; // acero total colocado (cm²)
+  /** false: el armado automático no encontró combinación que verifique
+   *  (se muestra la más cercana). En armado manual siempre true. */
+  found: boolean;
 }
 
 // Standard rebar areas (mm²)
@@ -404,6 +407,7 @@ function checkBiaxial(
   MuY: number,
   AstX: number,
   AstY: number,
+  AstTotal: number = Math.max(AstX, AstY),
 ): BiaxialCheck {
   const st: string[] = [];
   const Ag = Cx * Cy; // cm²
@@ -418,7 +422,8 @@ function checkBiaxial(
     const eY = Pu > 0 ? MuY / Pu : 0;
     const phiPnx = phiPnAtEccentricity(Cy, Cx, fc, fy, AstX, eX);
     const phiPny = phiPnAtEccentricity(Cx, Cy, fc, fy, AstY, eY);
-    const AstT = Math.max(AstX, AstY);
+    // P₀ con TODA la armadura colocada en la sección.
+    const AstT = AstTotal;
     const P0 = (0.85 * fc * (Ag - AstT) * 100 + fy * AstT * 100) / 1000;
     const phiP0 = PHI_C * P0;
     const inv = 1 / phiPnx + 1 / phiPny - 1 / phiP0;
@@ -431,7 +436,9 @@ function checkBiaxial(
     st.push(
       `  e_x = M_ux/P_u = ${(eX * 100).toFixed(1)} cm → φP_nx = ${f2(phiPnx)} kN ; e_y = ${(eY * 100).toFixed(1)} cm → φP_ny = ${f2(phiPny)} kN`,
     );
-    st.push(`  φP₀ = 0.65·[0.85·f'c·(A_g − A_st) + f_y·A_st] = ${f2(phiP0)} kN`);
+    st.push(
+      `  φP₀ = 0.65·[0.85·f'c·(A_g − A_st) + f_y·A_st] = ${f2(phiP0)} kN`,
+    );
     st.push(
       `  1/φP_ni = 1/${f2(phiPnx)} + 1/${f2(phiPny)} − 1/${f2(phiP0)} → φP_ni = ${f2(phiPni)} kN`,
     );
@@ -491,86 +498,151 @@ function selectLongitudinalBars(Ast_cm2: number): {
   return { nBars: 12, db: 32 };
 }
 
+/** Diámetros que prueba el armado automático (Ø12 mínimo para columnas). */
+const AUTO_DIAMETERS = [12, 16, 20, 25, 32];
+/** Barras intermedias por cara que prueba el armado automático. */
+const AUTO_MAX_INTER = 6;
+/** Distancia del borde al eje de las barras de esquina adoptada para
+ *  verificar la separación (recubrimiento + estribo + medio diámetro). */
+const BAR_EDGE_CM = 4;
+/** Separación máxima entre ejes de barras de una cara (buena práctica
+ *  constructiva; evita caras largas con barras solo en las esquinas). */
+const MAX_BAR_SPACING_CM = 30;
+
+/** n barras (esquinas incluidas) en una cara: separación libre mínima
+ *  max(1.5·db, 40 mm) (CIRSOC 201-05 Art. 7.6.3) y separación entre ejes
+ *  ≤ 30 cm. */
+function barsFitFace(faceCm: number, nBars: number, db: number): boolean {
+  if (nBars <= 1) return true;
+  const span = faceCm - 2 * BAR_EDGE_CM;
+  const pitch = span / (nBars - 1);
+  const clear = pitch - db / 10;
+  return (
+    clear >= Math.max(1.5 * (db / 10), 4) && pitch <= MAX_BAR_SPACING_CM + 1e-9
+  );
+}
+
+interface BiaxialDemand {
+  Cx: number;
+  Cy: number;
+  fc: number;
+  fy: number;
+  Pu: number;
+  MuX: number;
+  MuY: number;
+  astX: number; // cm² requeridos dirección X (2 caras X)
+  astY: number; // cm² requeridos dirección Y (2 caras Y)
+  checkBi: boolean; // hay momento en las dos direcciones
+}
+
 /**
- * Select biaxial bar layout considering corner bars work in both directions.
- * X-direction bars on faces of width b include the 4 corners.
- * Y-direction gets corner contribution; intermediate bars are added only if needed.
+ * Armado automático biaxial. Prueba diámetros (Ø12…Ø32) y barras
+ * intermedias por cara (caras X = izquierda/derecha, largo Cy; caras Y =
+ * arriba/abajo, largo Cx), de menor a mayor acero total, y adopta el primero
+ * que cumple TODO con las barras reales:
+ *   - dirección X: 2 caras × (2 esquinas + n_x) ≥ A_st,x necesaria
+ *   - dirección Y: 2 caras × (2 esquinas + n_y) ≥ A_st,y necesaria
+ *   - ρ total ≤ 4 %
+ *   - verificación biaxial (Bresler / contorno) con esas barras
+ *   - separación libre entre barras ≥ max(1.5·db, 40 mm)
+ * Si ninguno cumple, devuelve el más cercano a verificar con found = false.
  */
-function selectBiaxialBars(
-  astX: number, // cm² requeridos dirección X (dirX.Ast)
-  astY: number, // cm² requeridos dirección Y (dirY.Ast)
-): BiaxialBarLayout {
-  for (const db of BAR_DIAMETERS) {
-    const aBar = BAR_AREAS[db] / 100; // cm²
-
-    // Dirección X
-    const nXperFace = Math.max(2, Math.ceil(astX / (2 * aBar)));
-    const nXtotal = 2 * nXperFace;
-    const astXprovided = nXtotal * aBar;
-
-    // Dirección Y
-    const cornerContribY = 4 * aBar;
-    const astYremaining = Math.max(0, astY - cornerContribY);
-    const nYadditionalPerFace = Math.ceil(astYremaining / (2 * aBar));
-    const nYadditionalTotal = 2 * nYadditionalPerFace;
-    const astYprovided = cornerContribY + nYadditionalTotal * aBar;
-
-    const totalBars = nXtotal + nYadditionalTotal;
-
-    if (totalBars <= 12 && astXprovided >= astX && astYprovided >= astY) {
-      return {
-        dbEsquinas: db,
-        dbCarasX: db,
-        dbCarasY: db,
-        aBarEsquinas: aBar,
-        aBarX: aBar,
-        aBarY: aBar,
-        nXperFace,
-        nXtotal,
-        astXprovided,
-        astYneeded: astY,
-        cornerContribY,
-        astYremaining,
-        nYadditionalPerFace,
-        nYadditionalTotal,
-        astYprovided,
-        totalBars,
-        astTotalProvided: nXtotal * aBar + nYadditionalTotal * aBar,
-      };
+function selectBiaxialBars(dem: BiaxialDemand): BiaxialBarLayout {
+  const { Cx, Cy, fc, fy, Pu, MuX, MuY, astX, astY, checkBi } = dem;
+  const Ag = Cx * Cy;
+  type Cand = {
+    db: number;
+    a: number;
+    nIX: number;
+    nIY: number;
+    total: number;
+  };
+  const cands: Cand[] = [];
+  for (const db of AUTO_DIAMETERS) {
+    const a = BAR_AREAS[db] / 100;
+    for (let nIX = 0; nIX <= AUTO_MAX_INTER; nIX++) {
+      if (!barsFitFace(Cy, nIX + 2, db)) continue;
+      for (let nIY = 0; nIY <= AUTO_MAX_INTER; nIY++) {
+        if (!barsFitFace(Cx, nIY + 2, db)) continue;
+        cands.push({ db, a, nIX, nIY, total: (4 + 2 * nIX + 2 * nIY) * a });
+      }
     }
   }
+  const nBarsOf = (c: Cand) => 4 + 2 * c.nIX + 2 * c.nIY;
+  cands.sort((p, q) => p.total - q.total || nBarsOf(p) - nBarsOf(q));
 
-  // Fallback: use largest diameter (accepting more than 12 bars)
-  const db = 32;
-  const aBar = BAR_AREAS[db] / 100;
-  const nXperFace = Math.max(2, Math.ceil(astX / (2 * aBar)));
-  const nXtotal = 2 * nXperFace;
-  const astXprovided = nXtotal * aBar;
-  const cornerContribY = 4 * aBar;
-  const astYremaining = Math.max(0, astY - cornerContribY);
-  const nYadditionalPerFace = Math.ceil(astYremaining / (2 * aBar));
-  const nYadditionalTotal = 2 * nYadditionalPerFace;
-  const astYprovided = cornerContribY + nYadditionalTotal * aBar;
-  const totalBars = nXtotal + nYadditionalTotal;
+  const evaluate = (c: Cand) => {
+    const provX = (4 + 2 * c.nIX) * c.a;
+    const provY = (4 + 2 * c.nIY) * c.a;
+    const rho = c.total / Ag;
+    const dirOK = provX >= astX - 1e-9 && provY >= astY - 1e-9;
+    return { provX, provY, rho, dirOK, rhoOK: rho <= MAX_COLUMN_RHO + 1e-12 };
+  };
+  const biRatio = (provX: number, provY: number, total: number) =>
+    checkBi
+      ? checkBiaxial(Cx, Cy, fc, fy, Pu, MuX, MuY, provX, provY, total).ratio
+      : 0;
 
+  let chosen: Cand | null = null;
+  for (const c of cands) {
+    const ev = evaluate(c);
+    if (!ev.dirOK || !ev.rhoOK) continue;
+    if (biRatio(ev.provX, ev.provY, c.total) <= 1) {
+      chosen = c;
+      break;
+    }
+  }
+  const found = chosen !== null;
+  if (!chosen) {
+    // Ninguno verifica: el más cercano (menor "peor relación
+    // demanda/capacidad"), preferentemente dentro del 4 %.
+    const pool = cands.some((c) => evaluate(c).rhoOK)
+      ? cands.filter((c) => evaluate(c).rhoOK)
+      : cands;
+    let best = Infinity;
+    for (const c of pool) {
+      const ev = evaluate(c);
+      const score = Math.max(
+        astX / ev.provX,
+        astY / ev.provY,
+        ev.rho / MAX_COLUMN_RHO,
+        biRatio(ev.provX, ev.provY, c.total),
+      );
+      if (score < best - 1e-9) {
+        best = score;
+        chosen = c;
+      }
+    }
+  }
+  // Sin candidatos geométricos (sección muy chica): 4 Ø12 en esquinas.
+  const c: Cand = chosen ?? {
+    db: 12,
+    a: BAR_AREAS[12] / 100,
+    nIX: 0,
+    nIY: 0,
+    total: (4 * BAR_AREAS[12]) / 100,
+  };
+  const ev = evaluate(c);
+  const cornerContribY = 4 * c.a;
   return {
-    dbEsquinas: db,
-    dbCarasX: db,
-    dbCarasY: db,
-    aBarEsquinas: aBar,
-    aBarX: aBar,
-    aBarY: aBar,
-    nXperFace,
-    nXtotal,
-    astXprovided,
+    dbEsquinas: c.db,
+    dbCarasX: c.db,
+    dbCarasY: c.db,
+    aBarEsquinas: c.a,
+    aBarX: c.a,
+    aBarY: c.a,
+    nXperFace: 2 + c.nIX,
+    nXtotal: 4 + 2 * c.nIX,
+    astXprovided: ev.provX,
     astYneeded: astY,
     cornerContribY,
-    astYremaining,
-    nYadditionalPerFace,
-    nYadditionalTotal,
-    astYprovided,
-    totalBars,
-    astTotalProvided: nXtotal * aBar + nYadditionalTotal * aBar,
+    astYremaining: Math.max(0, astY - cornerContribY),
+    nYadditionalPerFace: c.nIY,
+    nYadditionalTotal: 2 * c.nIY,
+    astYprovided: ev.provY,
+    totalBars: 4 + 2 * c.nIX + 2 * c.nIY,
+    astTotalProvided: c.total,
+    found,
   };
 }
 
@@ -868,7 +940,7 @@ function designOneDirection(
   } else {
     const { nBars, db: dbLong } = selectLongitudinalBars(effectiveAst);
     st.push(
-      `${nBars} Ø${dbLong} mm → A_st = ${f2((nBars * BAR_AREAS[dbLong]) / 100)} cm²`,
+      `Referencia (solo esta dirección): ${nBars} Ø${dbLong} mm → A_st = ${f2((nBars * BAR_AREAS[dbLong]) / 100)} cm². El armado adoptado se define en el resumen biaxial.`,
     );
   }
 
@@ -909,11 +981,11 @@ function designOneDirection(
 }
 
 /**
- * Propose an initial armado layout based on the required steel area.
- * Always starts with 4 × Ø12 corners and adds intermediates or increases
- * diameter if needed. Returns 3 independent diameters ready for user adjustment.
+ * Propuesta inicial de armado para la pantalla de columnas: el mismo armado
+ * que eligió el motor automático (verificado en ambas direcciones, biaxial y
+ * cuantía), expresado como esquinas + intermedias por cara.
  */
-export function proposeArmado(astNeeded: number): {
+export function proposeArmado(layout: BiaxialBarLayout): {
   nEsquinas: number;
   dbEsquinas: number;
   nCarasX: number;
@@ -921,36 +993,14 @@ export function proposeArmado(astNeeded: number): {
   nCarasY: number;
   dbCarasY: number;
 } {
-  const area = (d: number) => (Math.PI * d * d) / 4 / 100; // cm² per bar
-
-  function tryDiameter(db: number): {
-    nEsquinas: number;
-    nCarasX: number;
-    nCarasY: number;
-    ok: boolean;
-  } {
-    const total = Math.ceil(astNeeded / area(db));
-    if (total <= 4) return { nEsquinas: 4, nCarasX: 0, nCarasY: 0, ok: true };
-    if (total <= 8) return { nEsquinas: 4, nCarasX: 2, nCarasY: 0, ok: true };
-    if (total <= 12) return { nEsquinas: 4, nCarasX: 2, nCarasY: 2, ok: true };
-    return { nEsquinas: 4, nCarasX: 3, nCarasY: 3, ok: total <= 16 };
-  }
-
-  // Try Ø12
-  let r = tryDiameter(12);
-  if (r.ok) return { ...r, dbEsquinas: 12, dbCarasX: 12, dbCarasY: 12 };
-
-  // Try Ø16
-  r = tryDiameter(16);
-  if (r.ok) return { ...r, dbEsquinas: 16, dbCarasX: 16, dbCarasY: 16 };
-
-  // Try Ø20
-  r = tryDiameter(20);
-  if (r.ok) return { ...r, dbEsquinas: 20, dbCarasX: 20, dbCarasY: 20 };
-
-  // Fallback: Ø25
-  r = tryDiameter(25);
-  return { ...r, dbEsquinas: 25, dbCarasX: 25, dbCarasY: 25 };
+  return {
+    nEsquinas: 4,
+    dbEsquinas: layout.dbEsquinas,
+    nCarasX: Math.max(0, layout.nXperFace - 2),
+    dbCarasX: layout.dbCarasX,
+    nCarasY: layout.nYadditionalPerFace,
+    dbCarasY: layout.dbCarasY,
+  };
 }
 
 export function designRCColumn(input: RCColumnInput): RCColumnResult {
@@ -1140,6 +1190,10 @@ export function designRCColumn(input: RCColumnInput): RCColumnResult {
   );
 
   // ─── Biaxial bar layout ───
+  // Verificación biaxial adicional: solo si hay momentos aplicados en ambas
+  // direcciones (el momento mínimo se considera por separado en cada eje).
+  const hasMx = MxSup !== 0 || MxInf !== 0;
+  const hasMy = MySup !== 0 || MyInf !== 0;
   const barLayout: BiaxialBarLayout = useManual
     ? {
         dbEsquinas,
@@ -1162,15 +1216,28 @@ export function designRCColumn(input: RCColumnInput): RCColumnResult {
         astYprovided: astManual!.astYface * 2,
         totalBars: astManual!.totalBars,
         astTotalProvided: astManual!.astTotal,
+        found: true,
       }
-    : selectBiaxialBars(dirX.AstReq, dirY.AstReq);
+    : selectBiaxialBars({
+        Cx,
+        Cy: Cy_cm,
+        fc,
+        fy,
+        Pu,
+        MuX: dirX.Mu,
+        MuY: dirY.Mu,
+        astX: dirX.AstReq,
+        astY: dirY.AstReq,
+        checkBi: hasMx && hasMy,
+      });
+  if (!useManual) {
+    // La armadura "adoptada" de cada dirección es la de las barras elegidas.
+    dirX.AstProv = dirX.Ast = barLayout.astXprovided;
+    dirY.AstProv = dirY.Ast = barLayout.astYprovided;
+  }
   const rho_final = barLayout.astTotalProvided / (Cx * Cy_cm);
   const rhoMaxExceeded =
     dirX.rhoMaxExceeded || dirY.rhoMaxExceeded || rho_final > MAX_COLUMN_RHO;
-  // Verificación biaxial adicional: solo si hay momentos aplicados en ambas
-  // direcciones (el momento mínimo se considera por separado en cada eje).
-  const hasMx = MxSup !== 0 || MxInf !== 0;
-  const hasMy = MySup !== 0 || MyInf !== 0;
   const biaxial: BiaxialCheck | null =
     hasMx && hasMy
       ? checkBiaxial(
@@ -1183,9 +1250,14 @@ export function designRCColumn(input: RCColumnInput): RCColumnResult {
           dirY.Mu,
           dirX.Ast,
           dirY.Ast,
+          barLayout.astTotalProvided,
         )
       : null;
-  const passes = dirPasses && !rhoMaxExceeded && (biaxial?.ok ?? true);
+  // Cada dirección debe quedar cubierta por las barras colocadas.
+  const provOK =
+    dirX.AstProv >= dirX.AstReq - 1e-9 && dirY.AstProv >= dirY.AstReq - 1e-9;
+  const passes =
+    dirPasses && !rhoMaxExceeded && (biaxial?.ok ?? true) && provOK;
   const dbLong = Math.max(
     barLayout.dbEsquinas,
     barLayout.dbCarasX,
@@ -1218,17 +1290,22 @@ export function designRCColumn(input: RCColumnInput): RCColumnResult {
     );
   } else {
     combo.push(
-      `Dirección X: Ast_nec = ${f2(dirX.AstReq)} cm² → ${barLayout.nXtotal} Ø${dbLong} en caras de ${Cx} cm (${barLayout.nXperFace} por cara, incluye 4 esquinas)`,
+      "Armado automático: se prueban Ø12 a Ø32 y barras intermedias por cara, de menor a mayor acero, y se adopta el primero que cumple con las barras reales: A_st de cada dirección, ρ ≤ 4 %, verificación biaxial y separación libre ≥ max(1.5·d_b, 4 cm) y entre ejes ≤ 30 cm.",
     );
     combo.push(
-      `Dirección Y: Ast_nec = ${f2(dirY.AstReq)} cm² | adoptada = ${f2(dirY.AstProv)} cm² → esquinas aportan ${f2(barLayout.cornerContribY)} cm²`,
+      `Dirección X (caras izq./der., largo ${Cy_cm} cm): ${barLayout.nXperFace} Ø${dbLong} por cara (2 esquinas + ${barLayout.nXperFace - 2} intermedias) → A_st,x = ${f2(barLayout.astXprovided)} cm² ${barLayout.astXprovided >= dirX.AstReq - 1e-9 ? "≥" : "<"} ${f2(dirX.AstReq)} cm² necesarios`,
     );
     combo.push(
-      `  Resta: ${f2(barLayout.astYremaining)} cm² → ${barLayout.nYadditionalTotal} Ø${dbLong} adicionales en caras de ${Cy_cm} cm (${barLayout.nYadditionalPerFace} por cara)`,
+      `Dirección Y (caras sup./inf., largo ${Cx} cm): ${barLayout.nYadditionalPerFace + 2} Ø${dbLong} por cara (2 esquinas + ${barLayout.nYadditionalPerFace} intermedias) → A_st,y = ${f2(barLayout.astYprovided)} cm² ${barLayout.astYprovided >= dirY.AstReq - 1e-9 ? "≥" : "<"} ${f2(dirY.AstReq)} cm² necesarios`,
     );
     combo.push(
       `Total: ${barLayout.totalBars} Ø${dbLong} | Ast_total = ${f2(barLayout.astTotalProvided)} cm² | ρ = ${(rho_final * 100).toFixed(2)}%`,
     );
+    if (!barLayout.found) {
+      combo.push(
+        "⚠ Ninguna combinación de barras verifica todo en esta sección: se muestra la más cercana. Aumentar la sección (o f'c).",
+      );
+    }
   }
 
   // ─── Combined stirrups ───
