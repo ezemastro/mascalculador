@@ -239,6 +239,9 @@ export interface ColumnInput {
   Fy: number; // MPa
   /** Coeficiente Cm para la amplificación B1 (default 1.0, lo más seguro). */
   Cm?: number;
+  /** Longitud sin arriostrar para el pandeo lateral-torsional (mm);
+   *  por defecto L. */
+  Lb?: number;
 }
 
 /** Datos para la resistencia a flexión de la columna. */
@@ -504,14 +507,15 @@ export function designColumn(
   // T y U; en tubos y cajones no hay PLT. Eje débil: M_p con tope 1.6·Fy·Sy.
   let Mnx = Mpx;
   let flexNote = "M_n,x = M_p,x (tubo/cajón: sin pandeo lateral-torsional)";
+  const LbFlex = input.Lb ?? L;
   if (flex && flex.kind !== "box" && flex.profile) {
     const dr = checkBeam(
       flex.profile,
       {
         Fy,
-        Lb: L,
-        Lb1: L,
-        Lb2: L,
+        Lb: LbFlex,
+        Lb1: LbFlex,
+        Lb2: LbFlex,
         Cb: 1,
         deflectionLimit: 300,
         beamLength: L,
@@ -522,7 +526,7 @@ export function designColumn(
     );
     const mult = flex.kind === "2C" ? 2 : 1;
     Mnx = Math.min(Mpx, (mult * dr.Mn) / 1e6);
-    flexNote = `M_n,x con pandeo lateral-torsional (L_b = L = ${L} mm, C_b = 1${flex.kind === "2C" ? ", 2 × U individual" : ""}): ${dr.limitingState}`;
+    flexNote = `M_n,x con pandeo lateral-torsional (L_b = ${LbFlex} mm, C_b = 1${flex.kind === "2C" ? ", 2 × U individual" : ""}): ${dr.limitingState}`;
   }
   const MyLimit = flex?.Sy ? (1.6 * Fy * flex.Sy) / 1e3 : Infinity;
   const Mny = Math.min(Mpy, MyLimit);

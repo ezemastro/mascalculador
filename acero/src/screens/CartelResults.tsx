@@ -319,7 +319,11 @@ export default function CartelResults() {
             <p className="text-sm font-bold text-primary">
               {result.wind.Fviento.toFixed(1)}
             </p>
-            <span className="text-[10px] text-text-muted">fuerza total</span>
+            <span className="text-[10px] text-text-muted">
+              fuerza total (servicio) · mayorada ×1.5 ={" "}
+              {result.wind.FvientoU.toFixed(1)} · C<sub>f</sub> ={" "}
+              {result.wind.Cf.toFixed(2)}
+            </span>
           </Card>
         </div>
       </Section>
@@ -360,7 +364,7 @@ export default function CartelResults() {
       </Section>
 
       {/* 3 · Reacciones */}
-      <Section title="Reacciones">
+      <Section title="Reacciones (mayoradas: 1.2·D + 1.5·W)">
         {result.brace ? (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <Card label="Puntal — axil">
@@ -430,7 +434,7 @@ export default function CartelResults() {
           >
             <p className="text-sm font-bold">{result.forces.Fcol.toFixed(1)}</p>
             <span className="text-[10px] text-text-muted">
-              viento por columna
+              viento por columna, mayorado ×1.5
             </span>
           </Card>
           <Card
@@ -442,7 +446,7 @@ export default function CartelResults() {
           >
             <p className="text-sm font-bold">{result.forces.Mmax.toFixed(1)}</p>
             <span className="text-[10px] text-text-muted">
-              momento de cálculo
+              momento de cálculo (mayorado)
             </span>
           </Card>
           {isLattice && (

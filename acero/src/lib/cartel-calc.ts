@@ -25,7 +25,59 @@ const expVals: Record<string, { alpha: number; zg: number }> = {
 const Kd = 0.85;
 const Kzt = 1.0;
 const G = 0.85;
-const Cp = 1.2;
+
+/** Factor de carga del viento (CIRSOC 301-05, A.4: 1.2·D + 1.5·W). */
+export const GAMMA_W = 1.5;
+/** Factor de carga del peso propio en la combinación con viento. */
+export const GAMMA_D = 1.2;
+
+/**
+ * Coeficiente de fuerza C_f de carteles llenos (CIRSOC 102-05, Figura 7 /
+ * ASCE 7-98 Fig. 6-20), según la relación M/N = lado mayor / lado menor.
+ * "Elevado" si el despegue es ≥ 0.25 de la altura del cartel.
+ */
+export function cfCartel(
+  ancho: number,
+  alto: number,
+  despegue: number,
+): { Cf: number; MN: number; elevado: boolean } {
+  const big = Math.max(ancho, alto);
+  const small = Math.max(1e-9, Math.min(ancho, alto));
+  const MN = big / small;
+  const elevado = despegue >= 0.25 * alto;
+  const table: Array<[number, number]> = elevado
+    ? [
+        [6, 1.2],
+        [10, 1.3],
+        [16, 1.4],
+        [20, 1.5],
+        [40, 1.75],
+        [60, 1.85],
+        [80, 2.0],
+      ]
+    : [
+        [3, 1.2],
+        [5, 1.3],
+        [8, 1.4],
+        [10, 1.5],
+        [20, 1.75],
+        [30, 1.85],
+        [40, 2.0],
+      ];
+  let Cf = table[table.length - 1][1];
+  if (MN <= table[0][0]) Cf = table[0][1];
+  else {
+    for (let i = 1; i < table.length; i++) {
+      const [x1, y1] = table[i];
+      const [x0, y0] = table[i - 1];
+      if (MN <= x1) {
+        Cf = y0 + ((y1 - y0) * (MN - x0)) / (x1 - x0);
+        break;
+      }
+    }
+  }
+  return { Cf, MN, elevado };
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -66,8 +118,10 @@ export interface WindResult {
   I: number;
   Kz: number;
   qz: number; // N/m²
-  p: number; // N/m² design pressure
-  Fviento: number; // kN total wind force
+  p: number; // N/m² presión de servicio (sin mayorar)
+  Cf: number; // coeficiente de fuerza del cartel
+  Fviento: number; // kN total wind force (servicio)
+  FvientoU: number; // kN fuerza total mayorada (1.5·W)
   z: number; // mean height used (capped at 4.5 m min)
   areaCartel: number; // m²
   expAlpha: number;
@@ -80,7 +134,9 @@ export interface WindResult {
 // ---------------------------------------------------------------------------
 
 export interface ColumnForces {
-  Fcol: number; // kN per column
+  Fcol: number; // kN per column (mayorada 1.5·W)
+  FcolServ: number; // kN per column (servicio)
+  Vmax: number; // kN corte máximo en la columna (mayorado)
   MmaxInf: number; // kN·m — max moment between A (base) and C (articulation)
   MmaxSup: number; // kN·m — max moment in cantilever above C
   Mmax: number; // kN·m — max(MmaxInf, MmaxSup) used for design
@@ -194,7 +250,14 @@ export interface CartelResult {
 // ===========================================================================
 
 export function calcWind(input: CartelInput): WindResult {
-  const { velocidadViento, categoria, exposicion, anchoCartel, altoCartel, despegue } = input;
+  const {
+    velocidadViento,
+    categoria,
+    exposicion,
+    anchoCartel,
+    altoCartel,
+    despegue,
+  } = input;
   const V = velocidadViento;
 
   const I = Ivals[categoria] ?? 1.0;
@@ -206,9 +269,12 @@ export function calcWind(input: CartelInput): WindResult {
 
   const Kz = 2.01 * Math.pow(z / expZg, 2 / expAlpha);
   const qz = 0.613 * Kz * Kzt * Kd * V * V * I;
+  const cf = cfCartel(anchoCartel, altoCartel, despegue);
+  const Cp = cf.Cf;
   const p = qz * G * Cp;
   const areaCartel = anchoCartel * altoCartel;
   const Fviento = (p * areaCartel) / 1000; // kN
+  const FvientoU = GAMMA_W * Fviento;
 
   const steps = [
     `--- Cálculo de viento (CIRSOC 102) ---`,
@@ -229,15 +295,30 @@ export function calcWind(input: CartelInput): WindResult {
     ``,
     `4. Presión de diseño p:`,
     `   p = q_z · G · C_p = ${qz.toFixed(0)} · ${G} · ${Cp} = ${p.toFixed(0)} N/m²`,
-    `   (G = 0.85 factor de ráfaga, C_p = 1.2 cartel abierto)`,
+    `   (G = 0.85 factor de ráfaga; C_f = ${Cp.toFixed(2)} cartel lleno ${cf.elevado ? "elevado" : "a nivel del terreno"}, M/N = ${cf.MN.toFixed(2)}, CIRSOC 102 Fig. 7)`,
     ``,
     `5. Fuerza total de viento:`,
     `   A_cartel = ancho · alto = ${anchoCartel.toFixed(2)} · ${altoCartel.toFixed(2)} = ${areaCartel.toFixed(2)} m²`,
     `   F_viento = p · A_cartel = ${p.toFixed(0)} · ${areaCartel.toFixed(2)} = ${(p * areaCartel).toFixed(0)} N`,
-    `   F_viento = ${Fviento.toFixed(1)} kN`,
+    `   F_viento = ${Fviento.toFixed(1)} kN (servicio)`,
+    `   F_viento,u = 1.5 · F_viento = ${FvientoU.toFixed(1)} kN (CIRSOC 301: 1.2·D + 1.5·W)`,
+    `   Todos los esfuerzos de diseño que siguen están mayorados (1.5·W; peso propio 1.2·D).`,
   ].join("\n");
 
-  return { I, Kz, qz, p, Fviento, z, areaCartel, expAlpha, expZg, steps };
+  return {
+    I,
+    Kz,
+    qz,
+    p,
+    Cf: Cp,
+    Fviento,
+    FvientoU,
+    z,
+    areaCartel,
+    expAlpha,
+    expZg,
+    steps,
+  };
 }
 
 // ===========================================================================
@@ -250,21 +331,21 @@ export function calcForces(
   _nColumnas: number,
   sepColumnas: number,
 ): { forces: ColumnForces; brace: BraceForces | null } {
-  const { despegue, altoCartel, hCol, aCol, tienePuntal, hPuntal, dPuntal } = input;
+  const { despegue, altoCartel, hCol, aCol, tienePuntal, hPuntal, dPuntal } =
+    input;
 
-  // F_col per column = design pressure × tributary width × sign height / 1000
-  const Fcol = (wind.p * sepColumnas * altoCartel) / 1000; // kN
+  // F_col por columna = presión × ancho tributario × alto del cartel,
+  // mayorada por 1.5 (CIRSOC 301-05, A.4: 1.2·D + 1.5·W).
+  const FcolServ = (wind.p * sepColumnas * altoCartel) / 1000; // kN
+  const Fcol = GAMMA_W * FcolServ; // kN (mayorada)
   const zMean = despegue + altoCartel / 2;
   const alturaColumna = despegue + altoCartel;
 
-  // Self-weight per column
-  const Peso = 0.3 * sepColumnas * altoCartel; // kN
+  // Self-weight per column (mayorado 1.2·D)
+  const Peso = GAMMA_D * 0.3 * sepColumnas * altoCartel; // kN
 
-  // Diagonal / montante forces (unchanged — diagonals take full shear)
   const dDiag = Math.sqrt(hCol * hCol + aCol * aCol);
   const sinAlphaCol = dDiag > 0 ? hCol / dDiag : 0;
-  const Ndiag = sinAlphaCol > 0 ? Fcol / sinAlphaCol : 0;
-  const Nmont = Fcol;
 
   // Distributed wind load for moment calculation
   const w = altoCartel > 0 ? Fcol / altoCartel : 0; // kN/m
@@ -273,6 +354,7 @@ export function calcForces(
   let MmaxInf: number;
   let Mmax: number;
   let Nchord: number;
+  let Vmax: number;
   let brace: BraceForces | null = null;
 
   if (tienePuntal && hPuntal > 0 && dPuntal > 0) {
@@ -319,7 +401,7 @@ export function calcForces(
     } else {
       // Wind also acts on the upper portion of the column
       const hAboveC = alturaColumna - hPuntal;
-      MmaxSup = w * hAboveC * hAboveC / 2;
+      MmaxSup = (w * hAboveC * hAboveC) / 2;
     }
 
     // M_inf: max moment between A (z=0) and C (z=hPuntal)
@@ -336,17 +418,19 @@ export function calcForces(
 
       // Moment at zero-shear point
       const windArmX = Math.max(0, X - despegue);
-      const Mx = Rah * X - w * windArmX * windArmX / 2;
+      const Mx = Rah * X - (w * windArmX * windArmX) / 2;
 
       // Also check at C (upper boundary)
       const windArmC = Math.max(0, hPuntal - despegue);
-      const MC = Rah * hPuntal - w * windArmC * windArmC / 2;
+      const MC = Rah * hPuntal - (w * windArmC * windArmC) / 2;
 
       MmaxInf = Math.max(Math.abs(Mx), Math.abs(MC));
     }
 
     Mmax = Math.max(Math.abs(MmaxInf), Math.abs(MmaxSup));
     Nchord = hCol > 0 ? Mmax / hCol : 0;
+    // Corte: arriba de C toma el viento; debajo de C, H_A.
+    Vmax = Math.max(Fcol, Rah);
 
     brace = {
       axilPuntal,
@@ -363,11 +447,26 @@ export function calcForces(
     MmaxInf = 0;
     Mmax = Math.abs(MmaxSup);
     Nchord = hCol > 0 ? Mmax / hCol : 0;
+    Vmax = Fcol; // corte en la base del voladizo
     brace = null;
   }
 
+  // Diagonales y montantes toman el corte de la columna.
+  const Ndiag = sinAlphaCol > 0 ? Vmax / sinAlphaCol : 0;
+  const Nmont = Vmax;
+
   return {
-    forces: { Fcol, MmaxInf, MmaxSup, Mmax, Nchord, Ndiag, Nmont },
+    forces: {
+      Fcol,
+      FcolServ,
+      Vmax,
+      MmaxInf,
+      MmaxSup,
+      Mmax,
+      Nchord,
+      Ndiag,
+      Nmont,
+    },
     brace,
   };
 }
@@ -430,9 +529,7 @@ export function calcBuiltUpSectionProps(
 
   // nChords === 4
   if (separacionCol_m === undefined || separacionCol_m <= 0) {
-    throw new Error(
-      "separacionCol is required and must be > 0 for T4 columns",
-    );
+    throw new Error("separacionCol is required and must be > 0 for T4 columns");
   }
 
   const hint_frente = hCol_m * 100 - 2 * chord.xg;
@@ -449,10 +546,8 @@ export function calcBuiltUpSectionProps(
     );
   }
 
-  const Ix_global =
-    2 * (chord.Ix + chord.A * (hint_frente / 2) ** 2);
-  const Iy_global =
-    2 * (chord.Ix + chord.A * (hint_costado / 2) ** 2);
+  const Ix_global = 2 * (chord.Ix + chord.A * (hint_frente / 2) ** 2);
+  const Iy_global = 2 * (chord.Ix + chord.A * (hint_costado / 2) ** 2);
   const Ag_cm2 = 4 * chord.A;
   const rx_cm = Math.sqrt(Ix_global / Ag_cm2);
   const ry_cm = Math.sqrt(Iy_global / Ag_cm2);
@@ -507,14 +602,12 @@ export function calcPdeltaChordForce(
   const e0_m = L_m / 500;
 
   // Guard: Pu ≥ Pcm → MsL = Infinity (documented, no throw)
-  const MsL_kNm =
-    Pu_kN >= Pcm_kN
-      ? Infinity
-      : Mmax_kNm / (1 - Pu_kN / Pcm_kN);
+  const MsL_kNm = Pu_kN >= Pcm_kN ? Infinity : Mmax_kNm / (1 - Pu_kN / Pcm_kN);
 
   const M_e0_kNm = Pu_kN * e0_m;
   const M_total_kNm = MsL_kNm + M_e0_kNm;
-  const Pu1_kN = Pu_kN / nChords + M_total_kNm / hint_m;
+  // El momento lo toman los cordones de cada cara: 1 (2 cordones) o 2 (4).
+  const Pu1_kN = Pu_kN / nChords + M_total_kNm / hint_m / (nChords / 2);
 
   return { Pu1_kN, MsL_kNm, e0_m };
 }
@@ -543,8 +636,7 @@ export function checkGlobalColumn(
 ): GlobalColumnCheck {
   const r_min = Math.min(builtUp.rx_cm, builtUp.ry_cm);
   const lambdaGlobal = (K * L_m * 1000) / (r_min * 10);
-  const lambdaC =
-    (lambdaGlobal / Math.PI) * Math.sqrt(Fy_MPa / 200000);
+  const lambdaC = (lambdaGlobal / Math.PI) * Math.sqrt(Fy_MPa / 200000);
 
   const Fcr =
     lambdaC <= 1.5
@@ -621,7 +713,13 @@ export function checkBrace(
     const sinAlpha = hColBrace / d_diag_m;
     const V_kN = 0.02 * Pu_kN;
     const Nd_kN = sinAlpha > 0 ? V_kN / sinAlpha : V_kN;
-    const chkDiagonal = checkAngleCompForce(diagAngle, Fy, d_diag_m * 1000, 1.0, Nd_kN);
+    const chkDiagonal = checkAngleCompForce(
+      diagAngle,
+      Fy,
+      d_diag_m * 1000,
+      1.0,
+      Nd_kN,
+    );
 
     // Lateral bracing requirement via Euler: λ_lim = π·√(E/Fy), L_max = ry·λ_lim
     const lambdaLim = Math.PI * Math.sqrt(E / Fy);
@@ -648,8 +746,8 @@ export function checkBrace(
     if (!chordAngle) throw new Error('Perfil L 1" x 1/8" no encontrado');
     if (!montAngle) throw new Error('Perfil L 1" x 1/8" no encontrado');
 
-    const hColBrace = 0.20; // m
-    const builtUp = calcBuiltUpSectionProps(chordAngle, hColBrace, 4, 0.20);
+    const hColBrace = 0.2; // m
+    const builtUp = calcBuiltUpSectionProps(chordAngle, hColBrace, 4, 0.2);
 
     // Global column check
     const globalCheck = checkGlobalColumn(builtUp, 1.0, L_puntal_m, Pu_kN, Fy);
@@ -735,6 +833,8 @@ export function checkTruss4Chords(
 ): Truss4Verification {
   const halfForces: ColumnForces = {
     Fcol: forces.Fcol / 2,
+    FcolServ: forces.FcolServ / 2,
+    Vmax: forces.Vmax / 2,
     MmaxInf: forces.MmaxInf / 2,
     MmaxSup: forces.MmaxSup / 2,
     Mmax: forces.Mmax / 2,
@@ -744,12 +844,24 @@ export function checkTruss4Chords(
   };
 
   const plane1 = checkTruss2Chords(
-    perfilCordon, perfilDiagonal, perfilMontante,
-    aCol, hCol, dDiag, Fy, halfForces,
+    perfilCordon,
+    perfilDiagonal,
+    perfilMontante,
+    aCol,
+    hCol,
+    dDiag,
+    Fy,
+    halfForces,
   );
   const plane2 = checkTruss2Chords(
-    perfilCordon, perfilDiagonal, perfilMontante,
-    aCol, hCol, dDiag, Fy, halfForces,
+    perfilCordon,
+    perfilDiagonal,
+    perfilMontante,
+    aCol,
+    hCol,
+    dDiag,
+    Fy,
+    halfForces,
   );
 
   const ratioColumna = Math.max(plane1.ratioColumna, plane2.ratioColumna);
@@ -817,14 +929,20 @@ export function calculateCartel(input: CartelInput): CartelResult {
   // Grupo 4 pipeline results (populated for T2/T4, undefined for T1)
   let globalCheck: GlobalColumnCheck | undefined;
   let builtUp: BuiltUpSection | undefined;
-  let slendResult: { lambda0: number; lambda1: number; lambdaM: number } | undefined;
-  let pdeltaResult: { Pu1_kN: number; MsL_kNm: number; e0_m: number } | undefined;
+  let slendResult:
+    | { lambda0: number; lambda1: number; lambdaM: number }
+    | undefined;
+  let pdeltaResult:
+    | { Pu1_kN: number; MsL_kNm: number; e0_m: number }
+    | undefined;
   let betaValue: number | undefined;
   let pcmValue: number | undefined;
   let nudigValue: number | undefined;
 
   // For side-face diagonals in T4
-  const dDiagSide = Math.sqrt((separacionCol ?? 0) * (separacionCol ?? 0) + aCol * aCol);
+  const dDiagSide = Math.sqrt(
+    (separacionCol ?? 0) * (separacionCol ?? 0) + aCol * aCol,
+  );
 
   if (tipoColumna === 1) {
     // --- T1: Simple IPN flexocompression ---
@@ -844,14 +962,21 @@ export function calculateCartel(input: CartelInput): CartelResult {
     const Kx = Lb_strong / alturaColumna;
     const Ky = Lb_weak / alturaColumna;
 
+    // Pandeo lateral-torsional: con viento desde el frente el ala de atrás
+    // (sin correas) queda comprimida → L_b = altura sin arriostrar (con
+    // puntal, el mayor tramo entre base–puntal y puntal–extremo).
+    const Lb_mm = tienePuntal
+      ? Math.max(hPuntal, alturaColumna - hPuntal) * 1000
+      : L_mm;
     flexoResult = designColumn(
       {
-        Pu: 0,
+        Pu: GAMMA_D * 0.3 * sepColumnas * altoCartel,
         Mux: forces.Mmax,
         Muy: 0,
         Kx,
         Ky,
         L: L_mm,
+        Lb: Lb_mm,
         Fy,
       },
       ipn.A,
@@ -861,6 +986,7 @@ export function calculateCartel(input: CartelInput): CartelResult {
       ipn.Zy ?? 0,
       ipn.name,
       { section: "I", bf: ipn.b, tf: ipn.tf, h: ipn.h, tw: ipn.tw },
+      { kind: "I", profile: ipn, Sy: ipn.Sy },
     );
 
     chkCordon = null;
@@ -881,39 +1007,57 @@ export function calculateCartel(input: CartelInput): CartelResult {
     }
 
     const K = input.KGlobal ?? 1.0;
-    const Peso = 0.3 * sepColumnas * altoCartel;
+    const Peso = GAMMA_D * 0.3 * sepColumnas * altoCartel;
 
     builtUp = calcBuiltUpSectionProps(angCordon4, hCol, 4, separacionCol);
     slendResult = calcModifiedSlenderness(
-      K, alturaColumna, builtUp.rx_cm, aCol, angCordon4.rz,
+      K,
+      alturaColumna,
+      builtUp.rx_cm,
+      aCol,
+      angCordon4.rz,
     );
 
+    // P_cm = π²·E·A/λ_m² (kN), con la esbeltez modificada.
     pcmValue =
       (Math.PI ** 2 * 200000 * builtUp.Ag_cm2 * 100) /
-      slendResult.lambda0 ** 2;
+      slendResult.lambdaM ** 2 /
+      1000;
 
     pdeltaResult = calcPdeltaChordForce(
-      Peso, pcmValue, forces.Mmax, 4,
-      builtUp.hint_cm / 100, alturaColumna,
+      Peso,
+      pcmValue,
+      forces.Mmax,
+      4,
+      builtUp.hint_cm / 100,
+      alturaColumna,
     );
 
     chkCordon = checkAngleCompForce(
-      angCordon4, Fy, aCol * 1000, 1.0, pdeltaResult.Pu1_kN,
+      angCordon4,
+      Fy,
+      aCol * 1000,
+      1.0,
+      pdeltaResult.Pu1_kN,
     );
 
+    // Corte de diseño: corte del viento + corte por imperfección β·Pu,
+    // repartido en las 2 caras con diagonales.
     betaValue = calcBeta(Peso, pcmValue);
-    const Veu4 = betaValue * forces.Fcol;
+    const Veu4 = forces.Vmax + betaValue * Peso;
     const sinA4 = dDiag > 0 ? hCol / dDiag : 0;
-    nudigValue = sinA4 > 0 ? Veu4 / sinA4 : Veu4;
+    nudigValue = (sinA4 > 0 ? Veu4 / sinA4 : Veu4) / 2;
 
-    const angDiag4 = ANGLE_PROFILES.find((a) => a.name === perfilDiagonal) ?? null;
+    const angDiag4 =
+      ANGLE_PROFILES.find((a) => a.name === perfilDiagonal) ?? null;
     chkDiag = angDiag4
       ? checkAngleCompForce(angDiag4, Fy, dDiag * 1000, 1.0, nudigValue)
       : null;
 
-    const angMont4 = ANGLE_PROFILES.find((a) => a.name === perfilMontante) ?? null;
+    const angMont4 =
+      ANGLE_PROFILES.find((a) => a.name === perfilMontante) ?? null;
     chkMont = angMont4
-      ? checkAngleCompForce(angMont4, Fy, hCol * 1000, 1.0, forces.Nmont)
+      ? checkAngleCompForce(angMont4, Fy, hCol * 1000, 1.0, forces.Nmont / 2)
       : null;
 
     globalCheck = checkGlobalColumn(builtUp, K, alturaColumna, Peso, Fy);
@@ -939,37 +1083,54 @@ export function calculateCartel(input: CartelInput): CartelResult {
     }
 
     const K = input.KGlobal ?? 1.0;
-    const Peso = 0.3 * sepColumnas * altoCartel;
+    const Peso = GAMMA_D * 0.3 * sepColumnas * altoCartel;
 
     builtUp = calcBuiltUpSectionProps(angCordon2, hCol, 2);
     slendResult = calcModifiedSlenderness(
-      K, alturaColumna, builtUp.rx_cm, aCol, angCordon2.rz,
+      K,
+      alturaColumna,
+      builtUp.rx_cm,
+      aCol,
+      angCordon2.rz,
     );
 
+    // P_cm = π²·E·A/λ_m² (kN), con la esbeltez modificada.
     pcmValue =
       (Math.PI ** 2 * 200000 * builtUp.Ag_cm2 * 100) /
-      slendResult.lambda0 ** 2;
+      slendResult.lambdaM ** 2 /
+      1000;
 
     pdeltaResult = calcPdeltaChordForce(
-      Peso, pcmValue, forces.Mmax, 2,
-      builtUp.hint_cm / 100, alturaColumna,
+      Peso,
+      pcmValue,
+      forces.Mmax,
+      2,
+      builtUp.hint_cm / 100,
+      alturaColumna,
     );
 
     chkCordon = checkAngleCompForce(
-      angCordon2, Fy, aCol * 1000, 1.0, pdeltaResult.Pu1_kN,
+      angCordon2,
+      Fy,
+      aCol * 1000,
+      1.0,
+      pdeltaResult.Pu1_kN,
     );
 
+    // Corte de diseño: corte del viento + corte por imperfección β·Pu.
     betaValue = calcBeta(Peso, pcmValue);
-    const Veu2 = betaValue * forces.Fcol;
+    const Veu2 = forces.Vmax + betaValue * Peso;
     const sinA2 = dDiag > 0 ? hCol / dDiag : 0;
     nudigValue = sinA2 > 0 ? Veu2 / sinA2 : Veu2;
 
-    const angDiag2 = ANGLE_PROFILES.find((a) => a.name === perfilDiagonal) ?? null;
+    const angDiag2 =
+      ANGLE_PROFILES.find((a) => a.name === perfilDiagonal) ?? null;
     chkDiag = angDiag2
       ? checkAngleCompForce(angDiag2, Fy, dDiag * 1000, 1.0, nudigValue)
       : null;
 
-    const angMont2 = ANGLE_PROFILES.find((a) => a.name === perfilMontante) ?? null;
+    const angMont2 =
+      ANGLE_PROFILES.find((a) => a.name === perfilMontante) ?? null;
     chkMont = angMont2
       ? checkAngleCompForce(angMont2, Fy, hCol * 1000, 1.0, forces.Nmont)
       : null;
@@ -1018,7 +1179,10 @@ export function calculateCartel(input: CartelInput): CartelResult {
     );
   } else {
     // T2/T4: truss geometry steps
-    const trussTitle = tipoColumna === 4 ? "Celosía completa (4 cordones)" : "Reticulado de columna";
+    const trussTitle =
+      tipoColumna === 4
+        ? "Celosía completa (4 cordones)"
+        : "Reticulado de columna";
     steps.push(
       `--- ${trussTitle} ---`,
       `h_col = ${hCol} m (profundidad), a_col = ${aCol} m (alto panel)`,
@@ -1047,10 +1211,10 @@ export function calculateCartel(input: CartelInput): CartelResult {
   steps.push(
     `--- Solicitaciones en la columna ---`,
     ``,
-    `F_viento total = ${wind.Fviento.toFixed(1)} kN (presión p × ancho total × alto)`,
+    `F_viento total = ${wind.Fviento.toFixed(1)} kN servicio → ${wind.FvientoU.toFixed(1)} kN mayorada (×1.5)`,
     `Columnas = ${nColumnas}`,
-    `F_col = p · sep_columnas · alto_cartel = ${wind.p.toFixed(0)} · ${sepColumnas} · ${altoCartel} = ${(wind.p * sepColumnas * altoCartel).toFixed(0)} N → ${forces.Fcol.toFixed(2)} kN (por ancho tributario)`,
-    `Peso propio: 0.3 kN/m² · sep · h_cartel = 0.3 · ${sepColumnas.toFixed(2)} · ${altoCartel.toFixed(2)} = ${(0.3 * sepColumnas * altoCartel).toFixed(2)} kN por columna`,
+    `F_col = 1.5 · p · sep_columnas · alto_cartel = 1.5 · ${wind.p.toFixed(0)} · ${sepColumnas} · ${altoCartel} = ${forces.Fcol.toFixed(2)} kN mayorada (servicio ${forces.FcolServ.toFixed(2)} kN)`,
+    `Peso propio: 1.2 · 0.3 kN/m² · sep · h_cartel = 1.2 · 0.3 · ${sepColumnas.toFixed(2)} · ${altoCartel.toFixed(2)} = ${(GAMMA_D * 0.3 * sepColumnas * altoCartel).toFixed(2)} kN por columna`,
     ``,
     `Altura media: z_mean = despegue + altoCartel/2 = ${despegue} + ${altoCartel}/2 = ${zMean.toFixed(2)} m`,
     `Carga distribuida: w = F_col / alto_cartel = ${forces.Fcol.toFixed(2)} / ${altoCartel} = ${(forces.Fcol / altoCartel).toFixed(3)} kN/m`,
@@ -1071,7 +1235,7 @@ export function calculateCartel(input: CartelInput): CartelResult {
       `Reacciones (arco triarticulado):`,
       `ΣM_A = 0: R_bv = F_col · z_mean / d_puntal = ${forces.Fcol.toFixed(2)} · ${zMean.toFixed(2)} / ${dPuntal} = ${brace.Rbv.toFixed(2)} kN (↑ en B)`,
       `ΣM_C = 0: R_bh = F_col · z_mean / h_puntal = ${forces.Fcol.toFixed(2)} · ${zMean.toFixed(2)} / ${hPuntal} = ${brace.Rbh.toFixed(2)} kN (← en B)`,
-      `ΣF_y: R_av = R_bv + Peso = ${brace.Rbv.toFixed(2)} + ${(0.3 * sepColumnas * altoCartel).toFixed(2)} = ${brace.Rav.toFixed(2)} kN (↓ sobre fundación A)`,
+      `ΣF_y: R_av = R_bv + 1.2·Peso = ${brace.Rbv.toFixed(2)} + ${(GAMMA_D * 0.3 * sepColumnas * altoCartel).toFixed(2)} = ${brace.Rav.toFixed(2)} kN (↓ sobre fundación A, mayorada)`,
       `ΣF_x: R_ah = R_bh − F_col = ${brace.Rbh.toFixed(2)} − ${forces.Fcol.toFixed(2)} = ${brace.Rah.toFixed(2)} kN (← sobre fundación A)`,
       `N_puntal = R_bh / cos(α) = ${brace.Rbh.toFixed(2)} / cos(${brace.alphaPuntal.toFixed(2)}°) = ${brace.axilPuntal.toFixed(1)} kN (compresión)`,
       ``,
@@ -1140,12 +1304,10 @@ export function calculateCartel(input: CartelInput): CartelResult {
         steps.push(
           `Arriostramiento lateral requerido:`,
           `  λ_lim = π·√(E/Fy) = π·√(200000/${Fy}) = ${(
-            Math.PI *
-            Math.sqrt(200000 / Fy)
+            Math.PI * Math.sqrt(200000 / Fy)
           ).toFixed(1)}`,
           `  L_max = ry · λ_lim = ${calcBuiltUpSectionProps(ANGLE_PROFILES.find((a) => a.name === 'L 1 1/2" x 1/8"')!, 0.25, 2).ry_cm.toFixed(2)} · ${(
-            Math.PI *
-            Math.sqrt(200000 / Fy)
+            Math.PI * Math.sqrt(200000 / Fy)
           ).toFixed(1)} = ${braceCheck.lateralBracing_cm.toFixed(1)} cm`,
           `  → Arriostramiento lateral requerido cada ${braceCheck.lateralBracing_cm.toFixed(0)} cm`,
           ``,
@@ -1194,10 +1356,10 @@ export function calculateCartel(input: CartelInput): CartelResult {
       const Xzero = hPuntal - (brace.Rbh - w * hVol) / w;
       const X = Math.max(despegue, Math.min(hPuntal, Xzero));
       const windArmX = Math.max(0, X - despegue);
-      const Mx = brace.Rah * X - w * windArmX * windArmX / 2;
+      const Mx = brace.Rah * X - (w * windArmX * windArmX) / 2;
 
       const windArmC = Math.max(0, hPuntal - despegue);
-      const MC = brace.Rah * hPuntal - w * windArmC * windArmC / 2;
+      const MC = brace.Rah * hPuntal - (w * windArmC * windArmC) / 2;
 
       steps.push(
         `   Viento también actúa bajo C. Carga distribuida q = ${w.toFixed(3)} kN/m`,
@@ -1239,13 +1401,14 @@ export function calculateCartel(input: CartelInput): CartelResult {
 
   if (tipoColumna !== 1) {
     steps.push(
-      `Fuerza en cordón: N = M_max / h_col = ${forces.Mmax.toFixed(1)} / ${hCol} = ${forces.Nchord.toFixed(1)} kN`,
+      `Fuerza en cordón: N = M_max / h_col = ${forces.Mmax.toFixed(1)} / ${hCol} = ${forces.Nchord.toFixed(1)} kN${tipoColumna === 4 ? " por cara (2 cordones por cara)" : ""}`,
       `  (compresión en un cordón, tracción en el otro)`,
       ``,
       `sin α = h_col / d_diag = ${hCol} / ${dDiag.toFixed(2)} = ${sinAlphaCol.toFixed(4)}`,
-      `Fuerza en diagonal: N = F_col / sin α = ${forces.Fcol.toFixed(2)} / ${sinAlphaCol.toFixed(4)} = ${forces.Ndiag.toFixed(1)} kN`,
+      `Corte máximo en la columna: V = ${forces.Vmax.toFixed(2)} kN`,
+      `Fuerza en diagonal (una cara): N = V / sin α = ${forces.Vmax.toFixed(2)} / ${sinAlphaCol.toFixed(4)} = ${forces.Ndiag.toFixed(1)} kN${tipoColumna === 4 ? " (con 4 cordones se reparte en 2 caras)" : ""}`,
       ``,
-      `Fuerza en montante: N ≈ F_col = ${forces.Nmont.toFixed(1)} kN (simplificado)`,
+      `Fuerza en montante: N ≈ V = ${forces.Nmont.toFixed(1)} kN (simplificado)${tipoColumna === 4 ? " (2 caras)" : ""}`,
       ``,
     );
   }
@@ -1280,7 +1443,7 @@ export function calculateCartel(input: CartelInput): CartelResult {
     const diag = angDiag;
     const mont = angMont;
     const K = input.KGlobal ?? 1.0;
-    const Peso = 0.3 * sepColumnas * altoCartel;
+    const Peso = GAMMA_D * 0.3 * sepColumnas * altoCartel;
 
     // ---- Sección armada ----
     steps.push(
@@ -1332,7 +1495,7 @@ export function calculateCartel(input: CartelInput): CartelResult {
       steps.push(
         `--- Efectos de 2° orden (P-Δ) ---`,
         ``,
-        `P_cm = π²·E·A_total / λ₀² = ${pcmValue.toFixed(1)} kN`,
+        `P_cm = π²·E·A_total / λ_m² = ${pcmValue.toFixed(1)} kN`,
         `e₀ = L/500 = ${alturaColumna.toFixed(2)}/500 = ${pdeltaResult.e0_m.toFixed(
           4,
         )} m`,
@@ -1349,16 +1512,13 @@ export function calculateCartel(input: CartelInput): CartelResult {
         `M_total = ${Mtotal_kNm === Infinity ? "∞" : Mtotal_kNm.toFixed(2)} kN·m`,
         `P_u1 = Pu/${
           tipoColumna === 4 ? "4" : "2"
-        } + M_total/h_int = ${pdeltaResult.Pu1_kN.toFixed(2)} kN (por cordón)`,
+        } + M_total/(h_int${tipoColumna === 4 ? "·2" : ""}) = ${pdeltaResult.Pu1_kN.toFixed(2)} kN (por cordón)`,
         ``,
       );
     }
 
     // ---- Verificación cordón ----
-    steps.push(
-      `--- Verificación cordón (CIRSOC 301, φ_c = 0.85) ---`,
-      ``,
-    );
+    steps.push(`--- Verificación cordón (CIRSOC 301, φ_c = 0.85) ---`, ``);
     if (chkCordon) {
       const lc = (chkCordon.KLr / Math.PI) * Math.sqrt(Fy / 200000);
       steps.push(
@@ -1389,10 +1549,10 @@ export function calculateCartel(input: CartelInput): CartelResult {
         `β = (π/400)/(1−Pu/P_cm) = ${betaValue === Infinity ? "∞" : betaValue.toFixed(6)}`,
       );
       const VeuVal =
-        betaValue === Infinity ? Infinity : betaValue * forces.Fcol;
+        betaValue === Infinity ? Infinity : forces.Vmax + betaValue * Peso;
       steps.push(
-        `V_eu = β·F_col = ${VeuVal === Infinity ? "∞" : VeuVal.toFixed(2)} kN`,
-        `N_u_dig = V_eu/sinα = ${nudigValue.toFixed(2)} kN`,
+        `V_eu = V_viento + β·P_u = ${forces.Vmax.toFixed(2)} + ${betaValue === Infinity ? "∞" : (betaValue * Peso).toFixed(3)} = ${VeuVal === Infinity ? "∞" : VeuVal.toFixed(2)} kN`,
+        `N_u_dig = V_eu/sinα${tipoColumna === 4 ? "/2 (2 caras)" : ""} = ${nudigValue.toFixed(2)} kN`,
         ``,
       );
     }
@@ -1451,9 +1611,7 @@ export function calculateCartel(input: CartelInput): CartelResult {
         ``,
         `λ_global = K·L/r_min = ${K}·${alturaColumna.toFixed(
           2,
-        )}/${globalCheck.rx_cm.toFixed(2)} = ${globalCheck.lambda0.toFixed(
-          2,
-        )}`,
+        )}/${globalCheck.rx_cm.toFixed(2)} = ${globalCheck.lambda0.toFixed(2)}`,
         `λ_c = ${globalCheck.lambdaC.toFixed(4)}`,
         `F_cr = ${globalCheck.Fcr_MPa.toFixed(0)} MPa`,
         `φ·P_n = ${globalCheck.phiPn_kN.toFixed(1)} kN`,
