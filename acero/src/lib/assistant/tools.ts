@@ -9,7 +9,6 @@ import { createObra, getObras, setCurrentObraId } from "../storage";
 export const ASSISTANT_PATHS = [
   "/viga-acero",
   "/columns",
-  "/bases",
   "/cartel",
 ] as const;
 

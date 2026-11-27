@@ -29,8 +29,6 @@ import ColumnPrintPage from "./screens/ColumnPrintPage.tsx";
 import CartelForm from "./screens/CartelForm.tsx";
 import CartelResults from "./screens/CartelResults.tsx";
 import CartelPrintPage from "./screens/CartelPrintPage.tsx";
-import BasesForm from "./screens/BasesForm.tsx";
-import BasesResults from "./screens/BasesResults.tsx";
 import { ObraPickerHost } from "./components/ObraPicker.tsx";
 import ObraMenu from "./components/ObraMenu.tsx";
 import AssistantWidget from "./components/AssistantWidget.tsx";
@@ -130,9 +128,6 @@ function NavBar({
             className="text-sm text-text-muted hover:text-text"
           >
             Columnas
-          </Link>
-          <Link to="/bases" className="text-sm text-text-muted hover:text-text">
-            Bases
           </Link>
           <Link
             to="/cartel"
@@ -254,8 +249,6 @@ function buildRouter(
         { path: "/cartel", Component: CartelForm },
         { path: "/cartel-results", Component: CartelResults },
         { path: "/cartel-print", Component: CartelPrintPage },
-        { path: "/bases", Component: BasesForm },
-        { path: "/bases-results", Component: BasesResults },
         ...(admin
           ? [
               {

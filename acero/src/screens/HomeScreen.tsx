@@ -33,12 +33,6 @@ const ICONS = {
       <path d="M6 3h12M6 21h12" />
     </>
   ),
-  bases: (
-    <>
-      <path d="M10 3h4v3h-4z" />
-      <path d="M5 6h14l2.5 6H2.5z" />
-    </>
-  ),
   cartel: (
     <>
       <path d="M4 4h16v10H4z" />
@@ -63,12 +57,6 @@ const CALC_MODULES: ModuleDef[] = [
     name: "Columnas de acero",
     description: "Columnas de perfiles, tubos y armadas",
     icon: ICONS.columnas,
-  },
-  {
-    to: "/bases",
-    name: "Bases",
-    description: "Bases de fundación",
-    icon: ICONS.bases,
   },
   {
     to: "/cartel",
