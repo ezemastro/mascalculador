@@ -11,7 +11,11 @@ import {
   formatLength,
   formatMoment,
 } from "../lib/beam-calculations";
-import { checkBeam } from "../lib/steel-design";
+import {
+  runSteelBeamCheck,
+  type SteelBeamCheck,
+} from "../lib/steel-beam-check";
+import { computeSteelEnvelope } from "../lib/steel-beam-envelope";
 import { getD, getBf, type ProfileData } from "../lib/profiles";
 import { UPN_PROFILES, type UPNData } from "../lib/upn-profiles";
 import { resolveProfile } from "../lib/profile-lookup";
@@ -102,19 +106,12 @@ export default function ResultsPage() {
   }));
 
   const dual = calculateBeamDual(beamConfig, loads);
-  const {
-    d,
-    l,
-    shearForceU,
-    bendingMomentU,
-    maxMomentU,
-    maxShearU,
-    criticalPointsU,
-  } = dual;
+  const { d, l, shearForceU, bendingMomentU, maxMomentU, criticalPointsU } =
+    dual;
 
-  const reactionsU = beamConfig.supportTypes.map(
-    (_, i) => 1.2 * d.reactions[i] + 1.6 * l.reactions[i],
-  );
+  // Envolvente última: máx(1.4·D ; 1.2·D + 1.6·L) con sobrecarga alternada.
+  const env = computeSteelEnvelope(beamConfig, loads);
+  const reactionsU = env.reactionsMax;
 
   const maxLoad = Math.max(
     ...loads.map((ld) => (ld.deadLoad ?? 0) + (ld.liveLoad ?? 0)),
@@ -126,44 +123,7 @@ export default function ResultsPage() {
   const xMax = L * 1.1;
 
   // Steel design check
-  let designCheck: {
-    profile: string;
-    phiMn: number;
-    Mu: number;
-    ratioFlex: number;
-    phiVn: number;
-    Vu: number;
-    ratioShear: number;
-    limitingState: string;
-    maxDeflection: number;
-    allowableDeflection: number;
-    deflectionOK: boolean;
-    steps: string[];
-    Mp: number;
-    classification: Classification;
-    lambdaF: number;
-    lambdaW: number;
-    lambdaPf: number;
-    lambdaRf: number;
-    lambdaPw: number;
-    lambdaRw: number;
-    MnFlange: number;
-    MnWeb: number;
-    MnLTB: number;
-    Lp: number;
-    Lr: number;
-    LpEff: number;
-    LrEff: number;
-    effectiveLb: number; // mm — unbraced length used for this sign
-    Mr: number;
-    Fe: number;
-    Mcr: number;
-    Md1: number;
-    Md2: number;
-    Zx_selected: number;
-    Zx_req: number;
-    subdimensioned: boolean;
-  } | null = null;
+  let designCheck: SteelBeamCheck | null = null;
   let selectedProfileCalc: ProfileData | undefined;
   // Captured for JSX — set inside the if block below
   let profileType: "IPN" | "UPN" | "2IPN" = "IPN";
@@ -178,87 +138,16 @@ export default function ResultsPage() {
         ? UPN_PROFILES.find((p) => p.name === designParams.profileName)
         : undefined;
     selectedProfileCalc = profile;
-
-    // Capture for use in JSX scope
     profileType = profileType2 as "IPN" | "UPN" | "2IPN";
     upnProfile = upnPro;
     if (profile) {
-      const totalBeamMm = L * 1000;
-      const Mu_signed = maxMomentU.value * 1e6; // kN·m → N·mm (signed)
-      const Mu_abs = Math.abs(Mu_signed);
-      const Vu = maxShearU * 1e3; // kN → N (ultimate)
-      const effectiveLb =
-        Mu_signed >= 0
-          ? (designParams.Lb1 ?? designParams.Lb)
-          : (designParams.Lb2 ?? designParams.Lb);
-
-      // Max combined D+L service moment (evaluated at all critical points)
-      let maxServiceM_kNm = 0;
-      for (const x of criticalPointsU) {
-        const m = Math.abs(d.bendingMoment(x) + l.bendingMoment(x));
-        if (m > maxServiceM_kNm) maxServiceM_kNm = m;
-      }
-      const serviceM = maxServiceM_kNm * 1e6; // kN·m → N·mm
-
-      const dr = checkBeam(
+      designCheck = runSteelBeamCheck(
         profile,
-        {
-          Fy: designParams.Fy,
-          Lb: designParams.Lb,
-          Lb1: designParams.Lb1,
-          Lb2: designParams.Lb2,
-          Cb: designParams.Cb,
-          deflectionLimit: designParams.deflectionLimit,
-          beamLength: totalBeamMm,
-          loadPosition: designParams.loadPosition ?? "top",
-        },
-        serviceM,
-        Mu_signed, // signed — used for sign-based Lb selection
+        designParams,
+        beamConfig,
+        loads,
+        upnPro ? upnPro.Zx : profile.Zx,
       );
-
-      // Zx_req (cm³) for subdimensioned banner (task 1.14)
-      const Zx_req_cm3 = Mu_abs / (0.9 * designParams.Fy) / 1000;
-
-      designCheck = {
-        profile: profile.name,
-        phiMn: dr.phiMn,
-        Mu: Mu_abs,
-        ratioFlex: Mu_abs / dr.phiMn,
-        phiVn: dr.phiVn,
-        Vu,
-        ratioShear: Vu / dr.phiVn,
-        limitingState: dr.limitingState,
-        maxDeflection: dr.maxDeflection,
-        allowableDeflection: dr.allowableDeflection,
-        deflectionOK: dr.deflectionOK,
-        steps: dr.steps,
-        // Audit fields from engine (task 1.13)
-        Mp: dr.Mp,
-        classification: dr.classification,
-        lambdaF: dr.lambdaF,
-        lambdaW: dr.lambdaW,
-        lambdaPf: dr.lambdaPf,
-        lambdaRf: dr.lambdaRf,
-        lambdaPw: dr.lambdaPw,
-        lambdaRw: dr.lambdaRw,
-        MnFlange: dr.MnFlange,
-        MnWeb: dr.MnWeb,
-        MnLTB: dr.MnLTB,
-        Lp: dr.Lp,
-        Lr: dr.Lr,
-        LpEff: dr.LpEff,
-        LrEff: dr.LrEff,
-        effectiveLb, // mm — unbraced length for this sign
-        Mr: dr.Mr,
-        Fe: dr.Fe,
-        Mcr: dr.Mcr,
-        Md1: dr.Md1,
-        Md2: dr.Md2,
-        // Subdimensioned data
-        Zx_selected: upnProfile ? upnProfile.Zx : profile.Zx,
-        Zx_req: Zx_req_cm3,
-        subdimensioned: (upnProfile ? upnProfile.Zx : profile.Zx) < Zx_req_cm3,
-      };
     }
   }
 
@@ -345,9 +234,9 @@ export default function ResultsPage() {
                     </span>
                   </p>
                   <p className="text-sm text-text-muted">
-                    U:{" "}
+                    U máx:{" "}
                     <span className="font-bold text-warning">
-                      {formatForce(1.2 * rD + 1.6 * rL)}
+                      {formatForce(reactionsU[i])}
                     </span>
                   </p>
                 </div>
@@ -371,11 +260,22 @@ export default function ResultsPage() {
           <span className="text-xs text-text-muted uppercase tracking-wider font-semibold">
             Momento Flector Máximo
           </span>
-          <p className="text-2xl font-bold text-warning mt-1">
-            {formatMoment(maxMomentU.value)}
+          <p className="text-lg font-bold text-warning mt-1">
+            M⁺ {formatMoment(env.MuPos.value)}
+            <span className="text-xs font-normal text-text-muted">
+              {" "}
+              (x = {formatLength(env.MuPos.position)})
+            </span>
+          </p>
+          <p className="text-lg font-bold text-warning">
+            M⁻ {formatMoment(env.MuNeg.value)}
+            <span className="text-xs font-normal text-text-muted">
+              {" "}
+              (x = {formatLength(env.MuNeg.position)})
+            </span>
           </p>
           <span className="text-xs text-text-muted">
-            Posición: x = {formatLength(maxMomentU.position)}
+            Envolvente U = máx(1.4·D ; 1.2·D + 1.6·L) con sobrecarga alternada
           </span>
         </div>
       </div>
@@ -429,11 +329,7 @@ export default function ResultsPage() {
                         ["h_o = h − t_f", profile.h - profile.tf, "mm"],
                         ...(profileType === "UPN" && upnProfile
                           ? [
-                              [
-                                "x_g (centroide al alma)",
-                                upnProfile.xg,
-                                "cm",
-                              ],
+                              ["x_g (centroide al alma)", upnProfile.xg, "cm"],
                               [
                                 "Centro de corte (aprox)",
                                 upnProfile.xg + upnProfile.tw / 10,
@@ -472,7 +368,8 @@ export default function ResultsPage() {
                     </>
                   ) : (
                     <>
-                      λ<sub>f</sub> = b / (2·t<sub>f</sub>) = {getBf(profile)} / (2·
+                      λ<sub>f</sub> = b / (2·t<sub>f</sub>) = {getBf(profile)} /
+                      (2·
                       {profile.tf}) = {dc.lambdaF.toFixed(2)}
                     </>
                   )}
@@ -549,31 +446,34 @@ export default function ResultsPage() {
                   </h3>
                   <div className="text-xs font-mono space-y-1 mb-3">
                     <p>
-                      M<sub>d1</sub> = φ·min(M<sub>n,flange</sub>, M<sub>n,web</sub>
-                      ) = 0.9·min({(dc.MnFlange / 1e6).toFixed(1)},{" "}
-                      {(dc.MnWeb / 1e6).toFixed(1)}) = {(dc.Md1 / 1e6).toFixed(2)}{" "}
-                      kN·m
+                      M<sub>d1</sub> = φ·min(M<sub>n,flange</sub>, M
+                      <sub>n,web</sub>) = 0.9·min(
+                      {(dc.MnFlange / 1e6).toFixed(1)},{" "}
+                      {(dc.MnWeb / 1e6).toFixed(1)}) ={" "}
+                      {(dc.Md1 / 1e6).toFixed(2)} kN·m
                     </p>
                     <p className="text-text-muted">
-                      Donde: M<sub>n,flange</sub> = resistencia por pandeo local del
-                      ala, M<sub>n,web</sub> = resistencia por pandeo local del alma.
-                      Se toma el menor de ambos como límite por pandeo local.
+                      Donde: M<sub>n,flange</sub> = resistencia por pandeo local
+                      del ala, M<sub>n,web</sub> = resistencia por pandeo local
+                      del alma. Se toma el menor de ambos como límite por pandeo
+                      local.
                     </p>
                     <p>
                       M<sub>p</sub> = F<sub>y</sub>·Z<sub>x</sub> ={" "}
-                      {designParams!.Fy}·{profile.Zx} = {(dc.Mp / 1e6).toFixed(2)}{" "}
-                      kN·m
+                      {designParams!.Fy}·{profile.Zx} ={" "}
+                      {(dc.Mp / 1e6).toFixed(2)} kN·m
                     </p>
                     <p>
                       M<sub>r</sub> = 0.7·F<sub>y</sub>·S<sub>x</sub> = 0.7·
-                      {designParams!.Fy}·{profile.Sx} = {(dc.Mr / 1e6).toFixed(2)}{" "}
-                      kN·m
+                      {designParams!.Fy}·{profile.Sx} ={" "}
+                      {(dc.Mr / 1e6).toFixed(2)} kN·m
                     </p>
                     <p>
                       L<sub>p,eff</sub> = {(dc.LpEff / 10).toFixed(0)} cm
                       {dc.LpEff !== dc.Lp && (
                         <span className="text-text-muted">
-                          {" "}(L<sub>p</sub> = {(dc.Lp / 10).toFixed(0)} cm)
+                          {" "}
+                          (L<sub>p</sub> = {(dc.Lp / 10).toFixed(0)} cm)
                         </span>
                       )}
                     </p>
@@ -581,26 +481,26 @@ export default function ResultsPage() {
                       L<sub>r,eff</sub> = {(dc.LrEff / 10).toFixed(0)} cm
                       {dc.LrEff !== dc.Lr && (
                         <span className="text-text-muted">
-                          {" "}(L<sub>r</sub> = {(dc.Lr / 10).toFixed(0)} cm)
+                          {" "}
+                          (L<sub>r</sub> = {(dc.Lr / 10).toFixed(0)} cm)
                         </span>
                       )}
                     </p>
-                    <p>
-                      L = {(dc.effectiveLb / 10).toFixed(0)} cm
-                    </p>
+                    <p>L = {(dc.effectiveLb / 10).toFixed(0)} cm</p>
                     <p>
                       F<sub>e</sub> = {dc.Fe.toFixed(1)} MPa
                     </p>
                     <p>
                       M<sub>cr</sub> = min(F<sub>e</sub>·S<sub>x</sub>, M
-                      <sub>p</sub>) = min({(dc.Fe * profile.Sx / 1000).toFixed(1)},{" "}
-                      {(dc.Mp / 1e6).toFixed(1)}) ={" "}
-                      {(dc.Mcr / 1e6).toFixed(2)} kN·m
+                      <sub>p</sub>) = min(
+                      {((dc.Fe * profile.Sx) / 1000).toFixed(1)},{" "}
+                      {(dc.Mp / 1e6).toFixed(1)}) = {(dc.Mcr / 1e6).toFixed(2)}{" "}
+                      kN·m
                     </p>
                     <p>
                       M<sub>d2</sub> = φ·M<sub>n,LTB</sub> = 0.9·
-                      {(dc.MnLTB / 1e6).toFixed(2)} = {(dc.Md2 / 1e6).toFixed(2)}{" "}
-                      kN·m
+                      {(dc.MnLTB / 1e6).toFixed(2)} ={" "}
+                      {(dc.Md2 / 1e6).toFixed(2)} kN·m
                     </p>
                     <p>
                       M<sub>d</sub> = φ·M<sub>n</sub> = min(M<sub>d1</sub>, M
@@ -670,6 +570,17 @@ export default function ResultsPage() {
               <span className="text-xs text-text-muted">
                 {designCheck.limitingState}
               </span>
+              {designCheck.flexChecks.map((f) => (
+                <span
+                  key={f.sign}
+                  className={`text-xs ${f.ratio <= 1 ? "text-text-muted" : "text-danger font-semibold"}`}
+                >
+                  M<sub>u</sub>
+                  {f.sign} = {(f.Mu / 1e6).toFixed(1)} · L<sub>b</sub> ={" "}
+                  {(f.Lb / 1000).toFixed(2)} m · φM<sub>n</sub> ={" "}
+                  {(f.phiMn / 1e6).toFixed(1)} → {f.ratio.toFixed(2)}
+                </span>
+              ))}
             </div>
             <div className="flex flex-col gap-1 p-3 bg-surface-alt rounded-lg">
               <span className="text-xs text-text-muted">Corte</span>
@@ -700,11 +611,13 @@ export default function ResultsPage() {
               >
                 {designCheck.deflectionOK ? "✓ Cumple" : "✗ No cumple"}
               </span>
+              <span className="text-xs text-text-muted">
+                Servicio D + L · {designCheck.deflectionLabel}
+              </span>
             </div>
           </div>
         </section>
       )}
-
 
       {/* Load Diagram */}
       <section className="bg-surface rounded-xl border border-border overflow-hidden">

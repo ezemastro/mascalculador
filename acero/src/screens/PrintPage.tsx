@@ -1,12 +1,9 @@
 import { Fragment, useState, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { listSaves, type SavedBeam } from "../lib/storage";
-import {
-  calculateBeam,
-  calculateBeamDual,
-} from "../lib/beam-calculations";
+import { calculateBeam, calculateBeamDual } from "../lib/beam-calculations";
 import { designConcreteDetailed } from "../lib/concrete-design";
-import { checkBeam } from "../lib/steel-design";
+import { runSteelBeamCheck } from "../lib/steel-beam-check";
 import { getD, getBf } from "../lib/profiles";
 import { resolveProfile } from "../lib/profile-lookup";
 
@@ -48,88 +45,24 @@ function NavSteelPrintout({
   const L = beamConfig.spans.reduce((a, b) => a + b, 0);
 
   const profile = useMemo(
-    () =>
-      resolveProfile(designParams.profileType, designParams.profileName),
+    () => resolveProfile(designParams.profileType, designParams.profileName),
     [designParams.profileName, designParams.profileType],
   );
 
-  const designCheck = useMemo(() => {
-    if (!profile) return null;
-    const totalBeamMm = L * 1000;
-    const Mu_signed = dual.maxMomentU.value * 1e6; // kN·m → N·mm
-    const Mu_abs = Math.abs(Mu_signed);
-    const Vu = dual.maxShearU * 1e3; // kN → N
-    const effectiveLb =
-      Mu_signed >= 0
-        ? (designParams.Lb1 ?? designParams.Lb)
-        : (designParams.Lb2 ?? designParams.Lb);
-    let maxServiceM_kNm = 0;
-    for (const x of dual.criticalPointsU) {
-      const m = Math.abs(dual.d.bendingMoment(x) + dual.l.bendingMoment(x));
-      if (m > maxServiceM_kNm) maxServiceM_kNm = m;
-    }
-    const serviceM = maxServiceM_kNm * 1e6; // kN·m → N·mm
-
-    const dr = checkBeam(
-      profile,
-      {
-        Fy: designParams.Fy,
-        Lb: designParams.Lb,
-        Lb1: designParams.Lb1,
-        Lb2: designParams.Lb2,
-        Cb: designParams.Cb,
-        deflectionLimit: designParams.deflectionLimit,
-        beamLength: totalBeamMm,
-        loadPosition: designParams.loadPosition ?? "top",
-      },
-      serviceM,
-      Mu_signed,
-    );
-
-    const Zx_req_cm3 = Mu_abs / (0.9 * designParams.Fy) / 1000;
-
-    return {
-      phiMn: dr.phiMn,
-      Mu: Mu_abs,
-      ratioFlex: Mu_abs / dr.phiMn,
-      phiVn: dr.phiVn,
-      Vu,
-      ratioShear: Vu / dr.phiVn,
-      limitingState: dr.limitingState,
-      maxDeflection: dr.maxDeflection,
-      allowableDeflection: dr.allowableDeflection,
-      deflectionOK: dr.deflectionOK,
-      steps: dr.steps,
-      Mp: dr.Mp,
-      classification: dr.classification,
-      lambdaF: dr.lambdaF,
-      lambdaW: dr.lambdaW,
-      lambdaPf: dr.lambdaPf,
-      lambdaRf: dr.lambdaRf,
-      lambdaPw: dr.lambdaPw,
-      lambdaRw: dr.lambdaRw,
-      MnFlange: dr.MnFlange,
-      MnWeb: dr.MnWeb,
-      MnLTB: dr.MnLTB,
-      Lp: dr.Lp,
-      Lr: dr.Lr,
-      LpEff: dr.LpEff,
-      LrEff: dr.LrEff,
-      effectiveLb,
-      Mr: dr.Mr,
-      Fe: dr.Fe,
-      Mcr: dr.Mcr,
-      Md1: dr.Md1,
-      Md2: dr.Md2,
-      Zx_selected: profile.Zx,
-      Zx_req: Zx_req_cm3,
-      subdimensioned: profile.Zx < Zx_req_cm3,
-    };
-  }, [dual, L, profile, designParams]);
-
-  const reactionsU = beamConfig.supportTypes.map(
-    (_, i) => 1.2 * dual.d.reactions[i] + 1.6 * dual.l.reactions[i],
+  const designCheck = useMemo(
+    () =>
+      profile
+        ? runSteelBeamCheck(profile, designParams, beamConfig, loads)
+        : null,
+    [profile, designParams, beamConfig, loads],
   );
+
+  // Reacción última máxima (envolvente con 1.4·D y sobrecarga alternada).
+  const reactionsU = designCheck
+    ? designCheck.envelope.reactionsMax
+    : beamConfig.supportTypes.map(
+        (_, i) => 1.2 * dual.d.reactions[i] + 1.6 * dual.l.reactions[i],
+      );
 
   const supportLabels: Record<string, string> = {
     simple: "Articulado",
@@ -170,9 +103,7 @@ function NavSteelPrintout({
         {/* ============================================================= */}
         <div className="border-b-4 border-black pb-3 mb-4">
           <h1 className="text-lg font-bold">PLANILLA DE CÁLCULO</h1>
-          <p className="text-sm text-gray-600">
-            Viga de acero — CIRSOC 301-05
-          </p>
+          <p className="text-sm text-gray-600">Viga de acero — CIRSOC 301-05</p>
           <p className="text-sm">
             Perfil: <strong>{profile?.name ?? designParams.profileName}</strong>
             &nbsp;&mdash;&nbsp; Fecha: {todayISO()}
@@ -186,9 +117,7 @@ function NavSteelPrintout({
         <table className="w-full text-xs mb-4 border border-black">
           <tbody>
             <tr>
-              <td className="font-bold p-1 border w-32">
-                Cantidad de tramos
-              </td>
+              <td className="font-bold p-1 border w-32">Cantidad de tramos</td>
               <td className="p-1 border">{beamConfig.spans.length}</td>
               <td className="font-bold p-1 border w-24">Longitudes</td>
               <td className="p-1 border">
@@ -272,9 +201,7 @@ function NavSteelPrintout({
         {/* ============================================================= */}
         {/* 3. PARÁMETROS DE DISEÑO                                       */}
         {/* ============================================================= */}
-        <h2 className="font-bold text-sm mb-1">
-          3. PARÁMETROS DE DISEÑO
-        </h2>
+        <h2 className="font-bold text-sm mb-1">3. PARÁMETROS DE DISEÑO</h2>
         <table className="w-full text-xs mb-4 border border-black">
           <tbody>
             <tr>
@@ -288,9 +215,7 @@ function NavSteelPrintout({
             <tr>
               <td className="font-bold p-1 border">Cb</td>
               <td className="p-1 border">{designParams.Cb}</td>
-              <td className="font-bold p-1 border">
-                Carga en
-              </td>
+              <td className="font-bold p-1 border">Carga en</td>
               <td className="p-1 border">
                 {designParams.loadPosition === "top"
                   ? "Ala superior"
@@ -327,7 +252,7 @@ function NavSteelPrintout({
               </td>
               <td className="p-1 border" colSpan={3}>
                 L/{designParams.deflectionLimit} ={" "}
-                {(L * 1000 / designParams.deflectionLimit).toFixed(1)} mm
+                {((L * 1000) / designParams.deflectionLimit).toFixed(1)} mm
               </td>
             </tr>
           </tbody>
@@ -379,9 +304,7 @@ function NavSteelPrintout({
                   <tr key={ri}>
                     {row.map(([label, val], ci) => (
                       <Fragment key={ci}>
-                        <td className="font-bold p-1 border w-24">
-                          {label}
-                        </td>
+                        <td className="font-bold p-1 border w-24">{label}</td>
                         <td className="p-1 border font-mono">{val}</td>
                       </Fragment>
                     ))}
@@ -452,12 +375,12 @@ function NavSteelPrintout({
             {/* ========================================================= */}
             {/* 6. FÓRMULAS Y CUENTAS                                     */}
             {/* ========================================================= */}
-            <h2 className="font-bold text-sm mb-1">
-              6. FÓRMULAS Y CUENTAS
-            </h2>
+            <h2 className="font-bold text-sm mb-1">6. FÓRMULAS Y CUENTAS</h2>
 
             {/* --- Pandeo Lateral-Torsional --- */}
-            <h3 className="font-semibold text-xs mb-1">Pandeo Lateral-Torsional</h3>
+            <h3 className="font-semibold text-xs mb-1">
+              Pandeo Lateral-Torsional
+            </h3>
             <div className="text-xs font-mono space-y-0.5 mb-2">
               <p>
                 M<sub>d1</sub> = &phi;&middot;min(M<sub>n,flange</sub>, M
@@ -487,16 +410,14 @@ function NavSteelPrintout({
                 {designCheck.LrEff !== designCheck.Lr &&
                   ` (L_r = ${(designCheck.Lr / 10).toFixed(0)} cm)`}
               </p>
-              <p>
-                L = {(designCheck.effectiveLb / 10).toFixed(0)} cm
-              </p>
+              <p>L = {(designCheck.effectiveLb / 10).toFixed(0)} cm</p>
               <p>
                 F<sub>e</sub> = {designCheck.Fe.toFixed(1)} MPa
               </p>
               <p>
                 M<sub>cr</sub> = min(F<sub>e</sub>&middot;S<sub>x</sub>, M
                 <sub>p</sub>) ={" "}
-                {designCheck.Fe * (profile?.Sx ?? 0) / 1000 <
+                {(designCheck.Fe * (profile?.Sx ?? 0)) / 1000 <
                 designCheck.Mp / 1e6
                   ? (designCheck.Mcr / 1e6).toFixed(2)
                   : (designCheck.Mp / 1e6).toFixed(2)}{" "}
@@ -541,8 +462,8 @@ function NavSteelPrintout({
                     kN&middot;m
                   </td>
                   <td className="p-1 border text-right font-mono">
-                    &phi;M<sub>n</sub> ={" "}
-                    {(designCheck.phiMn / 1e6).toFixed(1)} kN&middot;m
+                    &phi;M<sub>n</sub> = {(designCheck.phiMn / 1e6).toFixed(1)}{" "}
+                    kN&middot;m
                   </td>
                   <td
                     className={`p-1 border text-right font-mono font-bold ${designCheck.ratioFlex <= 1 ? "text-green-700" : "text-red-700"}`}
@@ -551,6 +472,14 @@ function NavSteelPrintout({
                   </td>
                   <td className="p-1 border text-xs">
                     {designCheck.limitingState}
+                    {designCheck.flexChecks.map((f) => (
+                      <div key={f.sign}>
+                        M<sub>u</sub>
+                        {f.sign} = {(f.Mu / 1e6).toFixed(1)} · L<sub>b</sub> ={" "}
+                        {(f.Lb / 1000).toFixed(2)} m · φM<sub>n</sub> ={" "}
+                        {(f.phiMn / 1e6).toFixed(1)} → {f.ratio.toFixed(2)}
+                      </div>
+                    ))}
                   </td>
                 </tr>
                 <tr>
@@ -559,8 +488,8 @@ function NavSteelPrintout({
                     V<sub>u</sub> = {(designCheck.Vu / 1000).toFixed(1)} kN
                   </td>
                   <td className="p-1 border text-right font-mono">
-                    &phi;V<sub>n</sub> ={" "}
-                    {(designCheck.phiVn / 1000).toFixed(1)} kN
+                    &phi;V<sub>n</sub> = {(designCheck.phiVn / 1000).toFixed(1)}{" "}
+                    kN
                   </td>
                   <td
                     className={`p-1 border text-right font-mono font-bold ${designCheck.ratioShear <= 1 ? "text-green-700" : "text-red-700"}`}
@@ -587,9 +516,10 @@ function NavSteelPrintout({
                   <td
                     className={`p-1 border text-xs font-bold ${designCheck.deflectionOK ? "text-green-700" : "text-red-700"}`}
                   >
-                    {designCheck.deflectionOK
-                      ? "✓ Cumple"
-                      : "✗ No cumple"}
+                    {designCheck.deflectionOK ? "✓ Cumple" : "✗ No cumple"}
+                    <div className="font-normal">
+                      D + L · {designCheck.deflectionLabel}
+                    </div>
                   </td>
                 </tr>
               </tbody>
@@ -800,9 +730,7 @@ function SavedBeamPrintout() {
                   <td className="font-bold p-1 border">
                     F<sub>y</sub>:
                   </td>
-                  <td className="p-1 border">
-                    {(d.Fy as number) || "—"} MPa
-                  </td>
+                  <td className="p-1 border">{(d.Fy as number) || "—"} MPa</td>
                 </tr>
               )}
               {!isAcero && (
@@ -874,12 +802,8 @@ function SavedBeamPrintout() {
                     <td className="p-1 border text-right">
                       {l.type === "point" ? "Puntual" : "Distrib."}
                     </td>
-                    <td className="p-1 border text-right">
-                      {l.D.toFixed(1)}
-                    </td>
-                    <td className="p-1 border text-right">
-                      {l.L.toFixed(1)}
-                    </td>
+                    <td className="p-1 border text-right">{l.D.toFixed(1)}</td>
+                    <td className="p-1 border text-right">{l.L.toFixed(1)}</td>
                     <td className="p-1 border text-right">
                       {(1.2 * l.D + 1.6 * l.L).toFixed(1)}{" "}
                       {l.type === "distributed" ? "kN/m" : "kN"}
@@ -895,9 +819,7 @@ function SavedBeamPrintout() {
           </table>
 
           {/* Results */}
-          <h3 className="font-bold text-sm mb-1">
-            RESULTADOS DEL ANÁLISIS
-          </h3>
+          <h3 className="font-bold text-sm mb-1">RESULTADOS DEL ANÁLISIS</h3>
           <table className="w-full text-sm mb-4 border border-black">
             <tbody>
               <tr>

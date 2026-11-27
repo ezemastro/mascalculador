@@ -13,8 +13,17 @@ export interface DesignParams {
   Lb2?: number; // mm (Lb for Mu < 0 sections)
   Cb: number; // moment gradient factor (default 1.0)
   deflectionLimit: number; // e.g. L/300
-  beamLength: number; // mm (total span for deflection check)
-  loadPosition: "top" | "shear" | "bottom"; // punto de aplicación de carga
+  beamLength: number; // mm (luz de comparación de la flecha)
+  /** Se conserva por compatibilidad de los guardados; NO modifica Lp/Lr
+   *  (las expresiones del CIRSOC 301 no tienen ese ajuste). */
+  loadPosition: "top" | "shear" | "bottom";
+}
+
+/** Flecha de servicio ya calculada (integración del diagrama de momentos). */
+export interface DeflectionInput {
+  delta: number; // mm
+  refLength: number; // mm (luz del tramo, o 2·L del voladizo)
+  label: string; // p. ej. "tramo 1 (0.00–5.00 m)"
 }
 
 export interface DesignResult {
@@ -56,11 +65,10 @@ export interface DesignResult {
 export function checkBeam(
   profile: ProfileData,
   params: DesignParams,
-  serviceM: number, // N·mm (max combined D+L service moment)
-  Mu: number, // N·mm (signed ultimate moment at |Mu| max section)
+  deflection: DeflectionInput,
+  Mu: number, // N·mm (momento último con signo: + usa Lb1, − usa Lb2)
 ): DesignResult {
-  const { Fy, Lb, Lb1, Lb2, Cb, deflectionLimit, beamLength, loadPosition } =
-    params;
+  const { Fy, Lb, Lb1, Lb2, Cb, deflectionLimit, loadPosition } = params;
   const { h, b, tw, tf, Ix, Iy, Sx, Zx, ry, J, Cw } = profile;
 
   // ---- Lb selection by moment sign ----
@@ -131,23 +139,21 @@ export function checkBeam(
   // X2 = 4·Cw/Iy·(Sx/(G·J))²  (CIRSOC, factor de alabeo)
   const Iy_mm4 = Iy * 1e4; // cm⁴ → mm⁴
   const Cw_mm6 = Cw * 1e6; // cm⁶ → mm⁶
-  const X2 = (4 * Cw_mm6 / Iy_mm4) * Math.pow(Sx_mm3 / (G * J_mm4), 2); // 1/MPa²
+  const X2 = ((4 * Cw_mm6) / Iy_mm4) * Math.pow(Sx_mm3 / (G * J_mm4), 2); // 1/MPa²
 
-  // Lp base (carga en ala superior): CIRSOC — factor 1.59 para doble T
-  const Lp = 1.59 * ry_mm * Math.sqrt(E / Fy); // mm
+  // Lp (CIRSOC 301-05, Tabla A-F.1.1, doble T y canales): 1.76·ry·√(E/Fyf)
+  const Lp = 1.76 * ry_mm * Math.sqrt(E / Fy); // mm
 
   // Lr base: frontera elástica/inelástica Fe(Lr) = FL, con la solución elástica
   // de PLT que incluye alabeo (ver abajo). Resultado de despejar Fe(Lr) = FL:
   // Lr = ry·(X1/FL)·√(1 + √(1 + X2·FL²))
-  const Lr =
-    ry_mm * (X1 / FL) * Math.sqrt(1 + Math.sqrt(1 + X2 * FL * FL)); // mm
+  const Lr = ry_mm * (X1 / FL) * Math.sqrt(1 + Math.sqrt(1 + X2 * FL * FL)); // mm
 
-  // Ajuste por punto de aplicación de carga
-  // Ala superior (default) = factor 1.0; centro de corte ≈ +10%; ala inferior ≈ +25%
-  const lpFactor =
-    loadPosition === "bottom" ? 1.25 : loadPosition === "shear" ? 1.10 : 1.0;
-  const lrFactor =
-    loadPosition === "bottom" ? 1.25 : loadPosition === "shear" ? 1.10 : 1.0;
+  // Sin ajuste por punto de aplicación de la carga: las expresiones del
+  // CIRSOC 301 no lo prevén (antes se agrandaban Lp y Lr un 10–25 % para
+  // carga en centro de corte / ala inferior, sin respaldo normativo).
+  const lpFactor = 1.0;
+  const lrFactor = 1.0;
   const LpEff = Lp * lpFactor;
   const LrEff = Lr * lrFactor;
 
@@ -233,18 +239,18 @@ export function checkBeam(
   const phiVn = PHI_V * Vn;
 
   // ---- Deflection ----
-  // δ = 5·M_serv·L² / (48·E·I) — fórmula exacta para viga simplemente apoyada
-  // con carga uniforme; aproximación conservadora para otros casos.
-  const I_mm4 = Ix * 1e4;
-  const maxDeflection =
-    (5 * serviceM * Math.pow(beamLength, 2)) / (48 * E * I_mm4);
-  const allowableDeflection = beamLength / deflectionLimit;
+  // Flecha de servicio (D + L) calculada por integración de M/(E·I) tramo
+  // por tramo; se compara con la luz de ese tramo (2·L en voladizos).
+  const maxDeflection = deflection.delta;
+  const allowableDeflection = deflection.refLength / deflectionLimit;
   const deflectionOK = maxDeflection <= allowableDeflection;
 
   // ---- Build calculation steps ----
   const st: string[] = [];
   st.push(`Perfil: ${profile.name}, F_y = ${Fy} MPa, E = ${E} MPa`);
-  st.push(`Carga aplicada en: ${loadPosition === "top" ? "ala superior" : loadPosition === "shear" ? "centro de corte" : "ala inferior"}`);
+  st.push(
+    `Carga aplicada en: ${loadPosition === "top" ? "ala superior" : loadPosition === "shear" ? "centro de corte" : "ala inferior"} (dato informativo: no modifica L_p ni L_r)`,
+  );
   st.push("");
 
   // Section classification
@@ -275,21 +281,19 @@ export function checkBeam(
   st.push(
     `M_n,flange (pandeo local ala) = ${(MnFlange / 1e6).toFixed(1)} kN·m`,
   );
-  st.push(
-    `M_n,web (pandeo local alma) = ${(MnWeb / 1e6).toFixed(1)} kN·m`,
-  );
+  st.push(`M_n,web (pandeo local alma) = ${(MnWeb / 1e6).toFixed(1)} kN·m`);
   // Lp / Lr
   st.push(`--- Parámetros de PLT ---`);
   st.push(`X_1 = π/S_x·√(E·G·J·A/2) = ${X1.toFixed(0)} MPa`);
   st.push(`X_2 = 4·C_w/I_y·(S_x/(G·J))² = ${X2.toExponential(2)} 1/MPa²`);
   st.push(`F_L = min(F_yf − F_r, F_yw) = 0.7·F_y = ${FL.toFixed(0)} MPa`);
-  if (lpFactor === 1.0) {
-    st.push(`L_p = 1.59·r_y·√(E/F_y) = ${LpEff.toFixed(0)} mm`);
-  } else {
-    st.push(`L_p = 1.59·r_y·√(E/F_y) = ${Lp.toFixed(0)} mm → L_p,eff = L_p·${lpFactor} = ${LpEff.toFixed(0)} mm`);
-  }
-  st.push(`L_r = r_y·(X_1/F_L)·√(1+√(1+X_2·F_L²)) = ${LrEff.toFixed(0)} mm` +
-    (lrFactor !== 1.0 ? ` (base = ${Lr.toFixed(0)} mm, factor = ${lrFactor})` : ''));
+  st.push(`L_p = 1.76·r_y·√(E/F_y) = ${LpEff.toFixed(0)} mm`);
+  st.push(
+    `L_r = r_y·(X_1/F_L)·√(1+√(1+X_2·F_L²)) = ${LrEff.toFixed(0)} mm` +
+      (lrFactor !== 1.0
+        ? ` (base = ${Lr.toFixed(0)} mm, factor = ${lrFactor})`
+        : ""),
+  );
   st.push(`L_b = ${effectiveLb} mm, C_b = ${Cb}`);
 
   if (effectiveLb <= LpEff) {
@@ -336,11 +340,14 @@ export function checkBeam(
 
   // Deflection
   st.push("--- Deformación ---");
-  st.push(`δ = 5·M_serv·L² / (48·E·I_x)`);
-  st.push(`  = 5·${(serviceM / 1e6).toFixed(1)}·10⁶·${beamLength}² / (48·${E}·${(Ix * 1e4).toFixed(0)})`);
-  st.push(`  = ${maxDeflection.toFixed(1)} mm`);
   st.push(
-    `δ_adm = L/${deflectionLimit} = ${beamLength}/${deflectionLimit} = ${allowableDeflection.toFixed(1)} mm`,
+    `δ (servicio D + L) por integración de M/(E·I_x), E·I_x = ${E}·${(Ix * 1e4).toFixed(0)} N·mm²`,
+  );
+  st.push(
+    `  Máxima en ${deflection.label}: δ = ${maxDeflection.toFixed(1)} mm`,
+  );
+  st.push(
+    `δ_adm = L/${deflectionLimit} = ${deflection.refLength.toFixed(0)}/${deflectionLimit} = ${allowableDeflection.toFixed(1)} mm`,
   );
   st.push(
     `${deflectionOK ? "✓" : "✗"} ${deflectionOK ? "Cumple" : "No cumple"} deformación`,

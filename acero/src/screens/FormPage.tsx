@@ -13,7 +13,8 @@ import {
 import { IPN_PROFILES } from "../lib/profiles";
 import { UPN_PROFILES } from "../lib/upn-profiles";
 import { resolveProfile } from "../lib/profile-lookup";
-import { calculateBeamDual, migrateLoads } from "../lib/beam-calculations";
+import { migrateLoads } from "../lib/beam-calculations";
+import { computeSteelEnvelope } from "../lib/steel-beam-envelope";
 import { DecimalInput } from "@mascalculador/shared";
 
 export default function FormPage() {
@@ -245,10 +246,11 @@ export default function FormPage() {
     if (!valid) return null;
     try {
       const beamConfig: BeamConfig = { spans: spanLengths, supportTypes };
-      const dual = calculateBeamDual(beamConfig, loads);
+      // Envolvente con 1.4·D y sobrecarga alternada: mayor |Mu|.
+      const env = computeSteelEnvelope(beamConfig, loads);
+      const MuMax = Math.max(env.MuPos.value, -env.MuNeg.value);
       // Mu (kN·m) × 1e6 → N·mm, / (0.9·Fy) → mm³, / 1000 → cm³
-      const Zx_req_cm3 =
-        (Math.abs(dual.maxMomentU.value) * 1e6) / (0.9 * Fy) / 1000;
+      const Zx_req_cm3 = (MuMax * 1e6) / (0.9 * Fy) / 1000;
       return Zx_req_cm3;
     } catch {
       return null;
@@ -267,7 +269,11 @@ export default function FormPage() {
     <MainLayout>
       <ScreenHeader
         title="Viga de acero"
-        subtitle={loadedSaveName ? `Editando: ${loadedSaveName}` : "Definí la viga y sus cargas"}
+        subtitle={
+          loadedSaveName
+            ? `Editando: ${loadedSaveName}`
+            : "Definí la viga y sus cargas"
+        }
         badge={
           loadedSaveName
             ? { label: loadedSaveName, tone: "saved" }
@@ -635,19 +641,6 @@ export default function FormPage() {
                 value={deflectionLimit}
                 onChange={setDeflectionLimit}
               />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-text-muted">Carga aplicada en</span>
-              <select
-                value={loadPosition}
-                onChange={(e) =>
-                  setLoadPosition(e.target.value as "top" | "shear" | "bottom")
-                }
-              >
-                <option value="top">Ala superior</option>
-                <option value="shear">Centro de corte</option>
-                <option value="bottom">Ala inferior</option>
-              </select>
             </label>
           </div>
         </section>
