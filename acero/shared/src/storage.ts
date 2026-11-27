@@ -190,6 +190,7 @@ export interface ColumnFormState {
   L: number;
   Kx: number;
   Ky: number;
+  Cm?: number;
   Fy: number;
 }
 

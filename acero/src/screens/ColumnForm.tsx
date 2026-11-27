@@ -36,6 +36,8 @@ export interface ColumnState {
   L: number;
   Kx: number;
   Ky: number;
+  /** Coeficiente Cm de la amplificación de momentos B1 (default 1.0). */
+  Cm?: number;
   Fy: number;
   loadedSaveId?: string | null;
   loadedSaveName?: string | null;
@@ -103,6 +105,7 @@ export default function ColumnForm() {
   const [L, setL] = useState(state?.L ?? lastForm?.L ?? 3000);
   const [Kx, setKx] = useState(state?.Kx ?? lastForm?.Kx ?? 1.0);
   const [Ky, setKy] = useState(state?.Ky ?? lastForm?.Ky ?? 1.0);
+  const [Cm, setCm] = useState(state?.Cm ?? lastForm?.Cm ?? 1.0);
   const [Fy, setFy] = useState(state?.Fy ?? lastForm?.Fy ?? 235);
 
   // Id del elemento cargado (null = nuevo, sin guardar). Se restaura desde
@@ -141,6 +144,7 @@ export default function ColumnForm() {
       L,
       Kx,
       Ky,
+      Cm,
       Fy,
     });
   }, [
@@ -162,6 +166,7 @@ export default function ColumnForm() {
     L,
     Kx,
     Ky,
+    Cm,
     Fy,
   ]);
 
@@ -185,6 +190,7 @@ export default function ColumnForm() {
       L,
       Kx,
       Ky,
+      Cm,
       Fy,
     };
 
@@ -230,6 +236,7 @@ export default function ColumnForm() {
     if (typeof d.L === "number") setL(d.L);
     if (typeof d.Kx === "number") setKx(d.Kx);
     if (typeof d.Ky === "number") setKy(d.Ky);
+    setCm(typeof d.Cm === "number" ? d.Cm : 1.0);
     if (typeof d.Fy === "number") setFy(d.Fy);
   }
 
@@ -254,6 +261,7 @@ export default function ColumnForm() {
       L,
       Kx,
       Ky,
+      Cm,
       Fy,
       loadedSaveId: loadedSaveId ?? undefined,
       loadedSaveName: loadedSaveName ?? undefined,
@@ -265,7 +273,11 @@ export default function ColumnForm() {
     <MainLayout>
       <ScreenHeader
         title="Columnas de acero"
-        subtitle={loadedSaveName ? `Editando: ${loadedSaveName}` : "CIRSOC 301-05 — Capítulos E, F y H"}
+        subtitle={
+          loadedSaveName
+            ? `Editando: ${loadedSaveName}`
+            : "CIRSOC 301-05 — Capítulos E, F y H"
+        }
         badge={
           loadedSaveName
             ? { label: loadedSaveName, tone: "saved" }
@@ -352,9 +364,16 @@ export default function ColumnForm() {
                 </label>
                 <label className="flex flex-col gap-1">
                   <span className="text-xs text-text-muted">
-                    Separación (mm)
+                    Separación libre entre alas (mm)
                   </span>
                   <DecimalInput value={upnGap} onChange={setUpnGap} />
+                  <span className="text-[11px] leading-snug text-text-muted/80">
+                    Los dos UPN van con las alas enfrentadas (formando un
+                    cajón). Es el espacio vacío entre las puntas de las alas; 0
+                    = alas tocándose. Se supone que los perfiles están unidos
+                    (presillas o cordones de soldadura) para trabajar en
+                    conjunto.
+                  </span>
                 </label>
               </>
             )}
@@ -508,6 +527,18 @@ export default function ColumnForm() {
                 <option value={1.0}>1.0 (art-art)</option>
                 <option value={2.0}>2.0 (voladizo)</option>
               </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-text-muted">
+                C<sub>m</sub> (amplificación de momentos)
+              </span>
+              <DecimalInput value={Cm} onChange={setCm} />
+              <span className="text-[11px] leading-snug text-text-muted/80">
+                1.0 si no se sabe (lo más seguro). Sin cargas entre extremos: C
+                <sub>m</sub> = 0.6 − 0.4·M<sub>1</sub>/M<sub>2</sub> (M
+                <sub>1</sub>/M<sub>2</sub> &gt; 0 si la columna se curva en
+                doble curvatura).
+              </span>
             </label>
           </div>
         </section>

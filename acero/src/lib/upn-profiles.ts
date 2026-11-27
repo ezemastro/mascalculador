@@ -27,7 +27,12 @@ import type { ProfileData } from "./profiles";
  * Formula for thin-walled open sections: J = Σ(b_i * t_i³) / 3
  * J_mm4 = (2 * b * tf³ + (h - 2*tf) * tw³) / 3
  */
-export function computeUPNJ(h: number, _b: number, tw: number, tf: number): number {
+export function computeUPNJ(
+  h: number,
+  _b: number,
+  tw: number,
+  tf: number,
+): number {
   const J_mm4 = (2 * _b * Math.pow(tf, 3) + (h - 2 * tf) * Math.pow(tw, 3)) / 3;
   return Math.round((J_mm4 / 1e4) * 10) / 10; // mm⁴ → cm⁴, rounded to 1 decimal
 }
@@ -39,13 +44,18 @@ export function computeUPNJ(h: number, _b: number, tw: number, tf: number): numb
  * α = (3*tf*b + 2*tw*hw) / (6*tf*b + tw*hw)
  * Cw_mm6 = (tf * b³ * h_o² / 12) * α
  */
-export function computeUPNCw(h: number, _b: number, tw: number, tf: number): number {
+export function computeUPNCw(
+  h: number,
+  _b: number,
+  tw: number,
+  tf: number,
+): number {
   const ho = h - tf; // mm
   const hw = h - 2 * tf; // mm
   const numerator = 3 * tf * _b + 2 * tw * hw;
   const denominator = 6 * tf * _b + tw * hw;
   const alpha = numerator / denominator;
-  const Cw_mm6 = (tf * Math.pow(_b, 3) * Math.pow(ho, 2) / 12) * alpha;
+  const Cw_mm6 = ((tf * Math.pow(_b, 3) * Math.pow(ho, 2)) / 12) * alpha;
   return Math.round((Cw_mm6 / 1e6) * 10) / 10; // mm⁶ → cm⁶, rounded to 1 decimal
 }
 
@@ -55,7 +65,7 @@ export function computeUPNCw(h: number, _b: number, tw: number, tf: number): num
  * Sx_cm3 = 20 * Ix / h (since Ix in cm⁴, h in mm)
  */
 export function computeUPNSx(h: number, Ix: number): number {
-  return Math.round(20 * Ix / h * 10) / 10;
+  return Math.round(((20 * Ix) / h) * 10) / 10;
 }
 
 /**
@@ -68,7 +78,7 @@ export function computeUPNSy(_b: number, Iy: number, xg: number): number {
   const dWeb = xg; // cm
   const dTip = _b / 10 - xg; // cm (b is mm, b/10 = cm)
   const dMax = Math.max(dWeb, dTip);
-  return Math.round(Iy / dMax * 10) / 10;
+  return Math.round((Iy / dMax) * 10) / 10;
 }
 
 /**
@@ -350,11 +360,14 @@ export function getDoubleUPN(upn: UPNData, gap: number): DoubleUPNData {
   const A = upn.A * 2;
   const Ix = upn.Ix * 2;
   const Zx = upn.Zx * 2;
-  // Iy: parallel axis theorem. Two channels separated by gap.
-  // Distance from each channel centroid to combined centroid = gap/2 + upn.xg
-  const d = gap / 10 + upn.xg; // cm
+  // Cajón de dos UPN con las ALAS ENFRENTADAS; `gap` (mm) = espacio libre
+  // entre las puntas de las alas (0 = alas tocándose).
+  // Distancia del baricentro de cada U al eje de simetría:
+  //   d = gap/2 + b − xg   (xg medido desde la cara exterior del alma)
+  const d = gap / 20 + upn.b / 10 - upn.xg; // cm
   const Iy = 2 * (upn.Iy + upn.A * d * d);
-  const Zy = Iy / ((upn.b + gap / 10) / 2); // approximate
+  // Plástico: cada U queda entera a un lado del eje → Zy = 2·A·d.
+  const Zy = 2 * upn.A * d;
   const rx = Math.sqrt(Ix / A);
   const ry = Math.sqrt(Iy / A);
   const b_total = upn.b * 2 + gap;

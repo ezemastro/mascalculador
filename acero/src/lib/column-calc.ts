@@ -1,4 +1,6 @@
 // CIRSOC 301-05 — Column design (axial + bending)
+import { checkBeam } from "./steel-design";
+import type { ProfileData } from "./profiles";
 
 const E = 200000; // MPa
 const PHI_C = 0.85; // CIRSOC 301-05 Cap. E — φc compresión
@@ -71,9 +73,11 @@ export function checkLocalBuckling(
 
     st.push(`  k_c = 4/√(hw/tw) = ${kc.toFixed(3)} (0.35 ≤ k_c ≤ 0.76)`);
   } else if (section === "C") {
-    // Channel (UPN): Case 3 flange (unstiffened, free edge), Case 5 web (stiffened)
+    // Channel (UPN): ala de perfil U laminado (mismo caso que el ala del
+    // doble T laminado, Tabla B.5-1): b/t ≤ 0.56·√(E/Fy), b = ancho total.
+    // Antes se usaba 0.45 (límite de ángulos simples).
     flangeLambda = bf / tf;
-    flangeLambdaR = 0.45 * lambdaR0;
+    flangeLambdaR = 0.56 * lambdaR0;
     flangeDesc = `bf/tf`;
 
     const hw = h - 2 * tf;
@@ -84,8 +88,8 @@ export function checkLocalBuckling(
     // HSS or CAJON (tube/box): Case 6 — both sides stiffened
     flangeLambda = bf / tf;
     webLambda = h / tw;
-    flangeLambdaR = 1.40 * lambdaR0;
-    webLambdaR = 1.40 * lambdaR0;
+    flangeLambdaR = 1.4 * lambdaR0;
+    webLambdaR = 1.4 * lambdaR0;
     flangeDesc = `b/t`;
     webDesc = `h/t`;
   }
@@ -143,13 +147,14 @@ export function computeSlenderQ(
 
   // ---- Qs: unstiffened elements (flanges) ----
   let Qs = 1.0;
-  if (!lb.flangeOk && (section === "I" || section === "I_BUILTUP")) {
-    const lambda = bf / (2 * tf);
+  if (!lb.flangeOk && (section === "I" || section === "C")) {
+    // Alas de perfiles laminados doble T y U (CIRSOC 301 A-B.5.3a)
+    const lambda = section === "C" ? bf / tf : bf / (2 * tf);
     const lambdaR = 1.03 * lambdaR0;
     if (lambda <= lambdaR) {
-      Qs = 1.415 - (0.65 * lambda) / lambdaR0;
+      Qs = 1.415 - (0.74 * lambda) / lambdaR0;
       st.push(
-        `Q_s ala: λ=${lambda.toFixed(1)} ≤ 1.03√(E/F_y)=${lambdaR.toFixed(1)} → Q_s=1.415−0.65·λ/√(E/F_y)=${Qs.toFixed(3)}`,
+        `Q_s ala: λ=${lambda.toFixed(1)} ≤ 1.03√(E/F_y)=${lambdaR.toFixed(1)} → Q_s=1.415−0.74·λ·√(F_y/E)=${Qs.toFixed(3)}`,
       );
     } else {
       Qs = (0.69 * E) / (Fy * lambda * lambda);
@@ -158,16 +163,24 @@ export function computeSlenderQ(
       );
     }
     Qs = Math.min(1.0, Qs);
-  } else if (!lb.flangeOk && section === "C") {
-    const lambda = bf / tf;
-    const lambdaR = 0.91 * lambdaR0;
+  } else if (!lb.flangeOk && section === "I_BUILTUP") {
+    // Alas de secciones armadas (CIRSOC 301 A-B.5.3a, con k_c)
+    const lambda = bf / (2 * tf);
+    const hw = h - 2 * tf;
+    const kc = Math.max(0.35, Math.min(0.76, 4 / Math.sqrt(hw / tw)));
+    const lambdaR = 1.17 * Math.sqrt((kc * E) / Fy);
     if (lambda <= lambdaR) {
-      Qs = 1.34 - (0.76 * lambda) / lambdaR0;
+      Qs = 1.415 - 0.65 * lambda * Math.sqrt(Fy / (kc * E));
+      st.push(
+        `Q_s ala: λ=${lambda.toFixed(1)} ≤ 1.17√(k_c·E/F_y)=${lambdaR.toFixed(1)} → Q_s=1.415−0.65·λ·√(F_y/(k_c·E))=${Qs.toFixed(3)}`,
+      );
     } else {
-      Qs = (0.53 * E) / (Fy * lambda * lambda);
+      Qs = (0.9 * kc * E) / (Fy * lambda * lambda);
+      st.push(
+        `Q_s ala: λ=${lambda.toFixed(1)} > 1.17√(k_c·E/F_y) → Q_s=0.90·k_c·E/(F_y·λ²)=${Qs.toFixed(3)}`,
+      );
     }
     Qs = Math.min(1.0, Qs);
-    st.push(`Q_s ala (UPN): λ=${lambda.toFixed(1)}, Q_s=${Qs.toFixed(3)}`);
   }
   // HSS/CAJON: no unstiffened elements → Qs stays 1.0
 
@@ -178,8 +191,7 @@ export function computeSlenderQ(
     if (section === "I" || section === "I_BUILTUP" || section === "C") {
       const hw = h - 2 * tf;
       const lambda = hw / tw;
-      const be =
-        1.92 * tw * lambdaR0 * (1 - (0.34 / lambda) * lambdaR0);
+      const be = 1.92 * tw * lambdaR0 * (1 - (0.34 / lambda) * lambdaR0);
       const beEff = Math.min(Math.max(be, 0), hw);
       const areaLoss = (hw - beEff) * tw;
       Ae = Ag_mm2 - areaLoss;
@@ -194,10 +206,7 @@ export function computeSlenderQ(
       const bSlender = lambdaSlender === lambdaH ? h : bf;
       const tSlender = lambdaSlender === lambdaH ? tw : tf;
       const be =
-        1.92 *
-        tSlender *
-        lambdaR0 *
-        (1 - (0.34 / lambdaSlender) * lambdaR0);
+        1.92 * tSlender * lambdaR0 * (1 - (0.34 / lambdaSlender) * lambdaR0);
       const beEff = Math.min(Math.max(be, 0), bSlender);
       // HSS: simplify — reduce both sides proportionally if one is slender
       const aLoss =
@@ -228,6 +237,20 @@ export interface ColumnInput {
   Ky: number; // effective length factor y-y
   L: number; // mm (unbraced length)
   Fy: number; // MPa
+  /** Coeficiente Cm para la amplificación B1 (default 1.0, lo más seguro). */
+  Cm?: number;
+}
+
+/** Datos para la resistencia a flexión de la columna. */
+export interface ColumnFlexSection {
+  /** "I"/"C": doble T o U con pandeo lateral-torsional; "2C": dos U (se
+   *  toma el doble de la resistencia de un U solo); "box": tubo o cajón
+   *  (sin pandeo lateral-torsional). */
+  kind: "I" | "C" | "2C" | "box";
+  /** Perfil para el pandeo lateral-torsional (en "2C", el U individual). */
+  profile?: ProfileData;
+  /** Módulo elástico del eje débil (cm³) para el tope 1.6·Fy·Sy. */
+  Sy?: number;
 }
 
 // ---- Built-Up Section Computations ----
@@ -240,6 +263,8 @@ export interface BuiltUpProperties {
   Zx: number; // cm³
   Zy: number; // cm³
   localBuckling: LocalBucklingParams;
+  /** Datos del perfil para el pandeo lateral-torsional (doble T armada). */
+  profile?: ProfileData;
 }
 
 /**
@@ -272,12 +297,12 @@ export function computeBuiltUpI(
   // Plastic moduli (approximate)
   // Zx: flanges + web plastic contributions
   const Zx_flanges = 2 * bf * tf * (hw / 2 + tf / 2); // mm³
-  const Zx_web = tw * (hw * hw) / 4; // mm³
+  const Zx_web = (tw * (hw * hw)) / 4; // mm³
   const Zx = Math.round(((Zx_flanges + Zx_web) / 1000) * 10) / 10; // cm³
 
   // Zy: flanges + web
-  const Zy_flanges = 2 * tf * (bf * bf) / 4; // mm³
-  const Zy_web = hw * (tw * tw) / 4; // mm³
+  const Zy_flanges = (2 * tf * (bf * bf)) / 4; // mm³
+  const Zy_web = (hw * (tw * tw)) / 4; // mm³
   const Zy = Math.round(((Zy_flanges + Zy_web) / 1000) * 10) / 10;
 
   const name = `T armada ${bf}×${tf}+${hw}×${tw}`;
@@ -289,7 +314,30 @@ export function computeBuiltUpI(
     tw,
   };
 
-  return { name, Ag, Ix, Iy, Zx, Zy, localBuckling };
+  // Datos para pandeo lateral-torsional (sección de paredes delgadas)
+  const J_mm4 = (2 * bf * Math.pow(tf, 3) + hw * Math.pow(tw, 3)) / 3;
+  const ho = h - tf;
+  const Cw_mm6 = (tf * Math.pow(bf, 3) * ho * ho) / 24;
+  const profile: ProfileData = {
+    name,
+    h,
+    b: bf,
+    tw,
+    tf,
+    A: Ag,
+    Ix,
+    Sx: Ix_mm4 / (h / 2) / 1000,
+    Zx,
+    Iy,
+    ry: Math.sqrt(Iy / Ag),
+    J: J_mm4 / 1e4,
+    Cw: Cw_mm6 / 1e6,
+    Sy: Iy_mm4 / (bf / 2) / 1000,
+    Zy,
+    sectionType: "I",
+  };
+
+  return { name, Ag, Ix, Iy, Zx, Zy, localBuckling, profile };
 }
 
 /**
@@ -319,9 +367,13 @@ export function computeBuiltUpBox(
   const Sx = (2 * Ix * 10) / h; // cm³  (20*Ix/h)
   const Sy = (2 * Iy * 10) / b;
 
-  // Plastic moduli (HSS approximation)
-  const Zx = Math.round(1.12 * Sx * 10) / 10;
-  const Zy = Math.round(1.12 * Sy * 10) / 10;
+  // Módulos plásticos exactos del rectángulo hueco
+  const Zx_mm3 = (b * h * h - (b - 2 * t) * Math.pow(h - 2 * t, 2)) / 4;
+  const Zy_mm3 = (h * b * b - (h - 2 * t) * Math.pow(b - 2 * t, 2)) / 4;
+  const Zx = Math.round((Zx_mm3 / 1000) * 10) / 10;
+  const Zy = Math.round((Zy_mm3 / 1000) * 10) / 10;
+  void Sx;
+  void Sy;
 
   const name = `Cajón ${h}×${b}×${t}`;
   const localBuckling: LocalBucklingParams = {
@@ -352,6 +404,12 @@ export interface ColumnCheck {
   Mny: number; // kN·m
   phiMnx: number;
   phiMny: number;
+  /** Factores de amplificación de momentos (segundo orden, CIRSOC C.1). */
+  B1x: number;
+  B1y: number;
+  /** Momentos amplificados usados en la interacción (kN·m). */
+  MuxAmp: number;
+  MuyAmp: number;
   ratio: number; // interaction ratio
   passes: boolean;
   limitState: string;
@@ -367,8 +425,12 @@ export function designColumn(
   Zy: number, // cm³
   profileName: string,
   localBuckling?: LocalBucklingParams,
+  flex?: ColumnFlexSection,
 ): ColumnCheck {
-  const { Pu, Mux, Muy, Kx, Ky, L, Fy } = input;
+  const { Pu, Kx, Ky, L, Fy } = input;
+  const Mux = Math.abs(input.Mux);
+  const Muy = Math.abs(input.Muy);
+  const Cm = input.Cm ?? 1.0;
   const Ag_mm2 = Ag * 100;
   const rx = Math.sqrt(Ix / Ag); // cm
   const ry = Math.sqrt(Iy / Ag); // cm
@@ -438,11 +500,46 @@ export function designColumn(
   const Mpx = (Fy * Zx) / 1e3; // kN·m
   const Mpy = (Fy * Zy) / 1e3;
 
-  // Simplified: assume Lb ≤ Lp (full plastic moment)
-  const Mnx = Mpx;
-  const Mny = Mpy;
+  // Eje fuerte: con pandeo lateral-torsional (L_b = L, C_b = 1) para doble
+  // T y U; en tubos y cajones no hay PLT. Eje débil: M_p con tope 1.6·Fy·Sy.
+  let Mnx = Mpx;
+  let flexNote = "M_n,x = M_p,x (tubo/cajón: sin pandeo lateral-torsional)";
+  if (flex && flex.kind !== "box" && flex.profile) {
+    const dr = checkBeam(
+      flex.profile,
+      {
+        Fy,
+        Lb: L,
+        Lb1: L,
+        Lb2: L,
+        Cb: 1,
+        deflectionLimit: 300,
+        beamLength: L,
+        loadPosition: "top",
+      },
+      { delta: 0, refLength: L, label: "" },
+      1,
+    );
+    const mult = flex.kind === "2C" ? 2 : 1;
+    Mnx = Math.min(Mpx, (mult * dr.Mn) / 1e6);
+    flexNote = `M_n,x con pandeo lateral-torsional (L_b = L = ${L} mm, C_b = 1${flex.kind === "2C" ? ", 2 × U individual" : ""}): ${dr.limitingState}`;
+  }
+  const MyLimit = flex?.Sy ? (1.6 * Fy * flex.Sy) / 1e3 : Infinity;
+  const Mny = Math.min(Mpy, MyLimit);
   const phiMnx = PHI_B * Mnx;
   const phiMny = PHI_B * Mny;
+
+  // ---- Amplificación de momentos (segundo orden, CIRSOC 301 C.1) ----
+  // B1 = Cm / (1 − Pu/Pe1) ≥ 1, Pe1 = π²·E·I/(K·L)². Se supone pórtico
+  // arriostrado (sin desplazamiento lateral de los extremos).
+  const Pe1x = (Math.PI * Math.PI * E * Ix * 1e4) / Math.pow(Kx * L, 2) / 1000; // kN
+  const Pe1y = (Math.PI * Math.PI * E * Iy * 1e4) / Math.pow(Ky * L, 2) / 1000;
+  const b1 = (Pe: number) =>
+    Pu >= Pe ? Infinity : Math.max(1, Cm / (1 - Pu / Pe));
+  const B1x = Mux > 0 ? b1(Pe1x) : 1;
+  const B1y = Muy > 0 ? b1(Pe1y) : 1;
+  const MuxAmp = B1x * Mux;
+  const MuyAmp = B1y * Muy;
 
   // ---- Interaction (Chapter H) ----
   const PrPc = Pu / phiPn;
@@ -451,11 +548,12 @@ export function designColumn(
 
   if (PrPc >= 0.2) {
     formula = "P_r/P_c + 8/9·(M_rx/M_cx + M_ry/M_cy)";
-    ratio = PrPc + (8 / 9) * (Mux / phiMnx + Muy / phiMny);
+    ratio = PrPc + (8 / 9) * (MuxAmp / phiMnx + MuyAmp / phiMny);
   } else {
     formula = "P_r/(2·P_c) + (M_rx/M_cx + M_ry/M_cy)";
-    ratio = Pu / (2 * phiPn) + (Mux / phiMnx + Muy / phiMny);
+    ratio = Pu / (2 * phiPn) + (MuxAmp / phiMnx + MuyAmp / phiMny);
   }
+  if (!Number.isFinite(ratio)) ratio = Infinity;
 
   const passes = ratio <= 1.0;
 
@@ -493,12 +591,30 @@ export function designColumn(
 
   st.push("--- Flexión (Capítulo F) ---");
   st.push(`M_{p,x} = F_y·Z_x = ${Fy}·${Zx} = ${Mpx.toFixed(1)} kN·m`);
+  st.push(flexNote);
   st.push(
     `φ_b·M_{n,x} = ${PHI_B}·${Mnx.toFixed(1)} = ${phiMnx.toFixed(1)} kN·m`,
   );
   st.push(`M_{p,y} = F_y·Z_y = ${Fy}·${Zy} = ${Mpy.toFixed(1)} kN·m`);
+  if (Number.isFinite(MyLimit))
+    st.push(
+      `  tope 1.6·F_y·S_y = 1.6·${Fy}·${flex?.Sy?.toFixed(1)} = ${MyLimit.toFixed(1)} kN·m → M_n,y = ${Mny.toFixed(1)} kN·m`,
+    );
   st.push(
     `φ_b·M_{n,y} = ${PHI_B}·${Mny.toFixed(1)} = ${phiMny.toFixed(1)} kN·m`,
+  );
+  st.push("");
+
+  st.push("--- Amplificación de momentos (segundo orden, CIRSOC C.1) ---");
+  st.push(`Pórtico arriostrado: B_1 = C_m/(1 − P_u/P_e1) ≥ 1, C_m = ${Cm}`);
+  st.push(
+    `P_e1,x = π²·E·I_x/(K_x·L)² = ${Pe1x.toFixed(0)} kN → B_1x = ${Number.isFinite(B1x) ? B1x.toFixed(3) : "∞ (P_u ≥ P_e1: inestable)"}`,
+  );
+  st.push(
+    `P_e1,y = π²·E·I_y/(K_y·L)² = ${Pe1y.toFixed(0)} kN → B_1y = ${Number.isFinite(B1y) ? B1y.toFixed(3) : "∞ (P_u ≥ P_e1: inestable)"}`,
+  );
+  st.push(
+    `M_ux = ${B1x.toFixed(3)}·${Mux.toFixed(1)} = ${MuxAmp.toFixed(1)} kN·m ; M_uy = ${B1y.toFixed(3)}·${Muy.toFixed(1)} = ${MuyAmp.toFixed(1)} kN·m`,
   );
   st.push("");
 
@@ -508,7 +624,7 @@ export function designColumn(
   );
   st.push(`Fórmula: ${formula}`);
   st.push(
-    `= ${PrPc >= 0.2 ? `${PrPc.toFixed(3)} + 0.889·(${(Mux / phiMnx).toFixed(3)} + ${(Muy / phiMny).toFixed(3)})` : `${(Pu / (2 * phiPn)).toFixed(3)} + (${(Mux / phiMnx).toFixed(3)} + ${(Muy / phiMny).toFixed(3)})`}`,
+    `= ${PrPc >= 0.2 ? `${PrPc.toFixed(3)} + 0.889·(${(MuxAmp / phiMnx).toFixed(3)} + ${(MuyAmp / phiMny).toFixed(3)})` : `${(Pu / (2 * phiPn)).toFixed(3)} + (${(MuxAmp / phiMnx).toFixed(3)} + ${(MuyAmp / phiMny).toFixed(3)})`}`,
   );
   st.push(`= ${ratio.toFixed(3)} ${passes ? "≤ 1.0 ✓" : "> 1.0 ✗"}`);
 
@@ -529,6 +645,10 @@ export function designColumn(
     Mny,
     phiMnx,
     phiMny,
+    B1x,
+    B1y,
+    MuxAmp,
+    MuyAmp,
     ratio,
     passes,
     limitState:

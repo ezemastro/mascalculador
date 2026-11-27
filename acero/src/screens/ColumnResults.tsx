@@ -5,9 +5,14 @@ import ScreenHeader from "../components/ScreenHeader";
 import { pickObraIfNeeded } from "../components/ObraPicker";
 import { saveBeam, updateSave } from "../lib/storage";
 import { IPN_PROFILES } from "../lib/profiles";
-import { UPN_PROFILES, getDoubleUPN } from "../lib/upn-profiles";
+import {
+  UPN_PROFILES,
+  getDoubleUPN,
+  upnToProfileData,
+} from "../lib/upn-profiles";
 import { TUBE_PROFILES } from "../lib/tube-profiles";
 import {
+  type ColumnFlexSection,
   designColumn,
   computeBuiltUpI,
   computeBuiltUpBox,
@@ -113,6 +118,7 @@ export default function ColumnResults() {
     Zy: number,
     displayName: string;
   let localBuckling: LocalBucklingParams | undefined;
+  let flex: ColumnFlexSection | undefined;
 
   if (profileType === "IPN") {
     const p = IPN_PROFILES.find((x) => x.name === profileName);
@@ -127,9 +133,10 @@ export default function ColumnResults() {
     Ix = p.Ix;
     Iy = p.Iy;
     Zx = p.Zx;
-    Zy = p.Zx * 0.6; // approximate Zy for IPN
+    Zy = p.Zy ?? 1.5 * (p.Sy ?? 0); // Zy de tabla (antes 0.6·Zx: ~4 veces mayor)
     displayName = p.name;
     localBuckling = { section: "I", bf: p.b, tf: p.tf, h: p.h, tw: p.tw };
+    flex = { kind: "I", profile: p, Sy: p.Sy };
   } else if (profileType === "UPN") {
     const upn = UPN_PROFILES.find((x) => x.name === upnName);
     if (!upn) {
@@ -152,6 +159,8 @@ export default function ColumnResults() {
       h: upn.h,
       tw: upn.tw,
     };
+    const upnP = upnToProfileData(upn);
+    flex = { kind: "C", profile: upnP, Sy: upnP.Sy };
   } else if (profileType === "TUBO") {
     const tube = TUBE_PROFILES.find((x) => x.name === tubeName);
     if (!tube) {
@@ -167,6 +176,7 @@ export default function ColumnResults() {
     Zx = tube.Zx;
     Zy = tube.Zy;
     displayName = tube.name;
+    flex = { kind: "box" };
     localBuckling = {
       section: "HSS",
       bf: tube.b,
@@ -197,12 +207,9 @@ export default function ColumnResults() {
     Zy = built.Zy;
     displayName = built.name;
     localBuckling = built.localBuckling;
+    flex = { kind: "I", profile: built.profile, Sy: built.profile?.Sy };
   } else if (profileType === "ARMADA_CAJON") {
-    if (
-      cajonH === undefined ||
-      cajonB === undefined ||
-      cajonT === undefined
-    ) {
+    if (cajonH === undefined || cajonB === undefined || cajonT === undefined) {
       return (
         <MainLayout>
           <p className="text-danger p-8">
@@ -219,6 +226,7 @@ export default function ColumnResults() {
     Zy = built.Zy;
     displayName = built.name;
     localBuckling = built.localBuckling;
+    flex = { kind: "box" };
   } else {
     const upn = UPN_PROFILES.find((x) => x.name === upnName);
     if (!upn) {
@@ -235,6 +243,11 @@ export default function ColumnResults() {
     Zx = d.Zx;
     Zy = d.Zy;
     displayName = d.name;
+    flex = {
+      kind: "2C",
+      profile: upnToProfileData(upn),
+      Sy: d.Iy / (upnGap / 20 + upn.b / 10),
+    };
     // 2UPN: local buckling per individual channel
     localBuckling = {
       section: "C",
@@ -246,7 +259,7 @@ export default function ColumnResults() {
   }
 
   const result = designColumn(
-    { Pu, Mux, Muy, L, Kx, Ky, Fy },
+    { Pu, Mux, Muy, L, Kx, Ky, Fy, Cm: state.Cm ?? 1 },
     Ag,
     Ix,
     Iy,
@@ -254,6 +267,7 @@ export default function ColumnResults() {
     Zy,
     displayName,
     localBuckling,
+    flex,
   );
 
   return (
@@ -332,7 +346,8 @@ export default function ColumnResults() {
             {result.phiMnx.toFixed(1)} kN·m
           </p>
           <span className="text-xs text-text-muted">
-            M<sub>ux</sub> = {Mux.toFixed(1)} kN·m
+            M<sub>ux</sub> = {Mux.toFixed(1)} kN·m · B<sub>1x</sub> ={" "}
+            {result.B1x.toFixed(2)} → {result.MuxAmp.toFixed(1)} kN·m
           </span>
         </div>
         <div className="bg-surface rounded-xl border border-border p-4">
@@ -343,7 +358,8 @@ export default function ColumnResults() {
             {result.phiMny.toFixed(1)} kN·m
           </p>
           <span className="text-xs text-text-muted">
-            M<sub>uy</sub> = {Muy.toFixed(1)} kN·m
+            M<sub>uy</sub> = {Muy.toFixed(1)} kN·m · B<sub>1y</sub> ={" "}
+            {result.B1y.toFixed(2)} → {result.MuyAmp.toFixed(1)} kN·m
           </span>
         </div>
       </div>

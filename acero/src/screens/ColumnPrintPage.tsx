@@ -2,9 +2,14 @@ import { useState, useEffect, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { listSaves, type SavedBeam } from "../lib/storage";
 import { IPN_PROFILES } from "../lib/profiles";
-import { UPN_PROFILES, getDoubleUPN } from "../lib/upn-profiles";
+import {
+  UPN_PROFILES,
+  getDoubleUPN,
+  upnToProfileData,
+} from "../lib/upn-profiles";
 import { TUBE_PROFILES } from "../lib/tube-profiles";
 import {
+  type ColumnFlexSection,
   designColumn,
   computeBuiltUpI,
   computeBuiltUpBox,
@@ -49,55 +54,136 @@ function NavColumnPrintout({ state }: { state: ColumnState }) {
       Zy: number,
       name: string;
     let localBuckling: LocalBucklingParams | undefined;
+    let flex: ColumnFlexSection | undefined;
 
     if (state.profileType === "IPN") {
       const p = IPN_PROFILES.find((x) => x.name === state.profileName);
       if (!p) return { result: null, displayName: state.profileName };
-      Ag = p.A; Ix = p.Ix; Iy = p.Iy; Zx = p.Zx; Zy = p.Zx * 0.6;
+      Ag = p.A;
+      Ix = p.Ix;
+      Iy = p.Iy;
+      Zx = p.Zx;
+      Zy = p.Zy ?? 1.5 * (p.Sy ?? 0);
       name = p.name;
       localBuckling = { section: "I", bf: p.b, tf: p.tf, h: p.h, tw: p.tw };
+      flex = { kind: "I", profile: p, Sy: p.Sy };
     } else if (state.profileType === "UPN") {
       const upn = UPN_PROFILES.find((x) => x.name === state.upnName);
       if (!upn) return { result: null, displayName: state.upnName };
-      Ag = upn.A; Ix = upn.Ix; Iy = upn.Iy; Zx = upn.Zx; Zy = upn.Zy;
+      Ag = upn.A;
+      Ix = upn.Ix;
+      Iy = upn.Iy;
+      Zx = upn.Zx;
+      Zy = upn.Zy;
       name = upn.name;
-      localBuckling = { section: "C", bf: upn.b, tf: upn.tf, h: upn.h, tw: upn.tw };
+      localBuckling = {
+        section: "C",
+        bf: upn.b,
+        tf: upn.tf,
+        h: upn.h,
+        tw: upn.tw,
+      };
+      const upnP = upnToProfileData(upn);
+      flex = { kind: "C", profile: upnP, Sy: upnP.Sy };
     } else if (state.profileType === "TUBO") {
       const tube = TUBE_PROFILES.find((x) => x.name === state.tubeName);
       if (!tube) return { result: null, displayName: state.tubeName ?? "—" };
-      Ag = tube.A; Ix = tube.Ix; Iy = tube.Iy; Zx = tube.Zx; Zy = tube.Zy;
+      Ag = tube.A;
+      Ix = tube.Ix;
+      Iy = tube.Iy;
+      Zx = tube.Zx;
+      Zy = tube.Zy;
       name = tube.name;
-      localBuckling = { section: "HSS", bf: tube.b, tf: tube.t, h: tube.h, tw: tube.t };
+      localBuckling = {
+        section: "HSS",
+        bf: tube.b,
+        tf: tube.t,
+        h: tube.h,
+        tw: tube.t,
+      };
+      flex = { kind: "box" };
     } else if (state.profileType === "ARMADA_I") {
-      if (state.armadaBf === undefined || state.armadaTf === undefined ||
-          state.armadaHw === undefined || state.armadaTw === undefined)
+      if (
+        state.armadaBf === undefined ||
+        state.armadaTf === undefined ||
+        state.armadaHw === undefined ||
+        state.armadaTw === undefined
+      )
         return { result: null, displayName: "Armada I" };
-      const built = computeBuiltUpI(state.armadaBf, state.armadaTf, state.armadaHw, state.armadaTw);
-      Ag = built.Ag; Ix = built.Ix; Iy = built.Iy; Zx = built.Zx; Zy = built.Zy;
+      const built = computeBuiltUpI(
+        state.armadaBf,
+        state.armadaTf,
+        state.armadaHw,
+        state.armadaTw,
+      );
+      Ag = built.Ag;
+      Ix = built.Ix;
+      Iy = built.Iy;
+      Zx = built.Zx;
+      Zy = built.Zy;
       name = built.name;
       localBuckling = built.localBuckling;
+      flex = { kind: "I", profile: built.profile, Sy: built.profile?.Sy };
     } else if (state.profileType === "ARMADA_CAJON") {
-      if (state.cajonH === undefined || state.cajonB === undefined || state.cajonT === undefined)
+      if (
+        state.cajonH === undefined ||
+        state.cajonB === undefined ||
+        state.cajonT === undefined
+      )
         return { result: null, displayName: "Cajón armado" };
       const built = computeBuiltUpBox(state.cajonH, state.cajonB, state.cajonT);
-      Ag = built.Ag; Ix = built.Ix; Iy = built.Iy; Zx = built.Zx; Zy = built.Zy;
+      Ag = built.Ag;
+      Ix = built.Ix;
+      Iy = built.Iy;
+      Zx = built.Zx;
+      Zy = built.Zy;
       name = built.name;
       localBuckling = built.localBuckling;
+      flex = { kind: "box" };
     } else {
       // 2UPN
       const upn = UPN_PROFILES.find((x) => x.name === state.upnName);
       if (!upn) return { result: null, displayName: state.upnName };
       const d = getDoubleUPN(upn, state.upnGap);
-      Ag = d.A; Ix = d.Ix; Iy = d.Iy; Zx = d.Zx; Zy = d.Zy;
+      Ag = d.A;
+      Ix = d.Ix;
+      Iy = d.Iy;
+      Zx = d.Zx;
+      Zy = d.Zy;
       name = d.name;
-      localBuckling = { section: "C", bf: upn.b, tf: upn.tf, h: upn.h, tw: upn.tw };
+      localBuckling = {
+        section: "C",
+        bf: upn.b,
+        tf: upn.tf,
+        h: upn.h,
+        tw: upn.tw,
+      };
+      flex = {
+        kind: "2C",
+        profile: upnToProfileData(upn),
+        Sy: d.Iy / (state.upnGap / 20 + upn.b / 10),
+      };
     }
 
     const r = designColumn(
-      { Pu: state.Pu, Mux: state.Mux, Muy: state.Muy, L: state.L, Kx: state.Kx, Ky: state.Ky, Fy: state.Fy },
-      Ag, Ix, Iy, Zx, Zy,
+      {
+        Pu: state.Pu,
+        Mux: state.Mux,
+        Muy: state.Muy,
+        L: state.L,
+        Kx: state.Kx,
+        Ky: state.Ky,
+        Fy: state.Fy,
+        Cm: state.Cm ?? 1,
+      },
+      Ag,
+      Ix,
+      Iy,
+      Zx,
+      Zy,
       name,
       localBuckling,
+      flex,
     );
 
     return { result: r, displayName: name };
@@ -140,7 +226,9 @@ function NavColumnPrintout({ state }: { state: ColumnState }) {
           {/* HEADER */}
           <div className="border-b-4 border-black pb-3 mb-4">
             <h1 className="text-lg font-bold">PLANILLA DE CÁLCULO</h1>
-            <p className="text-sm text-gray-600">Columna de acero — CIRSOC 301-05</p>
+            <p className="text-sm text-gray-600">
+              Columna de acero — CIRSOC 301-05
+            </p>
             <p className="text-sm">
               Perfil: <strong>{displayName}</strong>
               &nbsp;&mdash;&nbsp; Fecha: {todayISO()}
@@ -153,20 +241,29 @@ function NavColumnPrintout({ state }: { state: ColumnState }) {
             <tbody>
               <tr>
                 <td className="font-bold p-1 border w-32">Tipo de perfil</td>
-                <td className="p-1 border">{PROFILE_TYPE_LABELS[state.profileType] ?? state.profileType}</td>
+                <td className="p-1 border">
+                  {PROFILE_TYPE_LABELS[state.profileType] ?? state.profileType}
+                </td>
                 <td className="font-bold p-1 border w-24">Perfil</td>
                 <td className="p-1 border">
-                  {state.profileType === "IPN" ? state.profileName
-                   : state.profileType === "UPN" || state.profileType === "2UPN" ? state.upnName
-                   : state.profileType === "TUBO" ? state.tubeName
-                   : state.profileType === "ARMADA_I" ? `bf=${state.armadaBf} tf=${state.armadaTf} hw=${state.armadaHw} tw=${state.armadaTw}`
-                   : `h=${state.cajonH} b=${state.cajonB} t=${state.cajonT}`}
+                  {state.profileType === "IPN"
+                    ? state.profileName
+                    : state.profileType === "UPN" ||
+                        state.profileType === "2UPN"
+                      ? state.upnName
+                      : state.profileType === "TUBO"
+                        ? state.tubeName
+                        : state.profileType === "ARMADA_I"
+                          ? `bf=${state.armadaBf} tf=${state.armadaTf} hw=${state.armadaHw} tw=${state.armadaTw}`
+                          : `h=${state.cajonH} b=${state.cajonB} t=${state.cajonT}`}
                 </td>
               </tr>
               {state.profileType === "2UPN" && (
                 <tr>
                   <td className="font-bold p-1 border">Separación</td>
-                  <td className="p-1 border" colSpan={3}>{state.upnGap} mm</td>
+                  <td className="p-1 border" colSpan={3}>
+                    {state.upnGap} mm
+                  </td>
                 </tr>
               )}
               <tr>
@@ -187,6 +284,18 @@ function NavColumnPrintout({ state }: { state: ColumnState }) {
                 </td>
                 <td className="p-1 border">{state.Ky}</td>
               </tr>
+              <tr>
+                <td className="font-bold p-1 border">
+                  C<sub>m</sub>
+                </td>
+                <td className="p-1 border">{state.Cm ?? 1}</td>
+                <td className="font-bold p-1 border">
+                  B<sub>1x</sub> / B<sub>1y</sub>
+                </td>
+                <td className="p-1 border">
+                  {result.B1x.toFixed(3)} / {result.B1y.toFixed(3)}
+                </td>
+              </tr>
             </tbody>
           </table>
 
@@ -205,28 +314,36 @@ function NavColumnPrintout({ state }: { state: ColumnState }) {
                 <td className="font-bold p-1 border">
                   P<sub>u</sub>
                 </td>
-                <td className="p-1 border text-right font-mono">{state.Pu.toFixed(1)}</td>
+                <td className="p-1 border text-right font-mono">
+                  {state.Pu.toFixed(1)}
+                </td>
                 <td className="p-1 border">kN</td>
               </tr>
               <tr>
                 <td className="font-bold p-1 border">
                   M<sub>u,x</sub>
                 </td>
-                <td className="p-1 border text-right font-mono">{state.Mux.toFixed(1)}</td>
+                <td className="p-1 border text-right font-mono">
+                  {state.Mux.toFixed(1)}
+                </td>
                 <td className="p-1 border">kN·m</td>
               </tr>
               <tr>
                 <td className="font-bold p-1 border">
                   M<sub>u,y</sub>
                 </td>
-                <td className="p-1 border text-right font-mono">{state.Muy.toFixed(1)}</td>
+                <td className="p-1 border text-right font-mono">
+                  {state.Muy.toFixed(1)}
+                </td>
                 <td className="p-1 border">kN·m</td>
               </tr>
             </tbody>
           </table>
 
           {/* 3. RESULTADOS */}
-          <h2 className="font-bold text-sm mb-1">3. RESULTADOS — CIRSOC 301-05</h2>
+          <h2 className="font-bold text-sm mb-1">
+            3. RESULTADOS — CIRSOC 301-05
+          </h2>
 
           <table className="w-full text-xs mb-4 border border-black">
             <tbody>
@@ -234,27 +351,37 @@ function NavColumnPrintout({ state }: { state: ColumnState }) {
                 <td className="font-bold p-1 border w-40">
                   &phi;<sub>c</sub>P<sub>n</sub>
                 </td>
-                <td className="p-1 border text-right font-mono">{result.phiPn.toFixed(1)} kN</td>
+                <td className="p-1 border text-right font-mono">
+                  {result.phiPn.toFixed(1)} kN
+                </td>
                 <td className="font-bold p-1 border w-40">
                   P<sub>u</sub> / &phi;<sub>c</sub>P<sub>n</sub>
                 </td>
-                <td className="p-1 border text-right font-mono">{(state.Pu / result.phiPn).toFixed(3)}</td>
+                <td className="p-1 border text-right font-mono">
+                  {(state.Pu / result.phiPn).toFixed(3)}
+                </td>
               </tr>
               <tr>
                 <td className="font-bold p-1 border">
                   &phi;<sub>b</sub>M<sub>n,x</sub>
                 </td>
-                <td className="p-1 border text-right font-mono">{result.phiMnx.toFixed(1)} kN·m</td>
+                <td className="p-1 border text-right font-mono">
+                  {result.phiMnx.toFixed(1)} kN·m
+                </td>
                 <td className="font-bold p-1 border">
                   &phi;<sub>b</sub>M<sub>n,y</sub>
                 </td>
-                <td className="p-1 border text-right font-mono">{result.phiMny.toFixed(1)} kN·m</td>
+                <td className="p-1 border text-right font-mono">
+                  {result.phiMny.toFixed(1)} kN·m
+                </td>
               </tr>
             </tbody>
           </table>
 
           {/* 4. RELACIÓN DE INTERACCIÓN */}
-          <h2 className="font-bold text-sm mb-1">4. RELACIÓN DE INTERACCIÓN (Cap. H)</h2>
+          <h2 className="font-bold text-sm mb-1">
+            4. RELACIÓN DE INTERACCIÓN (Cap. H)
+          </h2>
           <div
             className={`p-3 rounded mb-4 text-sm font-bold border ${
               result.passes
@@ -262,7 +389,8 @@ function NavColumnPrintout({ state }: { state: ColumnState }) {
                 : "bg-red-100 text-red-800 border-red-300"
             }`}
           >
-            Ratio = {result.ratio.toFixed(3)} &mdash; {result.passes ? "✓ VERIFICA" : "✗ NO VERIFICA"}
+            Ratio = {result.ratio.toFixed(3)} &mdash;{" "}
+            {result.passes ? "✓ VERIFICA" : "✗ NO VERIFICA"}
           </div>
           <p className="text-xs text-gray-600 mb-4">{result.limitState}</p>
 
@@ -309,6 +437,7 @@ function SavedColumnPrintout() {
       L: (d.L as number) ?? 3000,
       Kx: (d.Kx as number) ?? 1.0,
       Ky: (d.Ky as number) ?? 1.0,
+      Cm: (d.Cm as number) ?? 1.0,
       Fy: (d.Fy as number) ?? 235,
     };
   }, [col, d]);
@@ -325,7 +454,8 @@ function SavedColumnPrintout() {
         <h1 className="text-2xl font-bold mb-4">Imprimir planilla — Columna</h1>
         {columnSaves.length === 0 && (
           <p className="text-gray-500">
-            No hay columnas guardadas. Guardá una desde la calculadora de columnas.
+            No hay columnas guardadas. Guardá una desde la calculadora de
+            columnas.
           </p>
         )}
         <div className="grid gap-2 mb-6">
